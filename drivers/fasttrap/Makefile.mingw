@@ -1,0 +1,12 @@
+
+INCLUDES = ../include -I ../.. -I . -I../etw
+CFLAGS = -w -g -I $(INCLUDES) -Dwindows -D_AMD64_
+INCS = ../../sys/dtrace_misc.h ../../sys/dtrace_win32.h ../../sys/dtrace.h \
+		../../sys/fasttrap.h ../../sys/fasttrap_impl.h fasttrap_win32.h
+
+../../bin/amd64/fasttrap.dll: fasttrap.c fasttrap_win32.c fasttrap_isa.c $(INCS)
+	gcc $(CFLAGS)  -shared -Wl,--out-implib,../../lib/amd64/libfasttrapsysdll.a -o $@ \
+		fasttrap.c fasttrap_win32.c fasttrap_isa.c -L ../../lib/amd64 -ldtracesysdll -letw_dll
+
+clean:
+	rm ../../bin/amd64/fasttrap.dll ../../lib/amd64/libfasttrapsysdll.a

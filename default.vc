@@ -1,0 +1,81 @@
+
+!ifndef _MSVC_OPTS_
+_MSVC_OPTS_ = 1
+
+!ifndef RELEASE
+DEBUG=1
+!else
+DEBUG=0
+!endif
+
+!if $(DEBUG) > 0
+BASE=$(ROOT)\debug
+!else
+BASE=$(ROOT)\rel
+!endif
+
+!IF "$(PROCESSOR_ARCHITECTURE)" == "x86"
+!IFNDEF PROCESSOR_ARCHITEW6432
+ETW_FLAGS= /D__i386_etw__
+!ELSE
+ETW_FLAGS= /D__amd64_etw__
+!ENDIF
+ARCH=/D__i386__  /D__i386
+INST_LIB_DIR=$(BASE)\i386\lib
+CMN_LIB_DIR=$(ROOT)\libs\i386
+INST_EXE_DIR=$(BASE)\i386\bin
+ODIR = $(BASE)\i386\obj
+CSCFLAGS = -platform:x86
+!ELSE
+INST_LIB_DIR=$(BASE)\amd64\lib
+CMN_LIB_DIR=$(ROOT)\libs\amd64
+INST_EXE_DIR=$(BASE)\amd64\bin
+ARCH=/D__amd64__ /D__amd64 
+ETW_FLAGS= /D__amd64_etw__
+ODIR = $(BASE)\amd64\obj
+!ENDIF
+
+INST_EXE_DIR64=$(BASE)\amd64\bin
+
+ARCH = $(ARCH) $(ETW_FLAGS)
+
+CC = cl
+AS = ml
+LD = link
+AR = lib
+RC = rc
+
+
+INCLUDES = -I$(ROOT)\inc\include -I$(ROOT)\inc -I$(ROOT)\libs\common -I$(ROOT)\drivers\etw -I.
+
+!ifdef STATIC
+!ifdef DEBUG
+MSVCRT = /MTd
+!else
+MSVCRT = /MT
+!endif
+INCLUDES = $(INCLUDES) /DSTATIC
+!else
+!ifdef DEBUG
+MSVCRT = /MDd
+!else
+MSVCRT = /MD
+!endif
+!endif
+
+OPTS = -O3
+DEFS  = -D_CRT_SECURE_NO_DEPRECATE -DD_CRT_SECURE_NO_WARNINGS -Dwindows 
+ARFLAGS = -nologo
+
+!if $(DEBUG) > 0
+CFLAGS  =  $(INCLUDES) $(DEFS) $(ARCH) -nologo -W3 -Od -Zi $(MSVCRT)
+ASFLAGS = -coff -Zi
+LDFLAGS = -nologo -debug -incremental:no /fixed:no /LIBPATH:$(CMN_LIB_DIR) /LIBPATH:$(INST_LIB_DIR)
+!else
+CFLAGS  =  $(INCLUDES) $(DEFS) $(ARCH) -nologo -W3 -O2 -Zi $(MSVCRT)
+ASFLAGS = -coff -Zi
+LDFLAGS = -nologo  -debug -incremental:no /fixed:no /LIBPATH:$(CMN_LIB_DIR) /LIBPATH:$(INST_LIB_DIR)
+!endif
+
+
+!endif

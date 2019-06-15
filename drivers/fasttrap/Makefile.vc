@@ -1,0 +1,53 @@
+
+!ifdef ROOT
+!include $(ROOT)\default.vc
+!else
+ROOT=..\..
+!include $(ROOT)\default.vc
+!endif
+
+TOP = .
+
+STATICLIB=fasttrap.lib
+SHAREDLIB=fasttrap.dll 
+IMPLIB=fasttrapdll.lib
+DEF=libfasttrapsys.def
+EXP=fasttrap.exp
+PDB=fasttrap.pdb
+
+CFLAGS = $(CFLAGS) -I$(ROOT)/drivers/inject
+
+OBJS = $(ODIR)/fasttrap.obj $(ODIR)/fasttrap_isa.obj $(ODIR)/fasttrap_win32.obj  $(ODIR)/ft_inject.obj
+OBJA =
+
+all: setup $(INST_LIB_DIR)/$(STATICLIB) $(INST_EXE_DIR)/$(SHAREDLIB) $(INST_LIB_DIR)/$(IMPLIB)
+dynamic: setup $(INST_EXE_DIR)/$(SHAREDLIB) $(INST_LIB_DIR)/$(IMPLIB)
+static: setup $(INST_LIB_DIR)/$(STATICLIB)
+
+$(INST_LIB_DIR)/$(STATICLIB): $(OBJS) $(OBJA)
+	$(AR) $(ARFLAGS) -out:$@ $(OBJS) $(OBJA)
+
+$(INST_LIB_DIR)/$(IMPLIB): $(INST_EXE_DIR)/$(SHAREDLIB)
+
+$(INST_EXE_DIR)/$(SHAREDLIB): $(OBJS) $(OBJA)
+	$(LD) $(LDFLAGS)  -def:$(DEF) -dll -implib:$(INST_LIB_DIR)/$(IMPLIB) \
+	  -out:$@  $(OBJS) $(OBJA) libetwdll.lib libdtracesysdll.lib 
+	  
+{$(TOP)}.c.obj:
+	$(CC)  $(ARCH_FLAGS) $(CFLAGS) /Fo$(ODIR)\  /c $<
+$(ODIR)/ft_inject.obj: ../inject/inject.c
+	$(CC)  $(ARCH_FLAGS) $(CFLAGS) /Fo$@  /c ../inject/inject.c
+{$(TOP)}.cc.obj:
+	$(CC)  $(ARCH_FLAGS) $(CFLAGS) /Fo$(ODIR)\  /c $<
+
+setup:
+	-@ if NOT EXIST $(ODIR) mkdir $(ODIR)
+
+clean:
+	-del $(INST_LIB_DIR)\$(STATICLIB)
+	-del $(INST_EXE_DIR)\$(SHAREDLIB)
+	-del $(INST_LIB_DIR)\$(IMPLIB)
+	-del $(ODIR)\*.obj
+	-del $(INST_LIB_DIR)\$(EXP)
+	-del $(INST_EXE_DIR)\$(PDB)
+	-del $(INST_EXE_DIR)\$(SHAREDLIB).manifest

@@ -1,0 +1,70 @@
+
+!ifdef ROOT
+!include $(ROOT)\default.vc
+!else
+ROOT=..\..
+!include $(ROOT)\default.vc
+!endif
+
+INCLUDES= $(INCLUDES) /Iinclude /Isrc
+
+TOP = .
+
+STATICLIB=minhook.lib
+SHAREDLIB=minhook.dll 
+IMPLIB=minhookdll.lib
+DEF=dll_resources/minhook.def
+EXP=minhookdll.exp
+PDB=minhook.pdb
+
+
+OBJS = $(ODIR)/trampoline.obj\
+	 $(ODIR)/buffer.obj $(ODIR)/hook.obj $(ODIR)/off.obj\
+	 $(ODIR)/hde32.obj $(ODIR)/hde64.obj \
+!IF "$(PROCESSOR_ARCHITECTURE)" == "x86"
+	$(ODIR)/relay32.obj
+!else
+	$(ODIR)/relay64.obj
+!ENDIF
+OBJS32 = $(ODIR)/relay32.obj
+OBJS64 = $(ODIR)/relay64.obj
+OBJA =
+CFLAGS = $(CFLAGS) /D_ADD_RTF_
+
+all: setup $(INST_LIB_DIR)/$(STATICLIB) $(INST_EXE_DIR)/$(SHAREDLIB) $(INST_LIB_DIR)/$(IMPLIB)
+dynamic: setup $(INST_EXE_DIR)/$(SHAREDLIB) $(INST_LIB_DIR)/$(IMPLIB)
+static: setup $(INST_LIB_DIR)/$(STATICLIB)
+
+$(INST_LIB_DIR)/$(STATICLIB): $(OBJS) $(OBJA)
+	$(AR) $(ARFLAGS) -out:$@ $(OBJS) $(OBJA)
+
+$(INST_LIB_DIR)/$(IMPLIB): $(INST_EXE_DIR)/$(SHAREDLIB)
+
+$(INST_EXE_DIR)/$(SHAREDLIB): $(OBJS) $(OBJA)
+	$(LD) $(LDFLAGS)  -def:$(DEF) -dll -implib:$(INST_LIB_DIR)/$(IMPLIB) \
+	  -out:$@  $(OBJS) $(OBJA) 
+
+{$(TOP)/src/}.c.obj:
+	-@ if NOT EXIST "obj/amd64" mkdir "obj/amd64"
+	$(CC)  $(ARCH_FLAGS) $(CFLAGS) /Fo$(ODIR)\  /c $<
+
+!IF "$(PROCESSOR_ARCHITECTURE)" == "AMD64"
+{$(TOP)/src/}.asm.obj:
+	ml64  $(ARCH_FLAGS) $(CFLAGS) /Fo$(ODIR)\  /c $<
+!ENDIF
+{$(TOP)/src/hde/}.c.obj:
+	$(CC)  $(ARCH_FLAGS) $(CFLAGS) /Fo$(ODIR)\  /c $<
+
+setup:
+	-@ if NOT EXIST $(ODIR) mkdir $(ODIR)
+	-@ if NOT EXIST $(INST_LIB_DIR) mkdir $(INST_LIB_DIR)
+	-@ if NOT EXIST $(INST_EXE_DIR) mkdir $(INST_EXE_DIR)
+
+clean:
+	-del $(INST_LIB_DIR)\$(STATICLIB)
+	-del $(INST_EXE_DIR)\$(SHAREDLIB)
+	-del $(INST_LIB_DIR)\$(IMPLIB)
+	-del $(ODIR)\*.obj
+	-del $(INST_LIB_DIR)\$(EXP)
+	-del $(INST_EXE_DIR)\$(PDB)
+	-del $(INST_EXE_DIR)\$(SHAREDLIB).manifest

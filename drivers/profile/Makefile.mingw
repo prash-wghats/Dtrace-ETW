@@ -1,0 +1,11 @@
+
+INCLUDES = ../include -I ../.. -I . -I../etw
+CFLAGS = -w -g -I $(INCLUDES) -Dwindows
+INCS = ../../sys/dtrace_misc.h ../../sys/dtrace_win32.h ../../sys/dtrace.h
+
+../../bin/amd64/profile.dll: cyclic.c profile.c cyclic.h $(INCS)
+	gcc $(CFLAGS)  -shared -o $@ \
+		cyclic.c profile.c -L ../../lib/amd64 -ldtracesysdll -letw_dll
+
+clean:
+	rm ../../bin/amd64/profile.dll

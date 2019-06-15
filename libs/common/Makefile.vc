@@ -1,0 +1,37 @@
+
+
+!ifdef ROOT
+!include $(ROOT)\default.vc
+!else
+ROOT=..\..
+!include $(ROOT)\default.vc
+!endif
+
+STATICLIB=libcommon.lib
+PDB=libcommon.pdb
+
+OBJS = $(ODIR)/libcommon.obj
+
+CFLAGS = $(CFLAGS) -DUNICODE
+
+all: setup $(INST_LIB_DIR)/$(STATICLIB)
+
+$(INST_LIB_DIR)/$(STATICLIB): $(OBJS) $(OBJA)
+	$(AR) $(ARFLAGS) -out:$@ $(OBJS) $(OBJA)
+
+
+$(ODIR)/libcommon.obj: common.c common.h
+	$(CC) -c $(ARCH_FLAGS) $(CFLAGS) /DC_FILETYPE /DC_RUNCMD /DC_DBGHELP /DC_MUTEX \
+		/DC_MEM /DC_DEBUG /DC_NGENEXE /DDBG_PATH /DC_GCMP /Fo$@ /c common.c
+
+setup:
+	-@ if NOT EXIST $(ODIR) mkdir $(ODIR)
+
+clean:
+	-del $(INST_LIB_DIR)\$(STATICLIB)
+	-del $(INST_EXE_DIR)\$(SHAREDLIB)
+	-del $(INST_LIB_DIR)\$(IMPLIB)
+	-del $(ODIR)\*.obj
+	-del $(INST_LIB_DIR)\$(EXP)
+	-del $(INST_EXE_DIR)\$(PDB)
+	-del $(INST_EXE_DIR)\$(SHAREDLIB).manifest

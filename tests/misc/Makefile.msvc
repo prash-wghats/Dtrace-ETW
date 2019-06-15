@@ -1,0 +1,110 @@
+
+#!include <win32.mak>
+
+INCLUDES=/Iinclude /Isrc
+
+!IF "$(PROCESSOR_ARCHITECTURE)" == "x86"
+ARCH_FLAGS=/D__i386__
+CSARCH_FLAGS = /platform:x86
+INST_EXE_DIR=..\bin\i386
+ODIR = obj\i386
+!ELSE
+INST_EXE_DIR=..\bin\amd64
+ARCH_FLAGS=/D__amd64__
+CSARCH_FLAGS = /platform:x64
+ODIR = obj\amd64
+!ENDIF
+
+TOP = .
+
+
+CC = cl
+CSC = csc
+AS = ml
+LD = link
+AR = lib
+RC = rc
+CFLAGS  = -nologo -Fo$(ODIR) -W1  -Od -Zi -I. -I ..\include $(ARCH) -D_CRT_SECURE_NO_WARNINGS /MDd
+CSCFLAGS =  /debug+ /debug:full  /optimize-
+WFLAGS  = -D_CRT_SECURE_NO_DEPRECATE -DD_CRT_SECURE_NO_WARNINGS
+ASFLAGS = -coff -Zi
+LDFLAGS = -nologo -debug -incremental:no /fixed:no /LIBPATH:$(INST_LIB_DIR)
+ARFLAGS = -nologo
+
+TESTS_CS = $(INST_EXE_DIR)\t_cs_dyndll.exe \
+		$(INST_EXE_DIR)\t_cs_dyndll0.dll \
+		$(INST_EXE_DIR)\t_cs_dyndll1.dll \
+		$(INST_EXE_DIR)\t_cs_dyndll2.dll \
+		$(INST_EXE_DIR)\t_cs_dyndll3.dll \
+		$(INST_EXE_DIR)\t_cs_inf.exe \
+		$(INST_EXE_DIR)\t_cs_eloop.exe \
+		$(INST_EXE_DIR)\t_cs_win.exe 
+		
+
+TESTS_C = $(INST_EXE_DIR)\t_c_dyndll.exe \
+		$(INST_EXE_DIR)\t_c_dyndll0.dll \
+		$(INST_EXE_DIR)\t_c_dyndll1.dll \
+		$(INST_EXE_DIR)\t_c_dyndll2.dll \
+		$(INST_EXE_DIR)\t_c_dyndll3.dll \
+		$(INST_EXE_DIR)\t_c_inf.exe \
+		$(INST_EXE_DIR)\t_c_eloop.exe \
+		$(INST_EXE_DIR)\t_c_thr.exe \
+		$(INST_EXE_DIR)\t_c_thrinf.exe \
+		$(INST_EXE_DIR)\t_c_win.exe \
+		$(INST_EXE_DIR)\t_c_sim.exe \
+		$(INST_EXE_DIR)\t_c_badstack.exe
+
+all: $(TESTS_CS) $(TESTS_C)
+	
+$(INST_EXE_DIR)\t_c_dyndll.exe: t_c_dyndll.c
+	$(CC) -Zi /DMAIN t_c_dyndll.c /link /out:$@
+$(INST_EXE_DIR)\t_c_dyndll0.dll: t_c_dyndll.c
+	$(CC) /DLOOPSDLL0 /LD /Zi t_c_dyndll.c /link /out:$@
+$(INST_EXE_DIR)\t_c_dyndll1.dll: t_c_dyndll.c
+	$(CC) /DLOOPSDLL1 /LD /Zi t_c_dyndll.c /link /out:$@
+$(INST_EXE_DIR)\t_c_dyndll2.dll: t_c_dyndll.c
+	$(CC) /DLOOPSDLL2 /LD /Zi t_c_dyndll.c /link /out:$@
+$(INST_EXE_DIR)\t_c_dyndll3.dll: t_c_dyndll.c
+	$(CC) /DLOOPSDLL3 /LD /Zi t_c_dyndll.c /link /out:$@
+$(INST_EXE_DIR)\t_c_inf.exe: t_c_inf.c
+	$(CC) -Zi /DMAIN t_c_inf.c /link /out:$@
+$(INST_EXE_DIR)\t_c_eloop.exe: t_c_eloop.c
+	$(CC) -Zi /DMAIN t_c_eloop.c /link /out:$@
+$(INST_EXE_DIR)\t_c_thr.exe: t_c_thr.c
+	$(CC) -Zi /DMAIN t_c_thr.c /link /out:$@
+$(INST_EXE_DIR)\t_c_thrinf.exe: t_c_thrinf.c
+	$(CC) -Zi $(CFLAGS) /DMAIN t_c_thrinf.c /link /out:$@
+$(INST_EXE_DIR)\t_c_win.exe: t_c_win.c
+	$(CC) -Zi /DMAIN t_c_win.c /link /out:$@ user32.lib gdi32.lib
+$(INST_EXE_DIR)\t_c_sim.exe: t_c_sim.c
+	$(CC) -Zi /DMAIN t_c_sim.c /link /out:$@
+$(INST_EXE_DIR)\t_c_badstack.exe: t_c_fpidbadstack.c
+	$(CC) -Zi /DMAIN t_c_fpidbadstack.c /link /out:$@
+
+$(INST_EXE_DIR)\t_cs_dyndll.exe: t_cs_dyndll.cs
+	csc $(CSARCH_FLAGS) /target:exe $(CSCFLAGS) /define:MAIN /out:$@ t_cs_dyndll.cs
+$(INST_EXE_DIR)\t_cs_dyndll0.dll: t_cs_dyndll.cs
+	csc $(CSARCH_FLAGS) /target:library $(CSCFLAGS) /define:TESTAS0 /out:$@ t_cs_dyndll.cs
+$(INST_EXE_DIR)\t_cs_dyndll1.dll: t_cs_dyndll.cs
+	csc $(CSARCH_FLAGS) /target:library $(CSCFLAGS) /define:TESTAS1 /out:$@ t_cs_dyndll.cs
+$(INST_EXE_DIR)\t_cs_dyndll2.dll: t_cs_dyndll.cs
+	csc $(CSARCH_FLAGS) /target:library $(CSCFLAGS) /define:TESTAS2 /out:$@ t_cs_dyndll.cs
+$(INST_EXE_DIR)\t_cs_dyndll3.dll: t_cs_dyndll.cs
+	csc $(CSARCH_FLAGS) /target:library $(CSCFLAGS) /define:TESTAS3 /out:$@ t_cs_dyndll.cs
+
+$(INST_EXE_DIR)\t_cs_eloop.exe: t_cs_eloop.cs
+	csc $(CSARCH_FLAGS) $(CSCFLAGS) /out:$@ t_cs_eloop.cs
+
+$(INST_EXE_DIR)\t_cs_inf.exe: t_cs_inf.cs
+	csc $(CSARCH_FLAGS) $(CSCFLAGS) /out:$@ t_cs_inf.cs
+
+$(INST_EXE_DIR)\t_cs_win.exe: t_cs_win.cs t_cs_win.resx
+!IF EXISTS("C:\Program Files (x86)\Microsoft SDKs\Windows\v8.1A\bin\NETFX 4.5.1 Tools\resgen.exe")
+		"C:\Program Files (x86)\Microsoft SDKs\Windows\v8.1A\bin\NETFX 4.5.1 Tools\resgen.exe" /compile t_cs_win.resx,TextEditor.TextEditor.resources
+!ELSE
+		resgen /compile t_cs_win.resx,TextEditor.TextEditor.resources
+!ENDIF
+	csc $(CSARCH_FLAGS) $(CSCFLAGS) /define:MAIN /out:$@ t_cs_win.cs /resource:TextEditor.TextEditor.resources
+
+clean:
+	-del  $(TESTS_CS) $(TESTS_C)

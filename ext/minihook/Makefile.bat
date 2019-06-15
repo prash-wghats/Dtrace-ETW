@@ -1,0 +1,1 @@
+start cmd /c ""C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\vcvarsall.bat" amd64 && nmake -f Makefile64.msvc && "C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\vcvarsall.bat" x86 && nmake -f Makefile32.msvc" 

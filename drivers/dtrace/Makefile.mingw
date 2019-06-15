@@ -1,0 +1,62 @@
+INCLUDES = ../include -I ../.. -I ../etw -I . 
+LIBP = ../../lib/amd64
+CFLAGS = -g -I $(INCLUDES)
+CC = gcc
+CXX = g++
+INCS = ../../sys/dtrace_misc.h ../../sys/dtrace_win32.h ../../sys/dtrace.h
+
+ifeq ($(PROCESSOR_ARCHITECTURE),AMD64)
+ARCH_FLAGS = -m64  -D__amd64 -Dwindows -D__amd64__ -DWIN_USERMODE_DTRACE
+ODIR = amd64
+INST_LIB_DIR=../lib/amd64
+INST_EXE_DIR=../bin/amd64
+RCFLAGS = --target=pe-x86-64
+else
+ifndef PROCESSOR_ARCHITEW6432
+ARCH_FLAGS = -m32 -D__i386 -Dwindows -D__i386__	-D__amd64__ -DWIN_USERMODE_DTRACE
+ODIR = obj/i386
+INST_LIB_DIR=../lib/i386
+INST_EXE_DIR=../bin/i386
+RCFLAGS = --target=pe-i386
+else
+ARCH_FLAGS = -m64  -D__amd64 -Dwindows -D__amd64__ -DKERNEL -w
+ODIR = obj/amd64
+INST_LIB_DIR=../../lib/amd64
+INST_EXE_DIR=../../bin/amd64
+RCFLAGS = --target=pe-x86-64
+endif
+endif
+
+STATICLIB = libdtracesys.a
+DYNAMICLIB = libdtracesys.dll
+IMPLIB = libdtracesysdll.a
+DEF = libdtracesys.def
+
+STATIC_LIBS = -L $(INST_LIB_DIR) 
+DYNAMIC_LIBS = -L $(INST_LIB_DIR) 
+
+SRCS = dtrace.c dtrace_isa.c dtrace_subr.c dtrace_win32.c blist.c driver.c \
+	misc.c dis_tables.c instr_size.c apple_port.c 
+
+OBJS = $(ODIR)/dtrace.o $(ODIR)/dtrace_isa.o $(ODIR)/dtrace_subr.o \
+	$(ODIR)/dtrace_win32.o $(ODIR)/blist.o $(ODIR)/driver.o $(ODIR)/misc.o \
+	$(ODIR)/dis_tables.o $(ODIR)/instr_size.o $(ODIR)/apple_port.o 
+
+all: $(INST_LIB_DIR)/$(STATICLIB) $(INST_EXE_DIR)/$(DYNAMICLIB) $(INST_LIB_DIR)/$(IMPLIB)
+
+$(INST_LIB_DIR)/$(STATICLIB): $(OBJS)
+	rm -f $@
+	ar rc $(RCFLAGS) $@ $(OBJS)
+	ranlib $@
+
+$(INST_LIB_DIR)/$(IMPLIB): $(INST_EXE_DIR)/$(DYNAMICLIB)
+
+$(INST_EXE_DIR)/$(DYNAMICLIB): $(OBJS) 
+	$(CC) $(ARCH_FLAGS) -shared -Wl,--out-implib,$(INST_LIB_DIR)/$(IMPLIB) $(LDFLAGS) \
+	-o $@ $(DEF) $(OBJS) -L$(LIBP) -lws2_32 -letw_dll
+
+$(ODIR)/%.o: %.c $(INCS)
+	$(CC) -c $(ARCH_FLAGS) $(CFLAGS) $< -o $@	
+
+clean:
+	rm $(ODIR)/*.o $(INST_LIB_DIR)/$(STATICLIB) $(INST_LIB_DIR)/$(IMPLIB) $(INST_EXE_DIR)/$(DYNAMICLIB)

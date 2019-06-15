@@ -1,0 +1,84 @@
+
+# nmake -f Makfile.vc []
+# nmake -f Makefile.vc RELEASE=1 STATIC=1
+# nmake -f Makefile.vc STATIC=1
+
+!ifdef RELEASE
+BUILD="RELEASE=1"
+!else
+BUILD=
+!endif
+
+!ifdef STATIC
+TYPE=static
+!else
+TYPE=dynamic
+!endif
+
+DIRS = ext\minihook drivers\inject drivers\etw drivers\dtrace \
+		drivers\fasttrap drivers\profile drivers\sdt \
+		libs\libctf libs\libpe libs\libproc libs\libdtrace \
+		cmd\dtrace
+
+#all:
+#	-@ for %%A in ($(DIRS)) DO ( \
+#		pushd  %%A &\
+#		nmake -f Makefile.vc $(TYPE) ROOT=$(MAKEDIR) $(BUILD) &\
+#		popd ..\.. \
+#	)
+
+all:
+	cd ext\minihook
+	nmake -f Makefile.vc static ROOT=$(MAKEDIR) $(BUILD)
+	cd ..\..
+	cd drivers\inject
+	nmake -f Makefile.vc dynamic ROOT=$(MAKEDIR) $(BUILD)
+	cd ..\..
+	cd drivers\etw
+	nmake -f Makefile.vc $(TYPE) ROOT=$(MAKEDIR) $(BUILD)
+	cd ..\..
+	cd drivers\dtrace
+	nmake -f Makefile.vc $(TYPE) ROOT=$(MAKEDIR) $(BUILD)
+	cd ..\..
+	cd drivers\fasttrap
+	nmake -f Makefile.vc $(TYPE) ROOT=$(MAKEDIR) $(BUILD)
+	cd ..\..
+	cd drivers\profile
+	nmake -f Makefile.vc $(TYPE) ROOT=$(MAKEDIR) $(BUILD)
+	cd ..\..
+	cd drivers\sdt
+	nmake -f Makefile.vc $(TYPE) ROOT=$(MAKEDIR) $(BUILD)
+	cd ..\..
+	cd libs\libctf
+	nmake -f Makefile.vc static ROOT=$(MAKEDIR) $(BUILD)
+	cd ..\..
+	cd libs\common
+	nmake -f Makefile.vc ROOT=$(MAKEDIR) $(BUILD)
+	cd ..\..
+	cd libs\libpe
+	nmake -f Makefile.vc static ROOT=$(MAKEDIR) $(BUILD)
+	cd ..\..
+	cd libs\libproc
+	nmake -f Makefile.vc $(TYPE) ROOT=$(MAKEDIR) $(BUILD)
+	cd ..\..
+	cd libs\libdtrace
+	nmake -f Makefile.vc $(TYPE) ROOT=$(MAKEDIR) $(BUILD)
+	cd ..\..
+	cd cmd\dtrace
+	nmake -f Makefile.vc $(TYPE) ROOT=$(MAKEDIR) $(BUILD)
+	cd ..\..
+	cd tests\misc
+	nmake -f Makefile.vc
+	cd ..\..
+
+clean:
+	-@ for %%A in ($(DIRS)) DO ( \
+		pushd  %%A &\
+		nmake -f Makefile.vc clean RELEASE=1 &\
+		nmake -f Makefile.vc clean &\
+		popd ..\.. \
+	)
+#	cd libs\libctf
+#	nmake -f Makefile.vc clean RELEASE=1
+#	nmake -f Makefile.vc clean 
+#	cd ..\..

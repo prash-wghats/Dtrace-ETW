@@ -1,0 +1,80 @@
+
+!ifdef ROOT
+!include $(ROOT)\default.vc
+!else
+ROOT=..\..
+!include $(ROOT)\default.vc
+!endif
+
+
+!IF "$(PROCESSOR_ARCHITECTURE)" == "x86"
+SHAREDLIB=agent32.dll 
+EXP=agent32.exp
+PDB=agent32.pdb
+!ELSE
+SHAREDLIB=agent64.dll 
+EXP=agent64.exp
+PDB=agent64.pdb
+!ENDIF
+
+INCLUDES= $(INCLUDES) /I$(ROOT)\ext\minihook\include
+
+TOP = .
+
+MAN=ftetw.man
+MAN_H=ftetw.h
+
+#CFLAGS  = -nologo -W3 -Od /DAGENTDLL -Zi  /EHa $(INCLUDES) $(ARCH) -D_CRT_SECURE_NO_WARNINGS -MDd
+
+#LDFLAGS = -nologo -debug -incremental:no /NODEFAULTLIB:LIBCMTD /fixed:no /LIBPATH:$(INST_LIB_DIR)
+
+
+
+OBJS = $(ODIR)/agent.obj $(ODIR)/inject.obj $(ODIR)/ftetw.res
+OBJA =
+
+all: $(INST_EXE_DIR)/$(SHAREDLIB) $(INST_LIB_DIR)/$(IMPLIB)
+dynamic: setup $(INST_EXE_DIR)/$(SHAREDLIB) $(INST_LIB_DIR)/$(IMPLIB)
+
+static:
+	echo "AGENTXX.DLL only dynamic"
+
+$(INST_LIB_DIR)/$(IMPLIB): $(INST_EXE_DIR)/$(SHAREDLIB)
+
+$(INST_EXE_DIR)/$(SHAREDLIB): $(OBJS) $(OBJA) $(INST_LIB_DIR)\minhook.lib
+	$(LD) $(LDFLAGS)  -dll  \
+	  -out:$@  $(OBJS) $(OBJA) minhook.lib advapi32.lib psapi.lib
+!IF "$(PROCESSOR_ARCHITECTURE)" == "x86" 
+	copy $(INST_EXE_DIR)\$(SHAREDLIB) $(INST_EXE_DIR64)\$(SHAREDLIB)
+!ENDIF
+
+FP_MC_EXE = c:\Program Files (x86)\Windows Kits\10\bin\10.0.17763.0\x64\mc.exe
+{$(TOP)}.c.obj: 
+	-@ if NOT EXIST $(ODIR) mkdir $(ODIR)
+
+!IF EXISTS("c:\Program Files (x86)\Windows Kits\10\bin\10.0.17763.0\x64\mc.exe")
+		"c:\Program Files (x86)\Windows Kits\10\bin\10.0.17763.0\x64\mc.exe" -r $(ODIR) $(MAN)
+!ELSE
+		mc.exe -r $(ODIR) $(MAN)
+!ENDIF
+	$(CC)  $(ARCH_FLAGS) $(CFLAGS) /Fo$(ODIR)\  /c $<
+
+$(ODIR)/ftetw.res: $(MAN)
+	wevtutil um $(MAN)
+!IF EXISTS("c:\Program Files (x86)\Windows Kits\10\bin\10.0.17763.0\x64\mc.exe")
+		"c:\Program Files (x86)\Windows Kits\10\bin\10.0.17763.0\x64\mc.exe" -r $(ODIR) $(MAN)
+!ELSE
+		mc.exe -r $(ODIR) $(MAN)
+!ENDIF
+	rc /fo $(ODIR)/ftetw.res $(ODIR)/ftetw.rc 
+	wevtutil im $(MAN)
+
+setup:
+	-@ if NOT EXIST $(ODIR) mkdir $(ODIR)
+
+clean:
+	-del $(INST_EXE_DIR)\$(SHAREDLIB)
+	-del $(ODIR)\*.obj
+	-del $(ODIR)\ftetw*
+	-del $(INST_LIB_DIR)\$(EXP)
+	-del $(INST_EXE_DIR)\$(PDB)

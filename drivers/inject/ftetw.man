@@ -1,0 +1,78 @@
+<!-- <?xml version="1.0" encoding="UTF-16"?> -->
+<instrumentationManifest
+    xmlns="http://schemas.microsoft.com/win/2004/08/events" 
+    xmlns:win="http://manifests.microsoft.com/win/2004/08/windows/events"
+    xmlns:xs="http://www.w3.org/2001/XMLSchema"    
+    >
+
+    <instrumentation>
+        <events>
+
+            <provider name="Fasttrap-ETWProvider" 
+                guid="{D8909C24-5BE9-4502-98CA-AB7BDC24899D}" 
+                symbol="ProviderGuid" 
+                resourceFileName="e:\Repos\WorkArea\cc\DTrace-win32\bin\amd64\agent64.dll" 
+                messageFileName="e:\Repos\WorkArea\cc\DTrace-win32\bin\amd64\agent64.dll"
+                message="$(string.Provider.Name)"
+                >
+
+                <templates>
+                   <template tid="TransferTemplate">
+                        <data name="Id" inType="win:Pointer"/>
+                        <data name="Arg0" inType="win:Pointer"/>
+                        <data name="Arg1" inType="win:Pointer"/>
+                        <data name="Arg2" inType="win:Pointer"/>
+                        <data name="Arg3" inType="win:Pointer"/>
+                        <data name="Arg4" inType="win:Pointer"/>
+						<data name="StackCount" inType="win:UInt32"/>
+						<data name="Array" count="StackCount" inType="win:UInt64"/>
+                    </template>
+                    <template tid="TransferTemplateAgg">
+                        <data name="Samples" inType="win:UInt32"/>
+                        <data name="ArrayCount" inType="win:UInt32"/>
+						<data name="Array" count="ArrayCount" inType="win:UInt64"/>
+                    </template>
+                    <template tid="Completed">
+                        <data name="Status" inType="win:UInt32"/>
+                    </template>
+                </templates>
+
+                <events>
+                    <event value="1" 
+                        level="win:Informational" 
+                        template="TransferTemplate" 
+                        symbol="Entry"
+                        message ="$(string.Event.Entry)"/>
+					<event value="2" 
+                        level="win:Informational" 
+                        template="TransferTemplate" 
+                        symbol="Return"
+                        message ="$(string.Event.Return)"/>
+                    <event value="3" 
+                        level="win:Informational" 
+                        template="TransferTemplateAgg" 
+                        symbol="Events"
+                        message ="$(string.Event.Events)"/>
+                    <event value="4" 
+                        level="win:Informational" 
+                        template="Completed" 
+                        symbol="Status"
+                        message ="$(string.Event.Status)"/>
+                </events>
+            </provider>
+        </events>
+    </instrumentation>
+
+    <localization>
+        <resources culture="en-US">
+            <stringTable>
+                <string id="Provider.Name" value="Microsoft-Windows-ETWProvider"/>
+                <string id="Event.Entry" value="Fasttrap Function Entry"/>
+				<string id="Event.Return" value="Fasttrap Function Return"/>
+                <string id="Event.Events" value="Fasttrap Events"/>
+                <string id="Event.Status" value="Fasttrap Status"/>
+            </stringTable>
+        </resources>
+    </localization>
+
+</instrumentationManifest>

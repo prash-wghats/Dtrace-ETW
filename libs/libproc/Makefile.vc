@@ -1,0 +1,64 @@
+
+!ifdef ROOT
+!include $(ROOT)\default.vc
+!else
+ROOT=..\..
+!include $(ROOT)\default.vc
+!endif
+
+STATICLIB=libproc.lib
+SHAREDLIB=libproc.dll 
+IMPLIB=libprocdll.lib
+DEF=libproc.def
+EXP=libprocdll.exp
+PDB=libproc.pdb
+
+TOP=.
+
+CFLAGS  =  $(CFLAGS) -DHAVE_STRUCT_TIMESPEC -DLIBDTRACE_EXPORTS 
+
+OBJS = $(ODIR)/libproc.obj \
+	 $(ODIR)/net.obj \
+	 $(ODIR)/pr_common.obj
+
+OBJA = $(ODIR)/libproc.obj \
+	 $(ODIR)/net.obj \
+
+all: setup $(INST_LIB_DIR)/$(STATICLIB) $(INST_EXE_DIR)/$(SHAREDLIB) $(INST_LIB_DIR)/$(IMPLIB)
+dynamic: setup $(INST_EXE_DIR)/$(SHAREDLIB) $(INST_LIB_DIR)/$(IMPLIB)
+static: setup $(INST_LIB_DIR)/$(STATICLIB)
+
+$(INST_LIB_DIR)/$(STATICLIB): $(OBJA)
+	$(AR) $(ARFLAGS) -out:$@ $(OBJA)
+
+$(INST_LIB_DIR)/$(IMPLIB): $(INST_EXE_DIR)/$(SHAREDLIB)
+
+$(INST_EXE_DIR)/$(SHAREDLIB): $(OBJS) $(OBJA)
+	$(LD) $(LDFLAGS)  -def:$(DEF) -dll -implib:$(INST_LIB_DIR)/$(IMPLIB) \
+	  -out:$@  $(OBJS) $(OBJA) libpe.lib dbghelp.lib libetwdll.lib psapi.lib pthreadVC2.lib \
+	  corguids.lib mscoree.lib Shlwapi.lib
+	  
+{$(TOP)}.c.obj:
+	$(CC)  $(ARCH_FLAGS) $(CFLAGS) /Fo$(ODIR)\  /c $<
+
+{$(TOP)}.cc.obj:
+	$(CC)  $(ARCH_FLAGS) $(CFLAGS) /Fo$(ODIR)\  /c $<
+
+$(ODIR)/pr_common.obj: ../common/common.c ../common/common.h
+	$(CC) -c $(ARCH_FLAGS) $(CFLAGS) /DC_DBGHELP /DC_RUNCMD \
+	/DC_DEBUG /DC_NGENEXE /DC_FILETYPE /Fo$@ /c ../common/common.c
+
+setup:
+	-@ if NOT EXIST $(ODIR) mkdir $(ODIR)
+	-@ if NOT EXIST $(INST_LIB_DIR) mkdir $(INST_LIB_DIR)
+	-@ if NOT EXIST $(INST_EXE_DIR) mkdir $(INST_EXE_DIR)
+
+
+clean:
+	-del $(INST_LIB_DIR)\$(STATICLIB)
+	-del $(INST_EXE_DIR)\$(SHAREDLIB)
+	-del $(INST_LIB_DIR)\$(IMPLIB)
+	-del $(ODIR)\*.obj
+	-del $(INST_LIB_DIR)\$(EXP)
+	-del $(INST_EXE_DIR)\$(PDB)
+	-del $(INST_EXE_DIR)\$(SHAREDLIB).manifest

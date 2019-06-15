@@ -1,0 +1,53 @@
+!ifdef ROOT
+!include $(ROOT)\default.vc
+!else
+ROOT=..\..
+!include $(ROOT)\default.vc
+!endif
+
+TOP = .
+
+EXE=dtrace.exe
+PDB=dtrace.pdb
+
+
+
+#LDFLAGS = -nologo -debug -incremental:no /fixed:no /subsystem:console /LIBPATH:$(INST_LIB_DIR)  #/NODEFAULTLIB:libcmt 
+LDFLAGS = $(LDFLAGS) /subsystem:console
+OBJS = $(ODIR)/dtrace.obj $(ODIR)/getopt.obj
+
+OBJA =
+
+STATIC_LIBS =  libproc.lib libctf.lib libdtrace.lib libpe.lib libcommon.lib
+DYNAMIC_LIBS = libprocdll.lib libctf.lib libdtracedll.lib
+STATIC_SYS_LIBS = libdtracesys.lib fasttrap.lib libetw.lib profile.lib sdt.lib ole32.lib \
+		rpcrt4.lib Shlwapi.lib tdh.lib
+DYNAMIC_SYS_LIBS = libdtracesysdll.lib fasttrapdll.lib libetwdll.lib  
+
+!ifdef STATIC
+LIBS =  $(STATIC_SYS_LIBS) $(STATIC_LIBS)
+!else
+LIBS = $(DYNAMIC_LIBS) $(DYNAMIC_SYS_LIBS)
+!endif
+
+
+all: setup $(INST_EXE_DIR)/$(EXE)
+dynamic: setup $(INST_EXE_DIR)/$(EXE)
+static: setup $(INST_EXE_DIR)/$(EXE)
+
+$(INST_EXE_DIR)/$(EXE): $(OBJS)
+	$(LD) $(LDFLAGS) /out:$(INST_EXE_DIR)/$(EXE) $(OBJS)  $(LIBS) dbghelp.lib psapi.lib advapi32.lib \
+		pthreadVC2.lib zlib.lib corguids.lib mscoree.lib Shlwapi.lib  
+	mt.exe -manifest "dtrace.exe.manifest" -outputresource:$(INST_EXE_DIR)/$(EXE);#1
+
+{$(TOP)}.c.obj:
+	$(CC)  $(ARCH_FLAGS) $(CFLAGS) /Fo$(ODIR)\ /c $<
+
+setup:
+	-@ if NOT EXIST $(ODIR) mkdir $(ODIR)
+
+clean:
+	-del $(INST_EXE_DIR)\$(EXE)
+	-del $(OBJS)
+	-del $(INST_EXE_DIR)\$(PDB)
+	-del $(INST_EXE_DIR)\$(EXE).manifest

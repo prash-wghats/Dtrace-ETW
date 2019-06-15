@@ -1,0 +1,53 @@
+
+
+!ifdef ROOT
+!include $(ROOT)\default.vc
+!else
+ROOT=..\..
+!include $(ROOT)\default.vc
+!endif
+
+TOP = .
+
+STATICLIB=libdtracesys.lib
+SHAREDLIB=libdtracesys.dll 
+IMPLIB=libdtracesysdll.lib
+DEF=libdtracesys.def
+EXP=libdtracesys.exp
+PDB=libdtracesys.pdb
+
+OBJS = $(ODIR)/dtrace.sys.obj $(ODIR)/dtrace_isa.obj $(ODIR)/dtrace_subr.obj \
+	$(ODIR)/dtrace_win32.obj $(ODIR)/blist.obj $(ODIR)/driver.obj  \
+	$(ODIR)/dis_tables.obj $(ODIR)/instr_size.obj $(ODIR)/apple_port.obj 
+OBJA =
+
+all: setup $(INST_LIB_DIR)/$(STATICLIB) $(INST_EXE_DIR)/$(SHAREDLIB) $(INST_LIB_DIR)/$(IMPLIB)
+dynamic: setup $(INST_EXE_DIR)/$(SHAREDLIB) $(INST_LIB_DIR)/$(IMPLIB)
+static: setup $(INST_LIB_DIR)/$(STATICLIB) 
+
+$(INST_LIB_DIR)/$(STATICLIB): $(OBJS) $(OBJA)
+	$(AR) $(ARFLAGS) -out:$@ $(OBJS) $(OBJA)
+
+$(INST_LIB_DIR)/$(IMPLIB): $(INST_EXE_DIR)/$(SHAREDLIB)
+
+$(INST_EXE_DIR)/$(SHAREDLIB): $(OBJS) $(OBJA)
+	$(LD) $(LDFLAGS)  -def:$(DEF) -dll -implib:$(INST_LIB_DIR)/$(IMPLIB) \
+	  -out:$@  $(OBJS) $(OBJA) libetwdll.lib dbghelp.lib
+	  
+{$(TOP)}.c.obj:
+	$(CC)  $(ARCH_FLAGS) $(CFLAGS) /Fo$(ODIR)\  /c $<
+
+$(ODIR)/dtrace.sys.obj: dtrace.c
+	$(CC)  $(ARCH_FLAGS) $(CFLAGS) /Fo$@  /c dtrace.c
+
+setup:
+	-@ if NOT EXIST $(ODIR) mkdir $(ODIR)
+	
+clean:
+	-del $(INST_LIB_DIR)\$(STATICLIB)
+	-del $(INST_EXE_DIR)\$(SHAREDLIB)
+	-del $(INST_LIB_DIR)\$(IMPLIB)
+	-del $(ODIR)\*.obj
+	-del $(INST_LIB_DIR)\$(EXP)
+	-del $(INST_EXE_DIR)\$(PDB)
+	-del $(INST_EXE_DIR)\$(SHAREDLIB).manifest

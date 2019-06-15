@@ -1,0 +1,47 @@
+
+!ifdef ROOT
+!include $(ROOT)\default.vc
+!else
+ROOT=..\..
+!include $(ROOT)\default.vc
+!endif
+
+TOP = .
+
+STATICLIB=sdt.lib
+SHAREDLIB=sdt.dll 
+EXP=sdt.exp
+PDB=sdt.pdb
+
+
+OBJS = $(ODIR)/sdt.obj $(ODIR)/sdt_subr.obj
+OBJA =
+
+all: setup $(INST_LIB_DIR)/$(STATICLIB) $(INST_EXE_DIR)/$(SHAREDLIB) $(INST_LIB_DIR)/$(IMPLIB)
+dynamic: setup $(INST_EXE_DIR)/$(SHAREDLIB) $(INST_LIB_DIR)/$(IMPLIB)
+static: setup $(INST_LIB_DIR)/$(STATICLIB)
+
+$(INST_LIB_DIR)/$(STATICLIB): $(OBJS) $(OBJA)
+	$(AR) $(ARFLAGS) -out:$@ $(OBJS) $(OBJA)
+
+$(INST_LIB_DIR)/$(IMPLIB): $(INST_EXE_DIR)/$(SHAREDLIB)
+
+$(INST_EXE_DIR)/$(SHAREDLIB): $(OBJS) $(OBJA)
+	$(LD) $(LDFLAGS)  -dll  \
+	  -out:$@  $(OBJS) $(OBJA) tdh.lib libetwdll.lib libdtracesysdll.lib
+	  
+{$(TOP)}.c.obj:
+	$(CC)  $(ARCH_FLAGS) $(CFLAGS) /Fo$(ODIR)\  /c $<
+
+{$(TOP)}.cc.obj:
+	$(CC)  $(ARCH_FLAGS) $(CFLAGS) /Fo$(ODIR)\  /c $<
+
+setup:
+	-@ if NOT EXIST $(ODIR) mkdir $(ODIR)
+	
+clean:
+	-del $(INST_EXE_DIR)\$(SHAREDLIB)
+	-del $(ODIR)\*.obj
+	-del $(INST_LIB_DIR)\$(STATICLIB)
+	-del $(INST_LIB_DIR)\$(EXP)
+	-del $(INST_EXE_DIR)\$(PDB)

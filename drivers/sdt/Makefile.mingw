@@ -1,0 +1,11 @@
+
+INCLUDES = ../include -I ../.. -I . -I../etw
+CFLAGS = -w -g -I $(INCLUDES) -Dwindows
+INCS = ../../sys/dtrace_misc.h ../../sys/dtrace_win32.h ../../sys/dtrace.h
+
+../../bin/amd64/sdt.dll: sdt.c sdt_subr.c sdt.h $(INCS)
+	gcc $(CFLAGS)  -shared -o $@ \
+		sdt.c sdt_subr.c -L ../../lib/amd64 -ldtracesysdll -letw_dll
+
+clean:
+	rm ../../bin/amd64/sdt.dll

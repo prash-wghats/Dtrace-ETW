@@ -1,0 +1,86 @@
+
+#!include <win32.mak>
+
+INCLUDES=/I..\..\internal\minihook\include /I.
+
+!IF "$(PROCESSOR_ARCHITECTURE)" == "x86" 
+!IFNDEF PROCESSOR_ARCHITEW6432
+ARCH_FLAGS=/D__i386__ /Dwindows /D__i386_etw__
+!ELSE
+ARCH_FLAGS=/D__amd64__ /Dwindows /D__amd64_etw__
+!ENDIF
+INST_LIB_DIR=..\..\lib\i386
+INST_EXE_DIR=..\..\bin\i386
+INST_EXE_DIR64=..\..\bin\amd64
+ODIR = obj\i386
+SHAREDLIB=agent32.dll 
+EXP=agent32.exp
+PDB=agent32.pdb
+!ELSE
+INST_LIB_DIR=..\..\lib\amd64
+INST_EXE_DIR=..\..\bin\amd64
+ARCH_FLAGS=/D__amd64__ /D__amd64 /Dwindows /D__amd64_etw__
+ODIR = obj\amd64
+SHAREDLIB=agent64.dll 
+EXP=agent64.exp
+PDB=agent64.pdb
+!ENDIF
+
+TOP = .
+
+MAN=ftetw.man
+MAN_H=ftetw.h
+
+
+CC = cl
+AS = ml64
+LD = link
+AR = lib
+RC = rc
+CFLAGS  = -nologo -W3 -Od -Zi  /EHa $(INCLUDES) $(ARCH) -D_CRT_SECURE_NO_WARNINGS  -MDd
+FLAGS  = -D_CRT_SECURE_NO_DEPRECATE -DD_CRT_SECURE_NO_WARNINGS
+ASFLAGS = -coff -Zi
+LDFLAGS = -nologo -debug -incremental:no /NODEFAULTLIB:LIBCMTD /fixed:no /LIBPATH:$(INST_LIB_DIR)
+ARFLAGS = -nologo
+
+
+OBJS = $(ODIR)/agent.obj $(ODIR)/inject.obj $(ODIR)/ftetw.res
+OBJA =
+
+all: $(INST_EXE_DIR)/$(SHAREDLIB) $(INST_LIB_DIR)/$(IMPLIB)
+
+
+$(INST_LIB_DIR)/$(IMPLIB): $(INST_EXE_DIR)/$(SHAREDLIB)
+
+$(INST_EXE_DIR)/$(SHAREDLIB): $(OBJS) $(OBJA) $(INST_LIB_DIR)\minhook32.lib
+	$(LD) $(LDFLAGS)  -dll  \
+	  -out:$@  $(OBJS) $(OBJA) minhook32.lib advapi32.lib psapi.lib
+	copy $(INST_EXE_DIR)\$(SHAREDLIB) $(INST_EXE_DIR64)\$(SHAREDLIB)
+
+
+
+{$(TOP)}.c.obj: 
+	-@ if NOT EXIST $(ODIR) mkdir $(ODIR)
+!IF EXISTS("c:\Program Files (x86)\Windows Kits\10\bin\10.0.17763.0\x86\mc.exe")
+		"c:\Program Files (x86)\Windows Kits\10\bin\10.0.17763.0\x86\mc.exe" -r $(ODIR) $(MAN)
+!ELSE
+		mc.exe -r $(ODIR) $(MAN)
+!ENDIF
+	$(CC)  $(ARCH_FLAGS) $(CFLAGS) /Fo$(ODIR)\  /c $<
+
+$(ODIR)/ftetw.res: $(MAN)
+	wevtutil um $(MAN)
+!IF EXISTS("c:\Program Files (x86)\Windows Kits\10\bin\10.0.17763.0\x86\mc.exe")
+		"c:\Program Files (x86)\Windows Kits\10\bin\10.0.17763.0\x86\mc.exe" -r $(ODIR) $(MAN)
+!ELSE
+		mc.exe -r $(ODIR) $(MAN)
+!ENDIF
+	rc /fo $(ODIR)/ftetw.res $(ODIR)/ftetw.rc 
+	wevtutil im $(MAN)
+
+clean:
+	-del $(INST_EXE_DIR)\$(SHAREDLIB)
+	-del $(ODIR)\*.obj
+	-del $(ODIR)\ftetw*
+	-del $(INST_LIB_DIR)\$(EXP)
+	-del $(INST_EXE_DIR)\$(PDB)

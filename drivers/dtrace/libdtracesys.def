@@ -1,0 +1,57 @@
+NAME LIBDTRACESYS.DLL
+EXPORTS
+	_curcpu
+	ncpus
+	DtraceOpen
+	DtraceIoctl
+	DtraceClose
+	DtraceETWInit
+	mutex_init
+	mutex_enter
+	mutex_destroy
+	mutex_exit
+	mutex_owned
+	copyout
+	copyin
+	copyinstr
+	dtrace_fulword
+	dtrace_fuword32
+	dtrace_instr_size
+	dtrace_instr_size_isa
+	pfind
+	_curproc
+	_curthread
+	fasttrap_pfind
+	dtrace_register
+	dtrace_unregister
+	dtrace_condense
+	dtrace_invalidate
+	dtrace_probe_lookup
+	dtrace_probe_create
+	dtrace_probe_arg
+	dtrace_probe
+	dtrace_meta_register
+	dtrace_meta_unregister
+	dtrace_interrupt_disable
+	dtrace_interrupt_enable
+	dtrace_invop
+	dtrace_invop_add
+	dtrace_invop_remove
+	dtrace_attached
+	dtrace_gethrtime
+	dtrace_module_unloaded
+	kmem_alloc
+	kmem_zalloc
+	kmem_free
+	dtrace_helpers_destroy
+	scr_alloc_mem
+	scr_rel_mem
+	uread
+	uwrite
+	uprintf
+	
+	Hertz DATA
+	CPU DATA
+	cpu_core DATA
+	modules DATA
+	

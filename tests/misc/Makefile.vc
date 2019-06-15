@@ -1,0 +1,88 @@
+
+!ifdef ROOT
+!include $(ROOT)\default.vc
+!else
+ROOT=..\..
+!include $(ROOT)\default.vc
+!endif
+
+CFLAGS = $(CFLAGS) /Fo$(ODIR)\
+
+TESTS_CS = $(ODIR)\t_cs_dyndll.exe \
+		$(ODIR)\t_cs_dyndll0.dll \
+		$(ODIR)\t_cs_dyndll1.dll \
+		$(ODIR)\t_cs_dyndll2.dll \
+		$(ODIR)\t_cs_dyndll3.dll \
+		$(ODIR)\t_cs_inf.exe \
+		$(ODIR)\t_cs_eloop.exe \
+		$(ODIR)\t_cs_eloop.exe \
+		$(ODIR)\t_cs_str.exe \
+		$(ODIR)\t_cs_win.exe 
+		
+
+TESTS_C = $(ODIR)\t_c_dyndll.exe \
+		$(ODIR)\t_c_dyndll0.dll \
+		$(ODIR)\t_c_dyndll1.dll \
+		$(ODIR)\t_c_dyndll2.dll \
+		$(ODIR)\t_c_dyndll3.dll \
+		$(ODIR)\t_c_inf.exe \
+		$(ODIR)\t_c_eloop.exe \
+		$(ODIR)\t_c_thr.exe \
+		$(ODIR)\t_c_thrinf.exe \
+		$(ODIR)\t_c_win.exe \
+		$(ODIR)\t_c_sim.exe \
+		$(ODIR)\t_c_args.exe \
+		$(ODIR)\t_c_slowfast.exe \
+		$(ODIR)\t_c_badstack.exe
+
+all: $(TESTS_CS) $(TESTS_C)
+	
+$(ODIR)\t_c_dyndll.exe: t_c_dyndll.c
+	$(CC) -Zi $(CFLAGS) /DMAIN t_c_dyndll.c /link /out:$@
+$(ODIR)\t_c_dyndll0.dll: t_c_dyndll.c
+	$(CC) $(CFLAGS) /DLOOPSDLL0 /LD /Zi t_c_dyndll.c /link /out:$@
+$(ODIR)\t_c_dyndll1.dll: t_c_dyndll.c
+	$(CC) $(CFLAGS) /DLOOPSDLL1 /LD /Zi t_c_dyndll.c /link /out:$@
+$(ODIR)\t_c_dyndll2.dll: t_c_dyndll.c
+	$(CC) $(CFLAGS) /DLOOPSDLL2 /LD /Zi t_c_dyndll.c /link /out:$@
+$(ODIR)\t_c_dyndll3.dll: t_c_dyndll.c
+	$(CC) $(CFLAGS) /DLOOPSDLL3 /LD /Zi t_c_dyndll.c /link /out:$@
+$(ODIR)\t_c_win.exe: t_c_win.c
+	$(CC) -Zi $(CFLAGS) /DMAIN t_c_win.c /link /out:$@ user32.lib gdi32.lib
+$(ODIR)\t_c_badstack.exe: t_c_fpidbadstack.c
+	$(CC) -Zi $(CFLAGS) /DMAIN t_c_fpidbadstack.c /link /out:$@
+{$(TOP)}.c.exe:
+	$(CC) -Zi $(CFLAGS) /DMAIN $< /link /out:$@
+
+
+$(ODIR)\t_cs_dyndll.exe: t_cs_dyndll.cs
+	csc $(CSARCH_FLAGS) /target:exe $(CSCFLAGS) /define:MAIN /out:$@ t_cs_dyndll.cs
+$(ODIR)\t_cs_dyndll0.dll: t_cs_dyndll.cs
+	csc $(CSARCH_FLAGS) /target:library $(CSCFLAGS) /define:TESTAS0 /out:$@ t_cs_dyndll.cs
+$(ODIR)\t_cs_dyndll1.dll: t_cs_dyndll.cs
+	csc $(CSARCH_FLAGS) /target:library $(CSCFLAGS) /define:TESTAS1 /out:$@ t_cs_dyndll.cs
+$(ODIR)\t_cs_dyndll2.dll: t_cs_dyndll.cs
+	csc $(CSARCH_FLAGS) /target:library $(CSCFLAGS) /define:TESTAS2 /out:$@ t_cs_dyndll.cs
+$(ODIR)\t_cs_dyndll3.dll: t_cs_dyndll.cs
+	csc $(CSARCH_FLAGS) /target:library $(CSCFLAGS) /define:TESTAS3 /out:$@ t_cs_dyndll.cs
+
+$(ODIR)\t_cs_eloop.exe: t_cs_eloop.cs
+	csc $(CSARCH_FLAGS) $(CSCFLAGS) /out:$@ t_cs_eloop.cs
+
+$(ODIR)\t_cs_inf.exe: t_cs_inf.cs
+	csc $(CSARCH_FLAGS) $(CSCFLAGS) /out:$@ t_cs_inf.cs
+
+$(ODIR)\t_cs_str.exe: t_cs_str.cs
+	csc $(CSARCH_FLAGS) $(CSCFLAGS) /out:$@ t_cs_str.cs
+
+$(ODIR)\t_cs_win.exe: t_cs_win.cs
+!IF EXISTS("C:\Program Files (x86)\Microsoft SDKs\Windows\v8.1A\bin\NETFX 4.5.1 Tools\resgen.exe")
+		"C:\Program Files (x86)\Microsoft SDKs\Windows\v8.1A\bin\NETFX 4.5.1 Tools\resgen.exe" \
+			/compile t_cs_win.resx,$(ODIR)\TextEditor.TextEditor.resources
+!ELSE
+		resgen /compile t_cs_win.resx,$(ODIR)\TextEditor.TextEditor.resources
+!ENDIF
+	csc $(CSARCH_FLAGS) $(CSCFLAGS) /define:MAIN /out:$@ t_cs_win.cs /resource:$(ODIR)\TextEditor.TextEditor.resources
+
+clean:
+	-del  $(TESTS_CS) $(TESTS_C)
