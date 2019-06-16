@@ -152,15 +152,15 @@ fail | Fail event. args[0] uint16_t (protocol), args[1] uint16_t (failure code)
 
 Provider | ETW flag | Probe | Description
 -------- | -------- | ----- | -----------
- profile | EVENT_TRACE_FLAG_PROFILE | profile-n | [profile provider](http://dtrace.org/guide/chp-profile.html)
- - | - | tick-n | 
- - | - | sample-n | triggers for every sample.
-dpc | EVENT_TRACE_FLAG_DPC | thread | ThreadDPC event records when a threaded DPC executes. arg0-1: entry time (u64), routine address (void *)
- - | - | dpc | when a DPC is entered.
- - | - | timer | The TimerDPC event records when a DPC fires as a result of a timer expiration.
+ **profile** | EVENT_TRACE_FLAG_PROFILE | profile-n | [profile provider](http://dtrace.org/guide/chp-profile.html)
+ -|-| tick-n |  
+ -|-| sample-n | triggers for every sample. 
+dpc | EVENT_TRACE_FLAG_DPC | thread | ThreadDPC event records when a threaded DPC executes. arg0-1: entry time (u64), routine address (void * )
+ -|-| dpc | when a DPC is entered. 
+ -|-| timer | The TimerDPC event records when a DPC fires as a result of a timer expiration. 
  isr | EVENT_TRACE_FLAG_INTERRUPT | isr | interrupt service routine. args0-3: entry time (u64), routine address, return val (u8), vector number (u8)
  syscall | EVENT_TRACE_FLAG_SYSTEMCALL | entry | arg0: Address of the NT function call that is being entered
-  - | - | return | arg0: Status code returned by the NT system call.
+  -|-| return | arg0: Status code returned by the NT system call. 
 
 ## [pid provider](http://dtrace.org/guide/chp-pid.html)
 The pid provider allows for tracing of the entry and return of a function in a user process (native & .net) as well as any instruction as specified by an absolute address or function offset. For .net, function name is Namespace.Class.Function ex. 
