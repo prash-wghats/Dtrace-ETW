@@ -7,7 +7,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 
+ *
  * THIS SOFTWARE IS PROVIDED BY AUTHOR AND CONTRIBUTORS ``AS IS'' AND
  * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
@@ -21,9 +21,9 @@
  * SUCH DAMAGE.
  *
  */
- 
-#ifndef CYCLIC_H
-#define CYCLIC_H
+
+#ifndef	CYCLIC_H
+#define	CYCLIC_H
 
 extern void DtraceWinOSDpcStack(thread_t *td);
 
@@ -33,8 +33,8 @@ typedef void (*cyc_func_t)(void *);
 typedef uintptr_t dtrace_cpu_t;
 
 #define	CYCLIC_NONE	((cyclic_id_t)0)
-#define CYCLIC 0
-#define OMNI_CYCLIC 1
+#define	CYCLIC 0
+#define	OMNI_CYCLIC 1
 
 typedef struct cyc_handler {
 	cyc_func_t cyh_func;
@@ -47,7 +47,8 @@ typedef struct cyc_time {
 } cyc_time_t;
 
 typedef struct cyc_omni_handler {
-	void (*cyo_online)(void *, dtrace_cpu_t *, cyc_handler_t *, cyc_time_t *);
+	void (*cyo_online)(void *, dtrace_cpu_t *,
+	    cyc_handler_t *, cyc_time_t *);
 	void (*cyo_offline)(void *, dtrace_cpu_t *, void *);
 	void *cyo_arg;
 } cyc_omni_handler_t;
@@ -71,8 +72,5 @@ typedef struct cyclic_omni {
 extern cyclic_id_t cyclic_add(cyc_handler_t *, cyc_time_t *);
 extern void cyclic_remove(cyclic_id_t);
 extern cyclic_id_t cyclic_add_omni(cyc_omni_handler_t *, hrtime_t);
-
-//int strcasecmp(char *s1, char *s2); //_strnicmp
-//int strncasecmp(char *s1, char *s2, register int n);
 
 #endif

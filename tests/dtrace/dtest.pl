@@ -43,7 +43,8 @@ $USAGE = "Usage: $PNAME [-abfghjlnqs] [-d dir] [-i isa] "
 
 @dtrace_argv = ();
 
-$ksh_path = '/usr/local/bin/ksh';
+#$ksh_path = '/usr/local/bin/ksh';
+$ksh_path = bash;
 
 @files = ();
 %exceptions = ();
@@ -180,7 +181,7 @@ sub trim {
 sub load_exceptions {
 	my($listfile) = @_;
 	my($line) = "";
-
+			
 	%exceptions = ();
 	if (length($listfile) > 0) {
 		exit(123) unless open(STDIN, "<$listfile");
@@ -199,11 +200,11 @@ sub load_exceptions {
 sub is_exception {
 	my($file) = @_;
 	my($i) = -1;
-
+	
 	if (scalar(keys(%exceptions)) == 0) {
 		return 0;
 	}
-
+	
 	# hash absolute pathname after $dt_tst/
 	$file = abs_path($file);
 	$i = index($file, $dt_tst);
@@ -241,9 +242,7 @@ sub run_tests {
 	my($total) = 0;
 
 	die "$PNAME: $dtrace not found\n" unless (-x "$dtrace");
-#XXXXX	
-	$exceptions_path= 'e:/Repos/WorkArea/cc/DTrace-0.1/tests/dtrace/exception.lst';
-
+	logmsg("executing tests using $dtrace ...\n");
 	load_exceptions($exceptions_path);
 
 	foreach $file (sort @files) {
@@ -330,10 +329,10 @@ sub run_tests {
 			push(@dtrace_argv, '-xerrtags') if ($tag);
 			push(@dtrace_argv, '-xdroptags') if ($droptag);
 			push(@dtrace_argv, $exe_pid) if ($exe_pid != -1);
-				
+
 			if ($isksh) {
 				#exit(123) unless open(STDIN, "<$name");
-				exec("bash $name $dtrace");
+				exec("$ksh_path $name $dtrace");
 			} elsif (-x $name) {
 				warn "ERROR: $name is executable\n";
 				exit(1);
@@ -563,7 +562,7 @@ foreach $arg (@ARGV) {
 	}
 }
 
-$dt_tst = 'e:/Repos/WorkArea/cc/DTrace-0.1/tests/dtrace/tst';;
+$dt_tst = '/e/dtrace/DTrace-0.1_orig/tests/dtrace/tst';
 $dt_bin = '/opt/SUNWdtrt/bin';
 $defdir = -d $dt_tst ? $dt_tst : '.';
 $bindir = -d $dt_bin ? $dt_bin : '.';
@@ -573,10 +572,10 @@ find(\&wanted, "$defdir/$MACH") if (scalar(@ARGV) == 0);
 find(\&wanted, "$defdir/$PLATFORM") if (scalar(@ARGV) == 0);
 die $USAGE if (scalar(@files) == 0);
 
-$dtrace_path = 'E:/Repos/WorkArea/cc/DTrace-0.1/debug/i386/bin/dtrace.exe';
+$dtrace_path = cwd . '/../bin/dtrace.exe';
 $jdtrace_path = "$bindir/jdtrace";
 
-%exception_lists = ("$jdtrace_path" => "$bindir/exception.lst");
+$exception_lists = 'e:/dtrace/DTrace-0.1_orig/tests/dtrace/exception.lst';
 
 if ($opt_j || $opt_n || $opt_i) {
 	@dtrace_cmds = ();
@@ -588,7 +587,7 @@ if ($opt_j || $opt_n || $opt_i) {
 }
 
 if ($opt_d) {
-	die "$PNAME: -d arg must be absolute path\n" unless ($opt_d =~ /^\//);
+	#die "$PNAME: -d arg must be absolute path\n" unless ($opt_d =~ /^\//);
 	die "$PNAME: -d arg $opt_d is not a directory\n" unless (-d "$opt_d");
 	system("coreadm -p $opt_d/%p.core");
 } else {
@@ -704,7 +703,7 @@ if ($opt_b) {
 # not valid for that command. 
 #
 foreach $dtrace_cmd (@dtrace_cmds) {
-	run_tests($dtrace_cmd, $exception_lists{$dtrace_cmd});
+	run_tests($dtrace_cmd, $exception_lists);
 }
 
 $opt_q = 0; # force final summary to appear regardless of -q option

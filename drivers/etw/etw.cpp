@@ -1,19 +1,19 @@
 /*
- * Permission to use, copy, modify, and/or distribute this software for 
+ * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted.
  *
- * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES 
- * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF 
- * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE 
- * FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY 
- * DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER 
- * IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING 
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE
+ * FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY
+ * DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER
+ * IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING
  * OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
- * 
- * Copyright (C) 2019, PK 
+ *
+ * Copyright (C) 2019, PK
  */
 
-#define INITGUID  // Include this #define to use SystemTraceControlGuid in Evntrace.h.
+#define	INITGUID  // Include this #define to use SystemTraceControlGuid in Evntrace.h.
 
 #include <sys/dtrace_misc.h>
 #include <libelf.h>
@@ -43,7 +43,7 @@ struct etw_sessioninfo *dtrace_etw_sessions[DT_ETW_MAX_SESSION] = {0};
 /*
  * ETW processing thread data
  */
-__declspec(thread) static struct sessioninfo *sessinfo = NULL;	
+__declspec(thread) static struct sessioninfo *sessinfo = NULL;
 
 static thread_t missing_thread = {0};
 static proc_t missing_proc = {0};
@@ -58,27 +58,27 @@ static uint32_t etw_diag_id = 0;
 static etw_dbg_t pdbsyms = {0};		/* dbghelp link of modules with pdb */
 static etw_dbg_t nopdbsyms = {0};	/* dbghelp link of modules without pdb */
 
-// specialized hash function for unordered_map keys
+/* specialized hash function for unordered_map keys */
 struct hash_fn {
 	std::size_t
 	operator() (const GUID &guid) const {
 		std::size_t h1 = std::hash<ULONG>()(guid.Data1);
 		std::size_t h2 = std::hash<ULONG>()(guid.Data2);
 
-		return h1 ^ h2;
+		return (h1 ^ h2);
 	}
 };
 
 static unordered_map<GUID, Functions, hash_fn> eventfuncs;	/* event cb map */
-static unordered_map<pid_t, proc_t *> proclist;			/* etw process map */
-static unordered_map<pid_t, thread_t *> threadlist;		/* etw thread map */
+static unordered_map<pid_t, proc_t *> proclist;				/* etw process map */
+static unordered_map<pid_t, thread_t *> threadlist;			/* etw thread map */
 static unordered_map<wstring, etw_module_t *> modlist;		/* etw loaded modules */
-static map<wstring, wstring, std::greater<wstring>> devmap;						/* device path to pathname */
+static map<wstring, wstring, std::greater<wstring>> devmap;	/* device path to pathname */
 static unordered_map<uetwptr_t, uintptr_t> fileiomap;		/* open files */
 static unordered_map<GUID, cvpdbinfo_t *, hash_fn> cvinfolist; /* modules pdb info */
 static map<uint32_t, etw_jitsym_map_t> pid_jit_symtable;		/* jit symbol map */
 
-#define ETW_PROC_MISSING_NAME "<not yet>"
+#define	ETW_PROC_MISSING_NAME "<not yet>"
 
 /*
  * map jitted module, module ID = module name
@@ -88,11 +88,11 @@ etw_add_jit_module(pid_t pid, etw_jit_module_t *mod, int len)
 {
 	etw_jitsym_map_t& symmap = pid_jit_symtable[pid];
 	int len0 = wcslen((wchar_t *) &mod->ModuleILPath);
-	wchar_t *modn = (wchar_t *) mem_zalloc((len0+1) * sizeof(wchar_t));
+	wchar_t *modn = (wchar_t *) mem_zalloc((len0 + 1) * sizeof (wchar_t));
 	wcscpy(modn, (wchar_t *) &mod->ModuleILPath);
 	symmap.jit_modules[mod->ModuleID] = modn;
 
-	return mod;
+	return (mod);
 }
 
 /*
@@ -108,7 +108,7 @@ etw_add_jit_sym(pid_t pid, etw_jit_symbol_t *sym, int len)
 	symmap.jit_syms.push_back(tsym);
 	symmap.sorted = 0;
 
-	return tsym;
+	return (tsym);
 }
 
 /*
@@ -118,18 +118,21 @@ etw_add_jit_sym(pid_t pid, etw_jit_symbol_t *sym, int len)
 int
 clr_jitted_rd_func(PEVENT_RECORD ev, void *data)
 {
-	ASSERT(IsEqualGUID(ev->EventHeader.ProviderId, MSDotNETRuntimeRundownGuid));
+	ASSERT(IsEqualGUID(ev->EventHeader.ProviderId,
+	        MSDotNETRuntimeRundownGuid));
 	struct Etw_Clr_143 *sym = (Etw_Clr_143 *) ev->UserData;
 	USHORT eventid = ev->EventHeader.EventDescriptor.Id;
 
-	if (eventid == 144) { //Method
-		etw_add_jit_sym(ev->EventHeader.ProcessId, (etw_jit_symbol_t *) ev->UserData,
+	if (eventid == 144) { /* Method */
+		etw_add_jit_sym(ev->EventHeader.ProcessId,
+		    (etw_jit_symbol_t *) ev->UserData,
 		    ev->UserDataLength);
-	} else if (eventid == 154) { //Module
-		etw_add_jit_module(ev->EventHeader.ProcessId, (etw_jit_module_t *) ev->UserData,
+	} else if (eventid == 154) { /* Module */
+		etw_add_jit_module(ev->EventHeader.ProcessId,
+		    (etw_jit_module_t *) ev->UserData,
 		    ev->UserDataLength);
 	}
-	return 0;
+	return (0);
 }
 
 /*
@@ -142,16 +145,18 @@ clr_jitted_func(PEVENT_RECORD ev, void *data)
 	ASSERT(IsEqualGUID(ev->EventHeader.ProviderId, MSDotNETRuntimeGuid));
 	USHORT eventid = ev->EventHeader.EventDescriptor.Id;
 
-	if (eventid == 143) { //Method
+	if (eventid == 143) { /* Method */
 		struct Etw_Clr_143 *sym = (Etw_Clr_143 *) ev->UserData;
-		etw_add_jit_sym(ev->EventHeader.ProcessId, (etw_jit_symbol_t *) ev->UserData,
+		etw_add_jit_sym(ev->EventHeader.ProcessId,
+		    (etw_jit_symbol_t *) ev->UserData,
 		    ev->UserDataLength);
-	} else if (eventid == 152) { //Module
-		etw_add_jit_module(ev->EventHeader.ProcessId, (etw_jit_module_t *) ev->UserData,
+	} else if (eventid == 152) { /* Module */
+		etw_add_jit_module(ev->EventHeader.ProcessId,
+		    (etw_jit_module_t *) ev->UserData,
 		    ev->UserDataLength);
 	}
 
-	return 0;
+	return (0);
 }
 
 static bool
@@ -171,7 +176,7 @@ etw_get_proc(pid_t pid, int create)
 	if (p == NULL && create) {
 		switch (create) {
 		case ETW_PROC_CREATE_LIVE: {
-			p = (proc_t *) mem_zalloc(sizeof(proc_t));
+			p = (proc_t *) mem_zalloc(sizeof (proc_t));
 			p->pid = pid;
 			p->handle = OpenProcess(PROCESS_VM_OPERATION | PROCESS_VM_READ |
 			        PROCESS_VM_WRITE, FALSE, pid);
@@ -184,12 +189,12 @@ etw_get_proc(pid_t pid, int create)
 			}
 			HMODULE hMod;
 			DWORD cbNeeded;
-			char *szProcessName  = (char *) mem_zalloc(MAX_PATH);
+			char *szProcessName = (char *) mem_zalloc(MAX_PATH);
 
-			if ( EnumProcessModules( p->handle, &hMod, sizeof(hMod),
-			        &cbNeeded) ) {
-				GetModuleBaseNameA( p->handle, hMod, szProcessName,
-				    sizeof(szProcessName)/sizeof(char) );
+			if (EnumProcessModules(p->handle, &hMod, sizeof (hMod),
+			        &cbNeeded)) {
+				GetModuleBaseNameA(p->handle, hMod, szProcessName,
+				    sizeof (szProcessName) / sizeof (char));
 				p->name = _strlwr(szProcessName);
 			}
 
@@ -197,14 +202,14 @@ etw_get_proc(pid_t pid, int create)
 			break;
 		}
 		case ETW_PROC_TEMP: {
-			ZeroMemory(&missing_proc, sizeof(proc_t));
+			ZeroMemory(&missing_proc, sizeof (proc_t));
 			missing_proc.pid = pid;
 			missing_proc.name = ETW_PROC_MISSING_NAME;
 			p = &missing_proc;
 			break;
 		}
 		case ETW_PROC_CREATE: {
-			p = (proc_t *) mem_zalloc(sizeof(proc_t));
+			p = (proc_t *) mem_zalloc(sizeof (proc_t));
 			p->pid = pid;
 			p->name = ETW_PROC_MISSING_NAME;
 			proclist[pid] = p;
@@ -235,13 +240,13 @@ etw_get_td(pid_t tid, pid_t pid, int create)
 
 	if (td == NULL && create) {
 		if (create == ETW_THREAD_CREATE) {
-			td = (thread_t *) mem_zalloc(sizeof(thread_t));
+			td = (thread_t *) mem_zalloc(sizeof (thread_t));
 			td->pid = pid;
 			td->tid = tid;
 			td->proc = etw_get_proc(pid, ETW_PROC_CREATE);
 			threadlist[tid] = td;
 		} else if (create == ETW_THREAD_TEMP) {
-			ZeroMemory(&missing_thread, sizeof(thread_t));
+			ZeroMemory(&missing_thread, sizeof (thread_t));
 			missing_thread.tid = tid;
 			missing_thread.pid = pid;
 			missing_thread.proc = etw_get_proc(pid, ETW_PROC_TEMP);
@@ -262,8 +267,7 @@ etw_get_td(pid_t tid, pid_t pid, int create)
 static HANDLE *
 etw_set_cur(pid_t pid, pid_t tid, hrtime_t tm, int cpuno)
 {
-	//wmutex_enter(&etw_cur_lock);
-
+	/* wmutex_enter(&etw_cur_lock); */
 	sessinfo->timestamp = tm;
 	sessinfo->cpuno = cpuno;
 	sessinfo->pid = pid;
@@ -272,16 +276,16 @@ etw_set_cur(pid_t pid, pid_t tid, hrtime_t tm, int cpuno)
 	if (sessinfo->td) {
 		sessinfo->td->cpu = cpuno;
 	}
-	sessinfo->proc = sessinfo->td->proc ? sessinfo->td->proc:
+	sessinfo->proc = sessinfo->td->proc ? sessinfo->td->proc :
 	    etw_get_proc(pid, ETW_PROC_TEMP);
 
-	return &etw_cur_lock;
+	return (&etw_cur_lock);
 }
 
 static void
 etw_reset_cur(HANDLE *lock)
 {
-	;//wmutex_exit(lock);
+	/* wmutex_exit(lock); */
 }
 
 /*
@@ -296,10 +300,12 @@ etw_send_dprobe(etw_stack_t *stackp)
 
 dprobes = &stackp->dprobe;
 
-lock = etw_set_cur(dprobes->pid, dprobes->tid, dprobes->ts, dprobes->cpuno);
+lock = etw_set_cur(dprobes->pid, dprobes->tid, dprobes->ts,
+	        dprobes->cpuno);
 
-	sessinfo->etw->dtrace_probef(dprobes->id, dprobes->args[0], dprobes->args[1],
-	    dprobes->args[2], dprobes->args[3],dprobes->args[3]);
+	sessinfo->etw->dtrace_probef(dprobes->id, dprobes->args[0],
+	    dprobes->args[1], dprobes->args[2],
+	    dprobes->args[3], dprobes->args[3]);
 
 	etw_reset_cur(lock);
 }
@@ -314,7 +320,7 @@ etw_event_purge()
 	etw_stack_t *stackp;
 	etw_sessioninfo_t *sess = sessinfo->etw;
 
-	while(InterlockedExchange(&sess->Q.lock, TRUE) == TRUE)
+	while (InterlockedExchange(&sess->Q.lock, TRUE) == TRUE)
 		Sleep(1);
 
 	while (sess->Q.queue.size()) {
@@ -323,7 +329,7 @@ etw_event_purge()
 		sess->Q.queue.pop();
 		sess->Q.map[stackp->dprobe.cpuno].erase(stackp->dprobe.ts);
 		etw_send_dprobe(stackp);
-		free(stackp); 
+		free(stackp);
 	}
 	InterlockedExchange(&sess->Q.lock, FALSE);
 }
@@ -336,7 +342,7 @@ TimerProc(void* data, BOOLEAN TimerOrWaitFired)
 	etw_stack_t *stackp;
 	etw_sessioninfo_t *sess;
 
-	for (int i=0; i < DT_ETW_MAX_SESSION; i++) {
+	for (int i = 0; i < DT_ETW_MAX_SESSION; i++) {
 		if (dtrace_etw_sessions[i] != NULL) {
 			sess = dtrace_etw_sessions[i];
 			if (sess->Q.queue.size() > 0 &&
@@ -344,7 +350,7 @@ TimerProc(void* data, BOOLEAN TimerOrWaitFired)
 			    InterlockedExchange(&sess->Q.lock, TRUE) == FALSE) {
 				if (sessinfo == NULL) {
 					sessioninfo_t *tmp = (sessioninfo_t *)
-					    mem_zalloc(sizeof(sessioninfo_t));
+					    mem_zalloc(sizeof (sessioninfo_t));
 					sessinfo = tmp;
 				}
 				ASSERT(sessinfo != NULL);
@@ -355,7 +361,7 @@ TimerProc(void* data, BOOLEAN TimerOrWaitFired)
 				sess->Q.map[stackp->dprobe.cpuno].erase(stackp->dprobe.ts);
 
 				etw_send_dprobe(stackp);
-				free(stackp); 
+				free(stackp);
 				InterlockedExchange(&sess->Q.lock, FALSE);
 			}
 		}
@@ -372,7 +378,8 @@ evfuncsforguid(const GUID *pguid)
 	wmutex_enter(&etw_eventcb_lock);
 	Functions& vf = eventfuncs[*pguid];
 	wmutex_exit(&etw_eventcb_lock);
-	return vf;
+
+	return (vf);
 
 }
 /*
@@ -393,7 +400,8 @@ etw_hook_event(const GUID *guid, Function efunc, void *data,
 		Pair ef = *iter;
 		if (ef.first == efunc && ef.second == data) {
 			wmutex_exit(&etw_eventcb_lock);
-			dprintf("etw_hook_event, cb already present: cb %p, arg %p\n", efunc, data);
+			dprintf("etw_hook_event, cb already present: cb %p, arg %p\n", efunc,
+			    data);
 			return (-1);
 		}
 		iter++;
@@ -421,22 +429,24 @@ etw_hook_event(const GUID *guid, Function efunc, void *data,
  * Remove event cb from the cb map
  */
 static int
-etw_unhook_event(const GUID *guid, Function efunc, void *data, BOOL all)
+etw_unhook_event(const GUID *guid, Function efunc, void *data,
+    BOOL all)
 {
 	wmutex_enter(&etw_eventcb_lock);
 
 	Functions& vf = eventfuncs[*guid];
 	Functions::iterator iter = vf.begin();
 
-	
+
 	while (iter != vf.end()) {
 		Pair ef = *iter;
 		if (all) {
-			dprintf("etw_unhook_event, removed cb %p arg %p\n", ef.first, ef.second);
+			dprintf("etw_unhook_event, removed cb %p arg %p\n", ef.first,
+			    ef.second);
 			vf.erase(iter);
 			iter = vf.begin();
 			continue;
-		} 
+		}
 		if (ef.first == efunc && ef.second == data) {
 			vf.erase(iter);
 			dprintf("etw_unhook_event, removed cb %p arg %p\n", efunc, data);
@@ -448,12 +458,14 @@ etw_unhook_event(const GUID *guid, Function efunc, void *data, BOOL all)
 
 	wmutex_exit(&etw_eventcb_lock);
 	if (!all)
-		dprintf("etw_unhook_event, failed to remove cb %p arg %p\n", efunc, data);
+		dprintf("etw_unhook_event, failed to remove cb %p arg %p\n",
+		    efunc, data);
 
 	return (-1);
 }
 
-void etw_stop_ft()
+void
+etw_stop_ft()
 {
 	etw_unhook_event(&FastTrapGuid, NULL, NULL, TRUE);
 	dtrace_etw_sessions[DT_ETW_FT_SESSION] = NULL;
@@ -468,11 +480,11 @@ etw_event_timebase(PEVENT_RECORD ev)
 	etw_sessioninfo_t *sess = sessinfo->etw;
 
 	switch (sess->clctype) {
-	case 1: //QPC
+	case 1: /* QPC */
 		sess->timescale = 10000000.0 / sess->perffreq;
 		sess->timebase = sess->boottime;
 		break;
-	case 2: //SYSTEM TIME
+	case 2: /* SYSTEM TIME */
 		sess->timebase = 0;
 		sess->timescale = 1.0;
 		break;
@@ -483,7 +495,6 @@ etw_event_timebase(PEVENT_RECORD ev)
 	default:
 		ASSERT(0);
 	}
-	return;
 }
 
 static void
@@ -495,15 +506,17 @@ event_cb(Functions& funcs, PEVENT_RECORD ev)
 	sessinfo->cpuno = ev->BufferContext.ProcessorNumber;
 	sessinfo->tid = ev->EventHeader.ThreadId;
 	sessinfo->pid = ev->EventHeader.ProcessId;
-	sessinfo->td = etw_get_td(sessinfo->tid, sessinfo->pid, ETW_THREAD_TEMP);
+	sessinfo->td = etw_get_td(sessinfo->tid, sessinfo->pid,
+	        ETW_THREAD_TEMP);
 	sessinfo->proc = etw_get_proc(sessinfo->pid, ETW_PROC_TEMP);
 
 	if (iter != funcs.end())
 		sessinfo->etw->hb++;
 	else {
-		/* diagnostic event provider for etw.
-		   if any event not caught by any probes,
-		   send to diag provider.
+		/*
+		 * diagnostic event provider for etw.
+		 * if any event not caught by any probes,
+		 * send to diag provider.
 		 */
 		if (etw_diag_cb)
 			etw_diag_cb(ev, (void *) etw_diag_id);
@@ -541,13 +554,13 @@ etw_event_thread(void* data)
 	    dtrace_etw_sessions[0]->isfile;
 
 	etw_sessioninfo_t *sinfo = (etw_sessioninfo_t *) data;
-	tsinfo = (sessioninfo_t *) mem_zalloc(sizeof(sessioninfo_t));
+	tsinfo = (sessioninfo_t *) mem_zalloc(sizeof (sessioninfo_t));
 	tsinfo->etw = sinfo;
 	sessinfo = tsinfo;
 	sinfo->evcb = first_event_cb;
 
-	error = ProcessTrace(&sinfo->psession, 1, 0, 0 );
-	if( error != ERROR_SUCCESS ) {
+	error = ProcessTrace(&sinfo->psession, 1, 0, 0);
+	if (error != ERROR_SUCCESS) {
 		dprintf("etw_event_thread, ProcessTrace failed: session (%ls) error (%d)\n",
 		    sinfo->sessname, error);
 		return (-1);
@@ -555,10 +568,10 @@ etw_event_thread(void* data)
 	/* process all pending events, without waiting for stacks */
 	etw_event_purge();
 
-	Sleep(1000); //XXXX
+	Sleep(1000);
 
 	/* if reading from a file send stop signal to dtrace, to end dtrace session */
-	for (int i=0; i < DT_ETW_MAX_SESSION; i++) {
+	for (int i = 0; i < DT_ETW_MAX_SESSION; i++) {
 		if (dtrace_etw_sessions[i] != NULL) {
 			if (dtrace_etw_sessions[i] == sinfo) {
 				dtrace_etw_sessions[i] = NULL;
@@ -586,7 +599,7 @@ static void WINAPI
 etw_event_cb(PEVENT_RECORD ev)
 {
 	wmutex_enter(&etw_eventcb_lock);
-	// copy of funcs, callback can remove itself
+	/* copy of funcs, callback can remove itself */
 	Functions funcs = eventfuncs[ev->EventHeader.ProviderId];
 
 	sessinfo->etw->ev = ev;
@@ -605,7 +618,7 @@ etw_add_proc(pid_t pid, proc_t *p)
 	proclist[pid] = p;
 	wmutex_exit(&etw_proc_lock);
 
-	return p;
+	return (p);
 }
 
 static thread_t *
@@ -614,7 +627,8 @@ etw_add_thread(pid_t tid, thread_t *td)
 	wmutex_enter(&etw_thread_lock);
 	threadlist[tid] = td;
 	wmutex_exit(&etw_thread_lock);
-	return td;
+
+	return (td);
 }
 
 static etw_module_t *
@@ -622,17 +636,16 @@ etw_add_module(etw_module_t *mod, wstring wstr)
 {
 	modlist[wstr] = mod;
 
-	return mod;
+	return (mod);
 }
 
-/* XXX */
 static wchar_t *
 etw_get_fname(uetwptr_t fobj)
 {
 	if (fileiomap.find(fobj) == fileiomap.end())
-		return NULL;
+		return (NULL);
 
-	return (wchar_t *) fileiomap[fobj];
+	return ((wchar_t *) fileiomap[fobj]);
 }
 
 /*
@@ -644,7 +657,7 @@ etw_rep_dev_to_path(wchar_t *str)
 	size_t l0, l1, len;
 	int fnd = 0;
 
-	for(map<wstring, wstring>::iterator iter = devmap.begin();
+	for (map<wstring, wstring>::iterator iter = devmap.begin();
 	    iter != devmap.end(); iter++) {
 
 		l0 =  wcslen(&iter->first[0]);
@@ -652,15 +665,15 @@ etw_rep_dev_to_path(wchar_t *str)
 			l1 = wcslen(&iter->second[0]);
 			if (l0 > l1) {
 				wcsncpy(str, &iter->second[0], l1);
-				if (*(str+(l0)) == L'\\')
+				if (*(str + (l0)) == L'\\')
 					l0 += 1;
-				wcscpy(str+l1, str+l0);
+				wcscpy(str + l1, str + l0);
 			} else {
 				wchar_t tmp[MAX_PATH] = {0};
 				wcscpy(tmp, str);
-				len = wcslen(str)+1+(l1-l0);
+				len = wcslen(str) + 1 + (l1 - l0);
 				wcsncpy(str, &iter->second[0], l1);
-				wcscpy(str+l1, tmp+l0);
+				wcscpy(str + l1, tmp + l0);
 			}
 			fnd = 1;
 			break;
@@ -675,11 +688,11 @@ etw_rep_dev_to_path(wchar_t *str)
 		WCHAR dl = L'A';
 		DWORD mask = 1;
 		WCHAR path[MAX_PATH];
-		while(drive) {
+		while (drive) {
 			if (drive & mask) {
 				path[0] = dl;
 				path[1] = L':';
-				wcscpy(path+2, str);
+				wcscpy(path + 2, str);
 				if (PathFileExistsW(path)) {
 					wcscpy(str, path);
 					break;
@@ -691,7 +704,7 @@ etw_rep_dev_to_path(wchar_t *str)
 		}
 	}
 
-	return str;
+	return (str);
 }
 
 /*
@@ -704,6 +717,7 @@ sys_gethrtime()
 	LARGE_INTEGER Frequency;
 	LARGE_INTEGER StartingTime, Time;
 	static hrtime_t frequency = 0;
+
 	if (frequency == 0) {
 		QueryPerformanceFrequency(&Frequency);
 		frequency = NANOSEC / Frequency.QuadPart;
@@ -711,7 +725,7 @@ sys_gethrtime()
 	QueryPerformanceCounter(&StartingTime);
 	ret = (StartingTime.QuadPart) * frequency;
 
-	return ret;
+	return (ret);
 }
 
 /* system time in nanoseconds */
@@ -722,11 +736,13 @@ sys_gethrestime(void)
 	FILETIME FileTime;
 	hrtime_t ret;
 
-	GetSystemTimeAsFileTime(&FileTime);	
+	GetSystemTimeAsFileTime(&FileTime);
 	SystemTime.LowPart = FileTime.dwLowDateTime;
 	SystemTime.HighPart = FileTime.dwHighDateTime;
-	ret = ((SystemTime.QuadPart - PTW32_TIMESPEC_TO_FILETIME_OFFSET) * 100UL);
-	return ret;
+	ret = ((SystemTime.QuadPart - PTW32_TIMESPEC_TO_FILETIME_OFFSET) *
+	        100UL);
+
+	return (ret);
 }
 
 static wchar_t *
@@ -735,7 +751,7 @@ etw_add_fname(uetwptr_t fobj, wchar_t *fname)
 	wchar_t *name = etw_rep_dev_to_path(fname);
 
 	fileiomap[fobj] = (uintptr_t) fname;
-	return fname;
+	return (fname);
 }
 
 /*
@@ -745,9 +761,9 @@ etw_add_fname(uetwptr_t fobj, wchar_t *fname)
 static hrtime_t
 etw_event_timestamp(hrtime_t TimeStamp)
 {
-	hrtime_t tm = (hrtime_t) (sessinfo->etw->timebase + 
-		(sessinfo->etw->timescale * TimeStamp));
-	return tm ? ((tm - PTW32_TIMESPEC_TO_FILETIME_OFFSET) * 100UL): 0;
+	hrtime_t tm = (hrtime_t) (sessinfo->etw->timebase +
+	        (sessinfo->etw->timescale * TimeStamp));
+	return (tm ? ((tm - PTW32_TIMESPEC_TO_FILETIME_OFFSET) * 100UL) : 0);
 }
 
 /*
@@ -760,10 +776,10 @@ etw_set_freqTSI(int freq)
 {
 	ULONG error;
 	TRACE_PROFILE_INTERVAL interval = {0};
-	interval.Interval =  (ULONG) (10000.f * (1000.f / freq)) ;
+	interval.Interval = (ULONG) (10000.f * (1000.f / freq));
 
 	error = TraceSetInformation(0, TraceSampledProfileIntervalInfo,
-	        (void*)&interval, sizeof( TRACE_PROFILE_INTERVAL ) );
+	        (void*)&interval, sizeof (TRACE_PROFILE_INTERVAL));
 
 	if (error != ERROR_SUCCESS) {
 		dprintf("etw_set_freqTSI, failed to set profile timer (%x) interval (%d)\n",
@@ -793,20 +809,23 @@ typedef struct _EVENT_TRACE_TIME_PROFILE_INFORMATION {
 static int
 etw_set_freqNT(int interval)
 {
-	typedef int(__stdcall *PNtSetSystemInformation) (int SystemInformationClass,
+	typedef int(__stdcall * PNtSetSystemInformation) (
+	    int SystemInformationClass,
 	    void *SystemInformation, int SystemInformationLength);
 	EVENT_TRACE_TIME_PROFILE_INFORMATION timeInfo;
 	HMODULE ntdll = LoadLibrary(L"ntdll.dll");
 	HRESULT hr;
 	PNtSetSystemInformation addr;
 
-	addr = (PNtSetSystemInformation) GetProcAddress(ntdll, "NtSetSystemInformation");
+	addr = (PNtSetSystemInformation) GetProcAddress(ntdll,
+	        "NtSetSystemInformation");
 
-	timeInfo.EventTraceInformationClass = EventTraceTimeProfileInformation;
+	timeInfo.EventTraceInformationClass =
+	    EventTraceTimeProfileInformation;
 
 	timeInfo.ProfileInterval = interval;
 	hr = addr(SystemPerformanceTraceInformation, &timeInfo,
-	        sizeof(EVENT_TRACE_TIME_PROFILE_INFORMATION));
+	        sizeof (EVENT_TRACE_TIME_PROFILE_INFORMATION));
 
 	if (hr != ERROR_SUCCESS) {
 		dprintf("etw_set_freqNT, failed to set profile timer (%x) interval (%ld)\n",
@@ -827,7 +846,7 @@ etw_win8_or_gt()
 	WORD wMajorVersion = (DWORD)(LOBYTE(LOWORD(dwVersion)));
 	WORD wMinorVersion = (DWORD)(HIBYTE(LOWORD(dwVersion)));
 
-	return (wMajorVersion >= 6) && (wMinorVersion >= 2);
+	return ((wMajorVersion >= 6) && (wMinorVersion >= 2));
 }
 
 /*
@@ -838,10 +857,11 @@ etw_set_kernel_stacktrace(TRACEHANDLE session,
     CLASSIC_EVENT_ID id[], int len)
 {
 	ULONG error = TraceSetInformation(session, TraceStackTracingInfo,
-	        (void*)id, (sizeof(CLASSIC_EVENT_ID))*len);
+	        (void*)id, (sizeof (CLASSIC_EVENT_ID)) * len);
 
 	if (error != ERROR_SUCCESS) {
-		dprintf("etw_set_kerenl_stacktrace, failed (%x) session (%llu) \n", error, session);
+		dprintf("etw_set_kerenl_stacktrace, failed (%x) session (%llu) \n",
+		    error, session);
 		return (-1);
 	}
 	return (0);
@@ -852,17 +872,20 @@ etw_set_kernel_stacktrace(TRACEHANDLE session,
  * Return 0 on success.
  */
 static int
-etw_enable_kernel_prov(TRACEHANDLE shandle, WCHAR *sname, ULONG flags, BOOL enable)
+etw_enable_kernel_prov(TRACEHANDLE shandle, WCHAR *sname, ULONG flags,
+    BOOL enable)
 {
 	EVENT_TRACE_PROPERTIES *prop;
 	ULONG status, iflags = 0, len = 0;
 	size_t sz = 0;
 
-	sz = (ULONG) sizeof(EVENT_TRACE_PROPERTIES) + (wcslen(sname)*2+2) + 8; //XXXX
+	sz = (ULONG) sizeof (EVENT_TRACE_PROPERTIES) +
+	    (wcslen(sname) * 2 + 2) + 8;
 
 	prop = (EVENT_TRACE_PROPERTIES*) mem_zalloc(sz);
 	prop->Wnode.BufferSize = (DWORD) sz;
-	status = ControlTrace(shandle, sname, prop, EVENT_TRACE_CONTROL_QUERY);
+	status = ControlTrace(shandle, sname, prop,
+	        EVENT_TRACE_CONTROL_QUERY);
 	if (status != ERROR_SUCCESS) {
 		dprintf("etw_enable_kernel_prov, ControlTrace"
 		    "(EVENT_TRACE_CONTROL_QUERY) failed (%x)\n", status);
@@ -875,7 +898,8 @@ etw_enable_kernel_prov(TRACEHANDLE shandle, WCHAR *sname, ULONG flags, BOOL enab
 		prop->EnableFlags &= ~flags;
 	}
 
-	status = ControlTrace(shandle, sname, prop, EVENT_TRACE_CONTROL_UPDATE);
+	status = ControlTrace(shandle, sname, prop,
+	        EVENT_TRACE_CONTROL_UPDATE);
 	if (status != ERROR_SUCCESS) {
 		dprintf("etw_enable_kernel_prov, ControlTrace"
 		    "(EVENT_TRACE_CONTROL_UPDATE) failed (%x)\n", status);
@@ -889,7 +913,8 @@ etw_enable_kernel_prov(TRACEHANDLE shandle, WCHAR *sname, ULONG flags, BOOL enab
  * Create device name to normalized name MAP
  */
 static int
-etw_devname_to_path(map<wstring, wstring, std::greater<wstring>> &devmap)
+etw_devname_to_path(map<wstring, wstring, std::greater<wstring>>
+    &devmap)
 {
 	WCHAR volname[MAX_PATH] = L"";
 	WCHAR  devname[MAX_PATH] = L"";
@@ -901,7 +926,8 @@ etw_devname_to_path(map<wstring, wstring, std::greater<wstring>> &devmap)
 	//  Enumerate all volumes in the system.
 	vh = FindFirstVolumeW(volname, ARRAYSIZE(volname));
 	if (vh == INVALID_HANDLE_VALUE) {
-		fprintf(stderr, "FindFirstVolumeW failed with error code %d\n", GetLastError());
+		fprintf(stderr, "FindFirstVolumeW failed with error code %d\n",
+		    GetLastError());
 		return (-1);
 	}
 
@@ -946,7 +972,8 @@ etw_devname_to_path(map<wstring, wstring, std::greater<wstring>> &devmap)
 			}
 
 			//  Obtain all of the paths for this volume.
-			if ((fnd = GetVolumePathNamesForVolumeNameW(volname, pnames, co, &co)) ||
+			if ((fnd = GetVolumePathNamesForVolumeNameW(volname, pnames, co,
+			                &co)) ||
 			    GetLastError() != ERROR_MORE_DATA) {
 				break;
 			}
@@ -958,7 +985,7 @@ etw_devname_to_path(map<wstring, wstring, std::greater<wstring>> &devmap)
 			devmap[wstring(&devname[0])] = wstring(pnames);
 		} else {
 			fprintf(stderr, "GetVolumePathNamesForVolumeNameW %d %d %ls\n",
-			    co,GetLastError(), pnames);
+			    co, GetLastError(), pnames);
 		}
 		fnd = FindNextVolumeW(vh, volname, ARRAYSIZE(volname));
 
@@ -978,21 +1005,24 @@ etw_devname_to_path(map<wstring, wstring, std::greater<wstring>> &devmap)
 	FindVolumeClose(vh);
 	DWORD sz = 0;
 	wchar_t buf[MAX_PATH];
+	wchar_t *env;
 
 	sz = GetEnvironmentVariable(L"SystemRoot", buf, MAX_PATH);
-	if (sz > MAX_PATH || sz == 0) return (error); //XXXX
-	wchar_t *env = (wchar_t *) mem_zalloc(sz + 2 + 2);
+	if (sz > MAX_PATH || sz == 0)
+		return (error);
+
+	env = (wchar_t *) mem_zalloc(sz + 2 + 2);
 	wcsncpy(env, buf, sz);
-	wcsncpy(env+sz, L"\\", 2);
+	wcsncpy(env + sz, L"\\", 2);
 
 	devmap[L"\\SystemRoot\\"] = env;
 
 	sz = GetEnvironmentVariable(L"windir", buf, MAX_PATH);
 	if (sz > MAX_PATH || sz == 0)
-		return (error); //XXXX
+		return (error);
 	env = (wchar_t *) mem_zalloc(sz + 2 + 2);
 	wcsncpy(env, buf, sz);
-	wcsncpy(env+sz, L"\\", 2);
+	wcsncpy(env + sz, L"\\", 2);
 
 	devmap[L"\\Windows\\"] = env;
 	devmap[L"\\??\\"] = L"";
@@ -1005,16 +1035,21 @@ etw_init_dbg(HANDLE h)
 {
 	DWORD Options = SymGetOptions();
 	Options |= SYMOPT_DEFERRED_LOADS;
-	Options |= SYMOPT_DEBUG ;
+	Options |= SYMOPT_DEBUG;
 	SymSetOptions(Options);
 
 	init_symbols(h, FALSE, NULL);
-	return h;
+
+	return (h);
 }
 
 static void
 etw_initialize()
 {
+	HANDLE t;
+	DWORD  time = 2000, due = 2000;
+	char *s;
+
 	missing_thread.proc = &missing_proc;
 	missing_thread.tid = -1;
 	missing_thread.pid = -1;
@@ -1023,19 +1058,16 @@ etw_initialize()
 	missing_proc.name = "notyet";
 	missing_proc.cmdline = L"\0";
 
-	char *s= set_syms_path(NULL);
+	s = set_syms_path(NULL);
 	if (s) {
-		;//fprintf(stderr, "Symbols Search path: %s\n", s);
+		/* fprintf(stderr, "Symbols Search path: %s\n", s); */
 	}
-	
+
 	pdbsyms.h = etw_init_dbg((HANDLE) 999);
 	pdbsyms.endaddr = 0x1000;
 	nopdbsyms.h = etw_init_dbg((HANDLE) 9999);
 	nopdbsyms.endaddr = 0x1000;
 
-	HANDLE t;
-	DWORD  time = 2000, due = 2000;
-	
 	CreateTimerQueueTimer(&t, NULL, TimerProc, NULL, due,
 	    time, WT_EXECUTEINTIMERTHREAD);
 }
@@ -1053,7 +1085,6 @@ etw_initialize()
  * 		PEVENT_RECORD->TimeStamp = system time, StackWalk->EventTimeStamp = system time
  * StartTrace = QPC, Opentrace = !PROCESS_TRACE_MODE_RAW_TIMESTAMP
  * 		PEVENT_RECORD->TimeStamp = system time, StackWalk->EventTimeStamp = system time
- *
  */
 
 static void
@@ -1064,21 +1095,19 @@ etw_end_session(etw_sessioninfo_t *sinfo, WCHAR *sname)
 
 	if (sinfo) {
 		if (sinfo->etlfile) {
-			// Opentrace
 			if (sinfo->psession) {
 				st = CloseTrace(sinfo->psession);
 			}
 		} else {
-			ZeroMemory(&properties, sizeof(EVENT_TRACE_PROPERTIES));
-			properties.Wnode.BufferSize = sizeof(EVENT_TRACE_PROPERTIES);
-			// starttrace
-			ControlTrace(sinfo->hsession, sinfo->sessname, &properties, EVENT_TRACE_CONTROL_STOP);
+			ZeroMemory(&properties, sizeof (EVENT_TRACE_PROPERTIES));
+			properties.Wnode.BufferSize = sizeof (EVENT_TRACE_PROPERTIES);
+			ControlTrace(sinfo->hsession, sinfo->sessname, &properties,
+			    EVENT_TRACE_CONTROL_STOP);
 		}
 	} else if (sname) {
-		ZeroMemory(&properties, sizeof(EVENT_TRACE_PROPERTIES));
-			properties.Wnode.BufferSize = sizeof(EVENT_TRACE_PROPERTIES);
-			// starttrace
-			ControlTrace(0, sname, &properties, EVENT_TRACE_CONTROL_STOP);
+		ZeroMemory(&properties, sizeof (EVENT_TRACE_PROPERTIES));
+		properties.Wnode.BufferSize = sizeof (EVENT_TRACE_PROPERTIES);
+		ControlTrace(0, sname, &properties, EVENT_TRACE_CONTROL_STOP);
 	}
 }
 
@@ -1087,7 +1116,8 @@ etw_end_session(etw_sessioninfo_t *sinfo, WCHAR *sname)
  * currently only logmode == EVENT_TRACE_REAL_TIME_MODE supported
  */
 static TRACEHANDLE
-etw_init_session(WCHAR *sname, GUID sguid, ULONG clctype, ULONG logmode)
+etw_init_session(WCHAR *sname, GUID sguid, ULONG clctype,
+    ULONG logmode)
 {
 	TRACEHANDLE hsession = 0;
 	EVENT_TRACE_PROPERTIES* prop = NULL;
@@ -1097,11 +1127,12 @@ etw_init_session(WCHAR *sname, GUID sguid, ULONG clctype, ULONG logmode)
 	/* close any open session with same name */
 	etw_end_session(NULL, sname);
 
-	sz = sizeof(EVENT_TRACE_PROPERTIES) + (wcslen(sname)*2+2);
+	sz = sizeof (EVENT_TRACE_PROPERTIES) + (wcslen(sname) * 2 + 2);
 	prop = (EVENT_TRACE_PROPERTIES*) mem_zalloc(sz);
 	if (prop == NULL) {
-		dprintf("etw_init_session, mem_zalloc() failed for size (%lld)\n", sz);
-		return 0;
+		dprintf("etw_init_session, mem_zalloc() failed for size (%lld)\n",
+		    sz);
+		return (0);
 	}
 
 	ZeroMemory(prop, sz);
@@ -1113,18 +1144,18 @@ etw_init_session(WCHAR *sname, GUID sguid, ULONG clctype, ULONG logmode)
 	prop->LogFileMode = logmode;
 	prop->MinimumBuffers = 300;
 	prop->FlushTimer = 1;
-	prop->LoggerNameOffset = sizeof(EVENT_TRACE_PROPERTIES);
+	prop->LoggerNameOffset = sizeof (EVENT_TRACE_PROPERTIES);
 	StringCbCopy((LPWSTR)((WCHAR*)prop + prop->LogFileNameOffset),
-	    (wcslen(sname)*2+2), sname);
+	    (wcslen(sname) * 2 + 2), sname);
 
 	status = StartTrace((PTRACEHANDLE)&hsession, sname, prop);
 
 	if (status != ERROR_SUCCESS) {
 		dprintf("etw_init_session, StartTrace() failed with (%lx)\n", status);
-		return 0;
+		return (0);
 	}
 
-	return hsession;
+	return (hsession);
 }
 
 /*
@@ -1133,7 +1164,8 @@ etw_init_session(WCHAR *sname, GUID sguid, ULONG clctype, ULONG logmode)
  * returns the created thread handle or tracehandle in case of nothread
  */
 static HANDLE
-etw_start_trace(etw_sessioninfo_t *sinfo, BOOL isreal, PEVENT_RECORD_CALLBACK cb,
+etw_start_trace(etw_sessioninfo_t *sinfo, BOOL isreal,
+    PEVENT_RECORD_CALLBACK cb,
     LPTHREAD_START_ROUTINE tfunc, int nothread)
 {
 	ULONG status = ERROR_SUCCESS;
@@ -1143,11 +1175,11 @@ etw_start_trace(etw_sessioninfo_t *sinfo, BOOL isreal, PEVENT_RECORD_CALLBACK cb
 	HANDLE thread = 0;
 
 	if (sinfo->psession == 0) {
-		ZeroMemory(&trace, sizeof(EVENT_TRACE_LOGFILE));
+		ZeroMemory(&trace, sizeof (EVENT_TRACE_LOGFILE));
 		if (sinfo->isfile == 0) {
 			trace.LoggerName = sinfo->sessname;
 			trace.ProcessTraceMode = PROCESS_TRACE_MODE_REAL_TIME |
-			    PROCESS_TRACE_MODE_EVENT_RECORD|PROCESS_TRACE_MODE_RAW_TIMESTAMP;
+			    PROCESS_TRACE_MODE_EVENT_RECORD | PROCESS_TRACE_MODE_RAW_TIMESTAMP;
 		} else {
 			trace.LogFileName = sinfo->etlfile;
 			trace.ProcessTraceMode = PROCESS_TRACE_MODE_EVENT_RECORD |
@@ -1157,12 +1189,14 @@ etw_start_trace(etw_sessioninfo_t *sinfo, BOOL isreal, PEVENT_RECORD_CALLBACK cb
 		trace.EventRecordCallback = cb;
 		handle = OpenTrace(&trace);
 		if (INVALID_PROCESSTRACE_HANDLE == handle) {
-			dprintf("etw_enable_trace, OpenTrace() failed with (%lx)\n", GetLastError());
+			dprintf("etw_enable_trace, OpenTrace() failed with (%lx)\n",
+			    GetLastError());
 			return (NULL);
 		}
 
 		sinfo->psession = handle;
-		sinfo->isusermode = trace.LogFileMode & EVENT_TRACE_PRIVATE_LOGGER_MODE;
+		sinfo->isusermode = trace.LogFileMode &
+		    EVENT_TRACE_PRIVATE_LOGGER_MODE;
 		sinfo->ncpus = trace.LogfileHeader.NumberOfProcessors;
 		sinfo->boottime = trace.LogfileHeader.BootTime.QuadPart;
 
@@ -1172,31 +1206,31 @@ etw_start_trace(etw_sessioninfo_t *sinfo, BOOL isreal, PEVENT_RECORD_CALLBACK cb
 		sinfo->perffreq = trace.LogfileHeader.PerfFreq.QuadPart;
 		sinfo->ptrsz = trace.LogfileHeader.PointerSize;
 		sinfo->starttime = trace.LogfileHeader.BootTime.QuadPart;
-		sinfo->israwtime = trace.ProcessTraceMode & PROCESS_TRACE_MODE_RAW_TIMESTAMP;
+		sinfo->israwtime = trace.ProcessTraceMode &
+		    PROCESS_TRACE_MODE_RAW_TIMESTAMP;
 		sinfo->timerres = trace.LogfileHeader.TimerResolution;
 		sinfo->cpumhz = trace.LogfileHeader.CpuSpeedInMHz;
-
 		sinfo->Q.map = new map<hrtime_t, etw_stack_t *>[sinfo->ncpus];
 	}
 
 	if (nothread == 0) {
 		thread = CreateThread(NULL, 0, tfunc, (void *) sinfo, 0, &sinfo->id);
-
 		if (thread == NULL) {
-			dprintf("etw_start_trace, CreateThread() failed with (%lu)\n", 
-				GetLastError());
+			dprintf("etw_start_trace, CreateThread() failed with (%lu)\n",
+			    GetLastError());
 			CloseTrace(handle);
-			(NULL);
+			return (NULL);
 		}
 	} else {
-		return (HANDLE) handle;
+		return ((HANDLE) handle);
 	}
 
-	return thread;
+	return (thread);
 }
 
 static etw_sessioninfo_t *
-etw_new_session(WCHAR *sname, const GUID *sguid, ULONG clctype, ULONG flags,
+etw_new_session(WCHAR *sname, const GUID *sguid, ULONG clctype,
+    ULONG flags,
     etw_dtrace_probe_t probef, etw_dtrace_ioctl_t ioctlf)
 {
 	TRACEHANDLE handle = 0, hsession = 0;
@@ -1205,7 +1239,6 @@ etw_new_session(WCHAR *sname, const GUID *sguid, ULONG clctype, ULONG flags,
 
 	if ((hsession =
 	            etw_init_session(sname, *sguid, clctype, flags)) == 0) {
-
 		etw_end_session(NULL, sname);
 		return (NULL);
 	}
@@ -1226,16 +1259,15 @@ etw_new_session(WCHAR *sname, const GUID *sguid, ULONG clctype, ULONG flags,
 		return (NULL);
 	}
 
-	return sinfo;
+	return (sinfo);
 }
-
 
 static void
 etw_end_trace(WCHAR *sname, GUID sguid)
 {
 	EVENT_TRACE_PROPERTIES *properties;
 	ULONG status;
-	int sz = sizeof(EVENT_TRACE_PROPERTIES)*2;
+	int sz = sizeof (EVENT_TRACE_PROPERTIES) * 2;
 
 	properties = (EVENT_TRACE_PROPERTIES *) mem_zalloc(sz);
 	ZeroMemory(properties, sz);
@@ -1248,29 +1280,30 @@ etw_end_trace(WCHAR *sname, GUID sguid)
 }
 
 static int
-etw_enable_user(TRACEHANDLE hsession, GUID *guid, int kw, int level, int enablestack)
+etw_enable_user(TRACEHANDLE hsession, GUID *guid, int kw, int level,
+    int enablestack)
 {
 	ENABLE_TRACE_PARAMETERS EnableParameters;
 
-	ZeroMemory(&EnableParameters, sizeof(EnableParameters));
+	ZeroMemory(&EnableParameters, sizeof (EnableParameters));
 	EnableParameters.Version = ENABLE_TRACE_PARAMETERS_VERSION_2;
 
 	if (enablestack) {
-		EnableParameters.EnableProperty = EVENT_ENABLE_PROPERTY_STACK_TRACE;
+		EnableParameters.EnableProperty =
+		    EVENT_ENABLE_PROPERTY_STACK_TRACE;
 	}
 	DWORD status = EnableTraceEx2(hsession, (LPCGUID)guid,
 	        EVENT_CONTROL_CODE_ENABLE_PROVIDER,
-	        level,
-	        kw, 0, 0, &EnableParameters);
+	        level, kw, 0, 0, &EnableParameters);
 
 	if (ERROR_SUCCESS != status) {
-		dprintf("etw_enable_user, EnableTraceEx() failed with (%lu)\n", status);
+		dprintf("etw_enable_user, EnableTraceEx() failed with (%lu)\n",
+		    status);
 		return (status);
 	}
 
 	return (0);
 }
-
 
 static DWORDLONG
 etw_file_chksum(wchar_t *modname)
@@ -1287,19 +1320,19 @@ etw_file_chksum(wchar_t *modname)
 	file = CreateFileW(modname, GENERIC_READ, FILE_SHARE_READ, NULL,
 	        OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (file == INVALID_HANDLE_VALUE) {
-		return 0;
+		return (0);
 	}
 
 	map = CreateFileMapping(file, NULL, PAGE_READONLY, 0, 0, NULL);
 	if (map == NULL) {
 		CloseHandle(file);
-		return 0;
+		return (0);
 	}
 	base = MapViewOfFile(map, FILE_MAP_READ, 0, 0, 0);
 	if (base == NULL) {
 		CloseHandle(map);
 		CloseHandle(file);
-		return 0;
+		return (0);
 	}
 
 	dos = (PIMAGE_DOS_HEADER) base;
@@ -1317,8 +1350,9 @@ etw_file_chksum(wchar_t *modname)
 	CloseHandle(map);
 	CloseHandle(file);
 
-	return sum;
+	return (sum);
 }
+
 /*
  * Get PDB info for the given module
  * ngen image, first = ni pdb, last = il pdb
@@ -1335,33 +1369,33 @@ etw_pdb_info(wchar_t *modname)
 	file = CreateFileW(modname, GENERIC_READ, FILE_SHARE_READ, NULL,
 	        OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (file == INVALID_HANDLE_VALUE) {
-		return NULL;
+		return (NULL);
 	}
 
 	map = CreateFileMapping(file, NULL, PAGE_READONLY, 0, 0, NULL);
 	if (map == NULL) {
 		CloseHandle(file);
-		return NULL;
+		return (NULL);
 	}
 
 	base = MapViewOfFile(map, FILE_MAP_READ, 0, 0, 0);
 	if (base == NULL) {
 		CloseHandle(map);
 		CloseHandle(file);
-		return NULL;
+		return (NULL);
 	}
 
 	dbase = (PIMAGE_DEBUG_DIRECTORY)
 	    ImageDirectoryEntryToDataEx(base, FALSE,
 	        IMAGE_DIRECTORY_ENTRY_DEBUG, &size, NULL);
 	if (dbase) {
-		size_t count = size / sizeof(IMAGE_DEBUG_DIRECTORY);
+		size_t count = size / sizeof (IMAGE_DEBUG_DIRECTORY);
 
 		for (size_t i = 0; i < count; ++i) {
 			if (dbase[i].Type == IMAGE_DEBUG_TYPE_CODEVIEW) {
 				cvpdbinfo_t *cv0 = (cvpdbinfo_t *) ((char *) base +
 				        dbase[i].PointerToRawData);
-				if (cv0->cvsig == 0x53445352) {	//RSDS
+				if (cv0->cvsig == 0x53445352) {	/* RSDS */
 					cv = (cvpdbinfo_t *) mem_zalloc(dbase[i].SizeOfData);
 					memcpy(cv, (void *) ((char *) base +
 					        dbase[i].PointerToRawData), dbase[i].SizeOfData);
@@ -1374,7 +1408,7 @@ etw_pdb_info(wchar_t *modname)
 	CloseHandle(map);
 	CloseHandle(file);
 
-	return cv;
+	return (cv);
 }
 
 static int
@@ -1390,19 +1424,22 @@ etw_create_ni_pdb(char *image, char *dir)
 		return (0);
 	}
 
-	if ((n=ngenpath(path, MAX_PATH, 1, isnet > 0 ? isnet-1: 0)) <= 0) {
-		dprintf("etw_create_ni_pdb(), failed to get NGEN path (%x)\n", GetLastError());
+	if ((n = ngenpath(path, MAX_PATH, 1,
+	                isnet > 0 ? isnet - 1 : 0)) <= 0) {
+		dprintf("etw_create_ni_pdb(), failed to get NGEN path (%x)\n",
+		    GetLastError());
 		return (0);
 	}
 
 	sprintf(cmd, "%s %s %s %s", path, "createPDB", image, dir);
 
 	if ((code = runcmd(cmd)) < 0) {
-		dprintf("etw_create_ni_pdb, failed to run cmd (%s) (%x)\n", cmd, GetLastError());
+		dprintf("etw_create_ni_pdb, failed to run cmd (%s) (%x)\n", cmd,
+		    GetLastError());
 		return (0);
 	}
 
-	return code;
+	return (code);
 }
 
 /*
@@ -1410,13 +1447,12 @@ etw_create_ni_pdb(char *image, char *dir)
  * in dbghelp search path. If not create one.
  * ex. _NT_SYMBOL_PATH=srv*c:\symbols*http://msdl.microsoft.com/download/symbols;e:\sym
  */
-
-#define SYMBOLS_PATH "SRV*c:\\symbols*https://msdl.microsoft.com/download/symbols"
+#define	SYMBOLS_PATH "SRV*c:\\symbols*https://msdl.microsoft.com/download/symbols"
 
 static cvpdbinfo_t *
 etw_find_ni_syms(cvpdbinfo_t *cv, etw_module_t *mod)
 {
-	char SYMPATH[256];		 //; = getenv("_NT_SYMBOL_PATH");
+	char SYMPATH[256];
 	char pdbdir[MAX_PATH];
 	char fn[MAX_PATH];
 	char nifn[MAX_PATH];
@@ -1428,11 +1464,13 @@ etw_find_ni_syms(cvpdbinfo_t *cv, etw_module_t *mod)
 	ASSERT(r != 0);
 
 	tmp1 = SYMPATH;
-	sprintf(pdbdir, "\\%s\\%08x%04x%04x%02x%02x%02x%02x%02x%02x%02x%02x%x\\%s",
+	sprintf(pdbdir,
+	    "\\%s\\%08x%04x%04x%02x%02x%02x%02x%02x%02x%02x%02x%x\\%s",
 	    cv->pdbname,
 	    cv->sig.Data1, cv->sig.Data2,
-	    cv->sig.Data3, cv->sig.Data4[0], cv->sig.Data4[1],cv->sig.Data4[2],
-	    cv->sig.Data4[3],cv->sig.Data4[4],cv->sig.Data4[5],cv->sig.Data4[6],
+	    cv->sig.Data3, cv->sig.Data4[0], cv->sig.Data4[1], cv->sig.Data4[2],
+	    cv->sig.Data4[3], cv->sig.Data4[4], cv->sig.Data4[5],
+	    cv->sig.Data4[6],
 	    cv->sig.Data4[7], cv->age, cv->pdbname);
 
 	wcstombs_d(nifn, mod->name, MAX_PATH);
@@ -1455,18 +1493,19 @@ etw_find_ni_syms(cvpdbinfo_t *cv, etw_module_t *mod)
 			}
 			symdir = s0;
 			strcpy(fn, s0);
-			strcpy(fn+strlen(s0), pdbdir);
+			strcpy(fn + strlen(s0), pdbdir);
 			if (PathFileExistsA(fn)) {
 				fnd = 1;
 				break;
 			}
 		}
-	} while (tmp1!= NULL);
+	} while (tmp1 != NULL);
 
 	if (fnd == 0) {
 		etw_create_ni_pdb(nifn, symdir);
 	}
-	return cv;
+
+	return (cv);
 }
 
 /*
@@ -1476,20 +1515,19 @@ etw_find_ni_syms(cvpdbinfo_t *cv, etw_module_t *mod)
  * If no match found in the host machine and datetime is present
  * try to download the source file from MS server, and then extract
  * the pdb info from the downloaded file.
- *
  */
 static cvpdbinfo_t *
 etw_match_datatime(HANDLE h, etw_module_t *mod, uetwptr_t base)
 {
 	char filen[MAX_PATH] = {0};
-	char dest[MAX_PATH+1] = {0};
+	char dest[MAX_PATH + 1] = {0};
 	DWORD date, size, three = 0, flags = SSRVOPT_DWORDPTR;
 	SYMSRV_INDEX_INFO info = {0};
 	BOOL r;
 	int flag = 0;
 
 	wcstombs_d(filen, mod->name, MAX_PATH);
-	info.sizeofstruct = sizeof(SYMSRV_INDEX_INFO);
+	info.sizeofstruct = sizeof (SYMSRV_INDEX_INFO);
 
 	/* check for the module on the host machine */
 	if ((r = SymSrvGetFileIndexInfo(filen, &info, flag)) == TRUE) {
@@ -1504,15 +1542,16 @@ etw_match_datatime(HANDLE h, etw_module_t *mod, uetwptr_t base)
 		    info.size == mod->size) {
 			if (wcsstr(mod->name, L".ni.") == NULL) {
 				int len = strlen(info.pdbfile) + 1;
-				cvpdbinfo_t *cv0 = (cvpdbinfo_t *) mem_zalloc(sizeof(cvpdbinfo_t)+len);
+				cvpdbinfo_t *cv0 =
+				    (cvpdbinfo_t *) mem_zalloc(sizeof (cvpdbinfo_t) + len);
 				cv0->age = info.age;
-				cv0->cvsig = 0x53445352; //XXXXX??
+				cv0->cvsig = 0x53445352;
 				cv0->sig = info.guid;
 				strcpy((char *) &cv0->pdbname, info.pdbfile);
-				return cv0;
+				return (cv0);
 			} else {
 				cvpdbinfo_t *cv = etw_pdb_info(mod->name);
-				return etw_find_ni_syms(cv, mod);
+				return (etw_find_ni_syms(cv, mod));
 			}
 		}
 	} else {
@@ -1521,36 +1560,33 @@ etw_match_datatime(HANDLE h, etw_module_t *mod, uetwptr_t base)
 
 	if (mod->tmstamp == 0) {
 		dprintf("etw_match_datatime, timestamp == 0 (%s)\n", filen);
-		return NULL;
+		return (NULL);
 	}
 
-
-	// DATETIME  value is represented in the number of seconds elapsed
-	//	since midnight (00:00:00), January 1, 1970, Universal Coordinated Time
+	/*
+	 * DATETIME  value is represented in the number of seconds
+	 * elapsed since midnight (00:00:00), January 1, 1970,
+	 * Universal Coordinated Time.
+	 */
 	date = mod->tmstamp;
 	size = mod->size;
 
 	wcstombs_d(filen, mod->name, MAX_PATH);
 
 	fprintf(stderr, "[#] Locating module (%s)\r", filen);
-	// Set a search path and cache directory. If this isn't set
-	// then _NT_SYMBOL_PATH will be used instead.
-	// Force setting it here to make sure that the test succeeds.
-	//SymSetSearchPath(h,
-	//    "SRV*c:\\symbolstest*https://msdl.microsoft.com/download/symbols");
 	if (SymFindFileInPath(h, NULL, filen, &date, size, three,
 	        flags, dest, NULL, NULL) == 0) {
-		//SymSetSearchPath(h, NULL);
-		dprintf("SymFindFileInPath failed for (%s) - (%d)\n", filen, GetLastError());
-		return NULL;
+		dprintf("SymFindFileInPath failed for (%s) - (%d)\n", filen,
+		    GetLastError());
+		return (NULL);
 	}
 	fprintf(stderr, "%90s\r\t      ", "");
-	//SymSetSearchPath(h, NULL);
-	wchar_t wdest[MAX_PATH+1] = {0};
+
+	wchar_t wdest[MAX_PATH + 1] = {0};
 	mbstowcs(wdest, dest, MAX_PATH);
 	cvpdbinfo_t *cv = etw_pdb_info(wdest);
 
-	return cv;
+	return (cv);
 }
 
 /*
@@ -1558,34 +1594,35 @@ etw_match_datatime(HANDLE h, etw_module_t *mod, uetwptr_t base)
  * DbgID_RSDS base == struct Image ImageBase ??? XXX
  */
 static cvpdbinfo_t *
-etw_match_cvinfo(etw_proc_cvinfo *lcvinfo, etw_module_t *mod, uetwptr_t base)
+etw_match_cvinfo(etw_proc_cvinfo *lcvinfo, etw_module_t *mod,
+    uetwptr_t base)
 {
 	char nmod[MAX_PATH] = {0}, mname[MAX_PATH];
 
 	wcstombs_d(mname, mod->name, MAX_PATH);
 
-	//extact lowercase module name without extention
+	/* extract lowercase module name without extention */
 	_splitpath(mname, NULL, NULL, nmod, NULL);
 
 	if (nmod[0] == '\0')
-		return NULL;
+		return (NULL);
 	_strlwr(nmod);
 
-	while(lcvinfo) {
+	while (lcvinfo) {
 		char npdb[MAX_PATH] = {0};
-		//extact lowercase pdb name without extention
+		/* extract lowercase pdb name without extention */
 		_splitpath((char *) lcvinfo->cv->pdbname, NULL, NULL, npdb, NULL);
 		if (npdb[0] == '\0')
-			return NULL;
+			return (NULL);
 		_strlwr(npdb);
 
-		if (strcmp(nmod, npdb) == 0)	//XXXX
-			return lcvinfo->cv;
+		if (strcmp(nmod, npdb) == 0)
+			return (lcvinfo->cv);
 		else if (lcvinfo->base == base)
-			return lcvinfo->cv;
+			return (lcvinfo->cv);
 		lcvinfo = lcvinfo->next;
 	}
-	return NULL;
+	return (NULL);
 }
 
 
@@ -1594,12 +1631,15 @@ etw_lookup_jit_sym(pid_t pid, uetwptr_t addr)
 {
 	etw_jitsym_map_t& symmap = pid_jit_symtable[pid];
 	etw_jit_symbol_t *tsym = NULL;
+	int low, high, mid, size;
 
 	if (symmap.sorted == 0) {
-		std::sort(symmap.jit_syms.begin(), symmap.jit_syms.end(), jit_sym_cmp);
+		std::sort(symmap.jit_syms.begin(), symmap.jit_syms.end(),
+		    jit_sym_cmp);
 		symmap.sorted = 1;
 	}
-	int low, high, mid, size = symmap.jit_syms.size();
+
+	size = symmap.jit_syms.size();
 	low  =  0;
 	high  =  size  -  1;
 	while (low  <=  high) {
@@ -1607,15 +1647,14 @@ etw_lookup_jit_sym(pid_t pid, uetwptr_t addr)
 		tsym = symmap.jit_syms[mid];
 		if (addr < tsym->MethodStartAddress)
 			high = mid - 1;
-		else if (addr >= tsym->MethodStartAddress+tsym->MethodSize)
+		else if (addr >= tsym->MethodStartAddress + tsym->MethodSize)
 			low = mid + 1;
 		else {
-			return tsym;
+			return (tsym);
 		}
 	}
-	return NULL;
+	return (NULL);
 }
-
 
 /*
  * get keyword information of a provider
@@ -1625,7 +1664,7 @@ etw_prov_kw(GUID *pguid, int *nkw)
 {
 	DWORD status = ERROR_SUCCESS;
 	PROVIDER_FIELD_INFOARRAY* penum = NULL, *ptemp = NULL;
-	DWORD BufferSize = 0;                       // Size of the penum buffer
+	DWORD BufferSize = 0;
 	etw_provkw_t *etwp = NULL;
 	int num = 0;
 
@@ -1655,13 +1694,13 @@ etw_prov_kw(GUID *pguid, int *nkw)
 	}
 
 	num = penum->NumberOfElements;
-	etwp = (etw_provkw_t *) mem_zalloc(sizeof(etw_provkw_t)*(num+1));
+	etwp = (etw_provkw_t *) mem_zalloc(sizeof (etw_provkw_t) * (num + 1));
 	// Loop through the list of field information and print the field's name,
 	// description (if it exists), and value.
 
 	for (DWORD j = 0; j < num; j++) {
-
-		wchar_t *wtmp =  (PWCHAR)((PBYTE)(penum) + penum->FieldInfoArray[j].NameOffset);
+		wchar_t *wtmp =  (PWCHAR)((PBYTE)(penum) +
+		        penum->FieldInfoArray[j].NameOffset);
 		char *s = (char *) mem_zalloc(256);
 		wcstombs_d(s, wtmp, 256);
 		int len = strlen(s);
@@ -1684,7 +1723,7 @@ etw_prov_kw(GUID *pguid, int *nkw)
 		penum = NULL;
 	}
 
-	return etwp;
+	return (etwp);
 }
 
 /*
@@ -1695,13 +1734,14 @@ etw_provlist(int *nprov)
 {
 	DWORD status = ERROR_SUCCESS;
 	PROVIDER_ENUMERATION_INFO* penum = NULL, *ptemp = NULL;
-	DWORD BufferSize = 0, i;                       // Size of the penum buffer
+	DWORD BufferSize = 0, i;
 	etw_provinfo_t *lprov = NULL;
-	BufferSize = 1024*256;
+
+	BufferSize = 1024 * 256;
 	penum = (PROVIDER_ENUMERATION_INFO*) malloc(BufferSize);
 
 	*nprov = 0;
-	// Retrieve the required buffer size.
+	/* Retrieve the required buffer size. */
 	status = TdhEnumerateProviders(penum, &BufferSize);
 
 	while (ERROR_INSUFFICIENT_BUFFER == status) {
@@ -1714,32 +1754,34 @@ etw_provlist(int *nprov)
 		status = TdhEnumerateProviders(penum, &BufferSize);
 	}
 
-	lprov = (etw_provinfo_t *) mem_zalloc((penum->NumberOfProviders+1) *
-	        sizeof(etw_provinfo_t));
+	lprov = (etw_provinfo_t *) mem_zalloc((penum->NumberOfProviders + 1) *
+	        sizeof (etw_provinfo_t));
 
 	for (i = 0; i < penum->NumberOfProviders; i++) {
-		wchar_t *wtmp =  (LPWSTR)((PBYTE)(penum) +
-		        penum->TraceProviderInfoArray[i].ProviderNameOffset);
 		char *s = (char *) mem_zalloc(256);
 		GUID *g = (GUID *) mem_zalloc(sizeof(GUID));
 		int nkw = 0;
+		wchar_t *wtmp = (LPWSTR)((PBYTE)(penum) +
+		        penum->TraceProviderInfoArray[i].ProviderNameOffset);
 
 		wcstombs_d(s, wtmp, 256);
 
 		int len = strlen(s);
 		for (int j = 0; j < len; j++) {
-			if (s[j] == ' ' || s[j] == ';' || s[j] == ':' || s[j] == '(' || s[j] == ')')
+			if (s[j] == ' ' || s[j] == ';' ||
+			    s[j] == ':' || s[j] == '(' ||
+			    s[j] == ')')
 				s[j] = '_';
 		}
 		lprov[i].provn = s;
-		lprov[i].provg = penum->TraceProviderInfoArray[i].ProviderGuid;;
+		lprov[i].provg = penum->TraceProviderInfoArray[i].ProviderGuid;
 		lprov[i].provkw = etw_prov_kw(&lprov[i].provg, &nkw);
 		lprov[i].provnkw = nkw;
 	}
 	lprov[i].provn = NULL;
 	*nprov = i;
 
-	return lprov;
+	return (lprov);
 }
 
 /*
@@ -1750,7 +1792,8 @@ etw_provlist(int *nprov)
  * delete this file.
  */
 
-/* FILE FORMAT
+/*
+ * FILE FORMAT
  * I 4bytes, II 8bytes, S null terminated string, G sizeof(GUID)
  * I<number of providers>
  * S<provider0 name>G<provider0 GUID>
@@ -1773,19 +1816,19 @@ static int
 etw_provlist_tofile(char *fn, etw_provinfo_t *lprov, int nprov)
 {
 	etw_provkw_t *lkw;
-	int i,j;
-
+	int i, j;
 	FILE *fp = fopen(fn, "wb");
-	fwrite(&nprov, sizeof(int), 1, fp);
+
+	fwrite(&nprov, sizeof (int), 1, fp);
 
 	for (i = 0; i < nprov; i++) {
 		lkw = lprov[i].provkw;
-		fwrite(lprov[i].provn, sizeof(char), strlen(lprov[i].provn)+1, fp);
-		fwrite(&lprov[i].provg, sizeof(GUID), 1, fp);
-		fwrite(&lprov[i].provnkw, sizeof(int), 1, fp);
+		fwrite(lprov[i].provn, sizeof (char), strlen(lprov[i].provn) + 1, fp);
+		fwrite(&lprov[i].provg, sizeof (GUID), 1, fp);
+		fwrite(&lprov[i].provnkw, sizeof (int), 1, fp);
 		for (j = 0; j < lprov[i].provnkw; j++) {
-			fwrite(lkw[j].kwn, sizeof(char), strlen(lkw[j].kwn)+1, fp);
-			fwrite(&lkw[j].kwv, sizeof(uint64_t), 1, fp);
+			fwrite(lkw[j].kwn, sizeof (char), strlen(lkw[j].kwn) + 1, fp);
+			fwrite(&lkw[j].kwv, sizeof (uint64_t), 1, fp);
 		}
 	}
 	fclose(fp);
@@ -1804,41 +1847,43 @@ etw_provlist_ffile(char *fprov, int *nprov)
 	etw_provkw_t *lkw;
 	DWORD i, j, k, l, nkw,  num = 0;
 	ULONG64 val = 0;
-	char provn[MAX_PATH], kwn[MAX_PATH],*s, *skw;
+	char provn[MAX_PATH], kwn[MAX_PATH], *s, *skw;
 	GUID g;
 	int c, sum = 0;
 	FILE *fp = fopen(fprov, "rb");
 
 	if (fp == NULL)
-		return NULL;
+		return (NULL);
 
 	*nprov = 0;
 
-	fread(&num, sizeof(int), 1, fp);
+	fread(&num, sizeof (int), 1, fp);
 	ASSERT(num != 0);
-	lprov = (etw_provinfo_t *) mem_zalloc((num+1)*sizeof(etw_provinfo_t));
-	sum = (num+1)*sizeof(etw_provinfo_t);
+	lprov = (etw_provinfo_t *) mem_zalloc((num + 1) *
+	        sizeof (etw_provinfo_t));
+	sum = (num + 1) * sizeof (etw_provinfo_t);
 	for (i = 0, j = 0; i < num; i++, j = 0) {
 		do {
 			c = fgetc(fp);
 			provn[j++] = c;
-		} while(c != '\0');
+		} while (c != '\0');
 
 		s = (char *) mem_zalloc(j);
 		memcpy(s, provn, j);
-		fread(&g, sizeof(GUID), 1, fp);
-		fread(&nkw, sizeof(int), 1, fp);
-		lkw = (etw_provkw_t *) mem_zalloc((nkw+1)*sizeof(etw_provkw_t));
-		sum += (nkw+1)*sizeof(etw_provkw_t);
+		fread(&g, sizeof (GUID), 1, fp);
+		fread(&nkw, sizeof (int), 1, fp);
+		lkw = (etw_provkw_t *) mem_zalloc((nkw + 1) *
+		        sizeof (etw_provkw_t));
+		sum += (nkw + 1) * sizeof (etw_provkw_t);
 		for (k = 0, l = 0; k < nkw; k++, l = 0) {
 			do {
 				c = fgetc(fp);
 				kwn[l++] = c;
-			} while(c != '\0');
+			} while (c != '\0');
 			skw = (char *) mem_zalloc(l);
 			sum += l;
 			memcpy(skw, kwn, l);
-			fread(&val, sizeof(uint64_t), 1, fp);
+			fread(&val, sizeof (uint64_t), 1, fp);
 			lkw[k].kwn = skw;
 			lkw[k].kwv = val;
 		}
@@ -1851,9 +1896,9 @@ etw_provlist_ffile(char *fprov, int *nprov)
 	}
 	lprov[i].provn = NULL;
 	*nprov = num;
-
 	fclose(fp);
-	return lprov;
+
+	return (lprov);
 }
 
 static void *
@@ -1872,7 +1917,7 @@ etw_get_providers()
 		etw_provlist_tofile(path, lprov, nprov);
 	}
 
-	return lprov;
+	return (lprov);
 }
 
 /*
@@ -1880,8 +1925,10 @@ etw_get_providers()
  * Common to all providers
  */
 
-// FileIO CB Name
-// create a map of all open files during startup
+/*
+ * FileIO CB Name
+ * create a map of all open files during startup
+ */
 static int
 fileio_func(PEVENT_RECORD ev, void *data)
 {
@@ -1891,39 +1938,40 @@ fileio_func(PEVENT_RECORD ev, void *data)
 
 	ASSERT(IsEqualGUID(ev->EventHeader.ProviderId, FileIoGuid));
 
-	switch(ev->EventHeader.EventDescriptor.Opcode) {
+	switch (ev->EventHeader.EventDescriptor.Opcode) {
 	case 0:
 	case 32:
 	case 35:
 	case 36:
 		fio = (struct FileIo_Name *) ev->UserData;
 		len = wcslen((wchar_t *) &fio->FileName);
-		fname = (wchar_t *) mem_zalloc((len+2) * sizeof(wchar_t));
-		wcsncpy(fname,(const wchar_t *) &fio->FileName, len);
+		fname = (wchar_t *) mem_zalloc((len + 2) * sizeof (wchar_t));
+		wcsncpy(fname, (const wchar_t *) &fio->FileName, len);
 		fname[len] = L'\0';
 		etw_add_fname(fio->FileObject, fname);
 		break;
 	default:
 		return (0);
 	}
-	return 0;
+
+	return (0);
 }
 
-// process event processing function
-#define SeLengthSid( Sid ) \
-  (8 + (4 * ((SID *)Sid)->SubAuthorityCount))
+/* process event processing function */
+#define	SeLengthSid(Sid) \
+	(8 + (4 * ((SID *)Sid)->SubAuthorityCount))
 
 template<class T> static proc_t *
 	process_event(T *data, int dlen, int ver)
 {
-	proc_t *p = (proc_t *) mem_zalloc(sizeof(proc_t));
+	proc_t *p = (proc_t *) mem_zalloc(sizeof (proc_t));
 	wchar_t *wstr;
 	char *str;
 	size_t len;
 
 	if (p == NULL)
-		return NULL;
-	ZeroMemory(p, sizeof(proc_t));
+		return (NULL);
+	ZeroMemory(p, sizeof (proc_t));
 	p->ppid = data->ParentId;
 	p->pid = data->ProcessId;
 
@@ -1937,23 +1985,25 @@ template<class T> static proc_t *
 	}
 
 	if ((str - (char *)data) >= dlen)
-		return p;
+		return (p);
 	str = _strlwr(str);
 	len = strlen(str) + 1;
 	p->name = (char *) mem_zalloc(len);
 	strcpy(p->name, str);
 	if (ver < 2)
-		return p;
+		return (p);
 	wstr = (wchar_t *) (str + len);
-	len = wcslen(wstr)*2 + 2;
+	len = wcslen(wstr) * 2 + 2;
 	p->cmdline = (wchar_t *) mem_zalloc(len);
 	wcscpy(p->cmdline,  wstr);
 
-	return p;
+	return (p);
 }
 
-// last cb function to run for process event
-// doesnt do anything yet. remove defunct/exit process
+/*
+ * last cb function to run for process event
+ * doesnt do anything yet. remove defunct/exit process
+ */
 static int
 process_func_last(PEVENT_RECORD ev, void *data)
 {
@@ -1961,17 +2011,16 @@ process_func_last(PEVENT_RECORD ev, void *data)
 
 	ASSERT(IsEqualGUID(ev->EventHeader.ProviderId, ProcessGuid));
 
-	switch(ev->EventHeader.EventDescriptor.Opcode) {
+	switch (ev->EventHeader.EventDescriptor.Opcode) {
 	case 2:
 	case 4:
-		//remove from proclist
-		;
+		/* remove from proclist ?? */
 		return (0);
 	}
 	return (1);
 }
 
-// first cb function to run for process event
+/* first cb function to run for process event */
 static int
 process_func_first(PEVENT_RECORD ev, void *data)
 {
@@ -1980,11 +2029,11 @@ process_func_first(PEVENT_RECORD ev, void *data)
 
 	ASSERT(IsEqualGUID(ev->EventHeader.ProviderId, ProcessGuid));
 
-	switch(ev->EventHeader.EventDescriptor.Opcode) {
+	switch (ev->EventHeader.EventDescriptor.Opcode) {
 	case 1:
 	case 3:
 	case 4:
-		switch(ev->EventHeader.EventDescriptor.Version) {
+		switch (ev->EventHeader.EventDescriptor.Version) {
 		case 0:
 			p = process_event<Process_V0_TypeGroup1>
 			    ((Process_V0_TypeGroup1 *) ev->UserData, ev->UserDataLength, 0);
@@ -2025,7 +2074,7 @@ process_func_first(PEVENT_RECORD ev, void *data)
 			p->exitval = tmp->ExitStatus;
 			p->pageaddr = tmp->DirectoryTableBase;
 			p->addr = tmp->UniqueProcessKey;
-			p->model = tmp->Flags == 2 ? 0: 1; //flags == 2 WOW64 ??
+			p->model = tmp->Flags == 2 ? 0 : 1; /* flags == 2 WOW64 ?? */
 			break;
 		}
 		default:
@@ -2034,7 +2083,7 @@ process_func_first(PEVENT_RECORD ev, void *data)
 		break;
 	case 2:
 	case 39: {
-		switch(ev->EventHeader.EventDescriptor.Version) {
+		switch (ev->EventHeader.EventDescriptor.Version) {
 		case 1: {
 			Process_V1_TypeGroup1 *tmp = (Process_V1_TypeGroup1 *) ev->UserData;
 			pid = tmp->ProcessId;
@@ -2060,7 +2109,7 @@ process_func_first(PEVENT_RECORD ev, void *data)
 			break;
 		}
 		default:
-			return -1;
+			return (-1);
 		}
 		p0 = etw_get_proc(pid, ETW_PROC_FIND);
 		if (p0) {
@@ -2071,7 +2120,6 @@ process_func_first(PEVENT_RECORD ev, void *data)
 	}
 	default:
 		return (-1);
-
 	}
 
 	if (ev->EventHeader.EventDescriptor.Opcode == 1) {
@@ -2088,7 +2136,7 @@ process_func_first(PEVENT_RECORD ev, void *data)
 
 		p0->ppid = p->ppid;
 		p0->name = p->name;
-		//p0->p_model = p->p_model;
+		/* p0->p_model = p->p_model; */
 		p0->cmdline = p->cmdline;
 		p0->sessid = p->sessid;
 		p0->exitval = p->exitval;
@@ -2105,35 +2153,39 @@ static void
 print_proclist()
 {
 	unordered_map<pid_t, proc_t *>::iterator iter = proclist.begin();
-	int i=0;
+	int i = 0;
 
 	while (iter != proclist.end()) {
-		printf("%d - %s %S\n", i++, iter->second->name, iter->second->cmdline);
+		printf("%d - %s %S\n", i++, iter->second->name,
+		    iter->second->cmdline);
 		iter++;
 	}
 }
 
-// thread event processing function
+/* thread event processing function */
 template<class T> static thread_t *
 	thread_event(T *data, int dlen, int version)
 {
-	thread_t *td = (thread_t *) mem_zalloc(sizeof(thread_t));
+	thread_t *td = (thread_t *) mem_zalloc(sizeof (thread_t));
+	proc_t *p;
+
+	ASSERT((int) data->ProcessId != -1);
 
 	if (td == NULL)
 		return (NULL);
 
-	ASSERT((int) data->ProcessId != -1);
-
-	proc_t *p = etw_get_proc(data->ProcessId, ETW_PROC_CREATE);
+	p = etw_get_proc(data->ProcessId, ETW_PROC_CREATE);
 
 	switch (version) {
 	case 3:
 	case 2:
 	case 1:
 		td->kbase = *((uetwptr_t *) ((char *) data + 8));
-		td->klimit = *((uetwptr_t *) ((char *) data + 8 + sizeof(uetwptr_t)));
-		td->ubase = *((uetwptr_t *) ((char *) data + 8 + sizeof(uetwptr_t)*2));
-		td->ulimit = *((uetwptr_t *) ((char *) data + 8 + sizeof(uetwptr_t)*3));
+		td->klimit = *((uetwptr_t *) ((char *) data + 8 + sizeof (uetwptr_t)));
+		td->ubase = *((uetwptr_t *) ((char *) data + 8 +
+		            sizeof (uetwptr_t) * 2));
+		td->ulimit = *((uetwptr_t *) ((char *) data + 8 +
+		            sizeof (uetwptr_t) * 3));
 	case 0:
 		td->tid = data->TThreadId;
 		td->pid = data->ProcessId;
@@ -2148,19 +2200,20 @@ template<class T> static thread_t *
 	return (td);
 }
 
-// first cb function to run for thread event
+/* first cb function to run for thread event */
 static int
 thread_func_first(PEVENT_RECORD ev, void *data)
 {
 	thread_t *td, *t0;
+	int len;
 
 	ASSERT(IsEqualGUID(ev->EventHeader.ProviderId, ThreadGuid));
 
-	switch(ev->EventHeader.EventDescriptor.Opcode) {
+	switch (ev->EventHeader.EventDescriptor.Opcode) {
 	case 1:
 	case 3:
-	case 4:
-		switch(ev->EventHeader.EventDescriptor.Version) {
+	case 4: {
+		switch (ev->EventHeader.EventDescriptor.Version) {
 		case 0:
 			td = thread_event<Thread_V0_TypeGroup1>
 			    ((Thread_V0_TypeGroup1 *) ev->UserData, ev->UserDataLength, 0);
@@ -2182,10 +2235,11 @@ thread_func_first(PEVENT_RECORD ev, void *data)
 			td->iopri = data->IoPriority;
 			td->pagepri = data->PagePriority;
 			td->flags = data->ThreadFlags;
+			wcstombs_d(td->t_name, &data->ThreadName[0], MAX_PATH_NAME);
 			break;
 		}
 		default:
-			return (-1);
+			ASSERT("ThreadGuid New Version" == 0);
 		}
 
 		if (ev->EventHeader.EventDescriptor.Opcode == 1) {
@@ -2200,20 +2254,40 @@ thread_func_first(PEVENT_RECORD ev, void *data)
 		if (!t0) {
 			etw_add_thread(td->tid, td);
 		} else {
-			if (t0->tid != td->tid) {		// XXXXXX
+			if (t0->tid != td->tid) {
 				int off = offsetof(thread_t, kbase);
-				memcpy((char*)td+off, (char*)t0+off, sizeof(thread_t)-off);
+				memcpy((char *)td + off, (char *)t0 + off,
+				    sizeof (thread_t) - off);
 				free(t0);
 				etw_add_thread(td->tid, td);
 			}
 		}
+		break;
+	}
+	case 72: {// SetName
+		struct Thread_V2_SetName *tsn = (struct Thread_V2_SetName *) ev->UserData;
+		td = etw_get_td(tsn->TThreadId, tsn->ProcessId, ETW_THREAD_CREATE);
+		wcstombs_d(td->t_name, &tsn->ThreadName[0], MAX_PATH_NAME);
+		break;
+	}
+	case 2:	//exit thread
+	case 36: //context switch
+	case 50: //readythread
+	case 66: //???
+	case 67: //???
+	case 68: //???
+		break;
+	default:
+		ASSERT("ThreadGuid Undefined Opcode" == 0);
 	}
 
 	return (0);
 }
 
-// last cb function to run for thread event
-// doesnt do anything yet. remove defunct/exit threads
+/*
+ * last cb function to run for thread event
+ * doesnt do anything yet. remove defunct/exit threads
+ */
 static int
 thread_func_last(PEVENT_RECORD ev, void *data)
 {
@@ -2221,16 +2295,16 @@ thread_func_last(PEVENT_RECORD ev, void *data)
 
 	ASSERT(IsEqualGUID(ev->EventHeader.ProviderId, ThreadGuid));
 
-	switch(ev->EventHeader.EventDescriptor.Opcode) {
+	switch (ev->EventHeader.EventDescriptor.Opcode) {
 	case 2:
-		switch(ev->EventHeader.EventDescriptor.Version) {
+		switch (ev->EventHeader.EventDescriptor.Version) {
 		case 0:
 			tid = *((uint32_t *) ev->UserData);
 			break;
 		case 1:
 		case 2:
 		case 3:
-			tid = *((uint32_t *) ((char *)ev->UserData+4));
+			tid = *((uint32_t *) ((char *)ev->UserData + 4));
 			break;
 		default:
 			return (-1);
@@ -2238,8 +2312,6 @@ thread_func_last(PEVENT_RECORD ev, void *data)
 	default:
 		return (-1);
 	}
-	// remove from threadlist
-	;
 
 	return (0);
 }
@@ -2248,40 +2320,39 @@ static void
 print_threadlist()
 {
 	unordered_map<pid_t, thread_t *>::iterator iter = threadlist.begin();
-	int i=0;
+	int i = 0;
 
 	while (iter != threadlist.end()) {
-		printf("%d - %s %lld\n", i++, iter->second->proc ? iter->second->proc->name:"",
+		printf("%d - %s %lld\n", i++,
+		    iter->second->proc ? iter->second->proc->name : "",
 		    iter->second->tid);
 		iter++;
 	}
 }
 
-// first cb function to run for profile (perfinfo) event
+/* first cb function to run for profile (perfinfo) event */
 static int
 profile_func_first(PEVENT_RECORD ev, void *data)
 {
 	if (ev->EventHeader.EventDescriptor.Opcode != 46)
-		return 0;
+		return (0);
 
 	if (ev->UserDataLength != 0) {
 		SampledProfile *sample = (SampledProfile *) ev->UserData;
 		sessinfo->tid = sample->ThreadId;
-
 		sessinfo->td = etw_get_td(sample->ThreadId, -1, ETW_THREAD_CREATE);
-
 		sessinfo->proc = sessinfo->td->proc;
-
 		return (0);
 	}
-
 	return (-1);
 }
 
 
-// xperf synthetic image events
-// creates a list of pdb info for each process
-// having this events
+/*
+ * xperf synthetic image events
+ * creates a list of pdb info for each process
+ * having this events
+ */
 static int
 xperf_image_events(PEVENT_RECORD ev, void *data)
 {
@@ -2291,21 +2362,21 @@ xperf_image_events(PEVENT_RECORD ev, void *data)
 	cvpdbinfo_t *cv = NULL;
 	proc_t *p;
 
-	ASSERT(IsEqualGUID(ev->EventHeader.ProviderId, KernelTraceControlGuid));
+	ASSERT(IsEqualGUID(ev->EventHeader.ProviderId,
+	        KernelTraceControlGuid));
 
 	if (ev->EventHeader.EventDescriptor.Opcode == 36 ||
 	    ev->EventHeader.EventDescriptor.Opcode == 37) {
 		dbg = (struct DbgID_RSDS *)  ev->UserData;
 
 		ASSERT(ev->EventHeader.ProcessId == dbg->pid);
-		//ASSERT(proclist[dbg->pid] != NULL);
 
 		p = etw_get_proc(dbg->pid, ETW_PROC_CREATE);
 		char *s = (char *)&dbg->pdbfilename;
 		if ((cv = cvinfolist[dbg->sig]) == NULL) {
 			size_t len = strlen((char *)&dbg->pdbfilename);
 			size = (int) offsetof(cvpdbinfo_t, pdbname)
-			    + len +1;
+			    + len + 1;
 			cv = (cvpdbinfo_t *) mem_zalloc(size);
 			cv->cvsig = 0x53445352;
 			cv->sig = dbg->sig;
@@ -2320,17 +2391,17 @@ xperf_image_events(PEVENT_RECORD ev, void *data)
 			 * Check whether it is linked with existing process.
 			 */
 			etw_proc_cvinfo_t *tmp = (etw_proc_cvinfo_t *) p->cvinfo;
-			while(tmp) {
+			while (tmp) {
 				if (tmp->cv == cv)
 					return (0);
 				tmp = tmp->next;
 			}
 			size_t len = strlen((char *)cv->pdbname);
 			size = (int) offsetof(cvpdbinfo_t, pdbname) + len + 1;
-			//return (0);
 		}
 
-		etw_proc_cvinfo_t * cvinfo = (etw_proc_cvinfo_t *) mem_zalloc(sizeof(etw_proc_cvinfo_t));
+		etw_proc_cvinfo_t * cvinfo =
+		    (etw_proc_cvinfo_t *) mem_zalloc(sizeof (etw_proc_cvinfo_t));
 		cvinfo->cv = cv;
 		cvinfo->base = dbg->base;
 		cvinfo->size = size;
@@ -2343,12 +2414,13 @@ xperf_image_events(PEVENT_RECORD ev, void *data)
 	return (0);
 }
 
-// image load
+/* image load */
 static void
 print_modulelist()
 {
-	unordered_map<wstring, etw_module_t *>::iterator iter = modlist.begin();
-	int i=0;
+	unordered_map<wstring, etw_module_t *>::iterator iter =
+	    modlist.begin();
+	int i = 0;
 	fprintf(stderr, "Module list\n");
 	while (iter != modlist.end()) {
 		printf("%ls\n", iter->second->name);
@@ -2356,29 +2428,30 @@ print_modulelist()
 	}
 }
 
-// processing for module load event
+/* processing for module load event */
 static int
 image_load_func(PEVENT_RECORD ev, void *data)
 {
 	proc_t *p;
 	pid_t pid = 0;
-	etw_module_t *fmod, *mod = (etw_module_t *) mem_zalloc(sizeof(etw_module_t));
 	etw_proc_module_t *pmod;
 	uetwptr_t pbase;
 	Image *img;
 	wchar_t *pstr;
 	wstring wstr;
 	int fnd = 0;
+	etw_module_t *fmod, *mod =
+	    (etw_module_t *) mem_zalloc(sizeof (etw_module_t));
 
 	ASSERT(IsEqualGUID(ev->EventHeader.ProviderId, ImageLoadGuid));
-
 	ASSERT(ev->EventHeader.EventDescriptor.Opcode != 1);
-	memset(mod, 0, sizeof(etw_module_t));
-	switch(ev->EventHeader.EventDescriptor.Opcode) {
-	case 10: 	// Load
-	case 3:		// DCStartLoad
-	case 4:		//DCEndUnLoad
-		switch(ev->EventHeader.EventDescriptor.Version) {
+
+	memset(mod, 0, sizeof (etw_module_t));
+	switch (ev->EventHeader.EventDescriptor.Opcode) {
+	case 10: 	/* Load */
+	case 3:		/* DCStartLoad */
+	case 4:		/* DCEndUnLoad */
+		switch (ev->EventHeader.EventDescriptor.Version) {
 		case 0:
 			mod->base = ((Image_V0 *) ev->UserData)->BaseAddress;
 			mod->size = ((Image_V0 *) ev->UserData)->ModuleSize;
@@ -2392,8 +2465,6 @@ image_load_func(PEVENT_RECORD ev, void *data)
 			pid = ((Image_V1 *) ev->UserData)->ProcessId;
 			break;
 		case 2:
-			//dprintf("(%s), version (2) Not Implemeted\n", __func__);
-			//ASSERT(0);
 		case 3:
 			img = ((Image *) ev->UserData);
 			mod->base = img->DefaultBase;
@@ -2413,7 +2484,7 @@ image_load_func(PEVENT_RECORD ev, void *data)
 			break;
 		}
 		break;
-	case 2:		//UnLoad
+	case 2:		/* UnLoad */
 		return (0);
 		break;
 	default:
@@ -2424,15 +2495,18 @@ image_load_func(PEVENT_RECORD ev, void *data)
 		break;
 	}
 
-	etw_rep_dev_to_path(mod->name);	//Normalize pathname
+	etw_rep_dev_to_path(mod->name);	/* Normalize pathname */
 	_wcslwr(mod->name);
 	wstr = wstring((wchar_t *) mod->name);
 
 	if ((fmod = modlist[wstr]) == NULL) {
-		mod->cvinfo = NULL;//etw_pdb_info(mod->name);
+		mod->cvinfo = NULL;	/* etw_pdb_info(mod->name); */
 		etw_add_module(mod, wstr);
 	} else {
-		//timestamp is zero for rundowns, only has value for load & unload events
+		/*
+		 * timestamp is zero for rundowns,
+		 * only has value for load & unload events.
+		 */
 		if (fmod->tmstamp == 0 && mod->tmstamp > 0)
 			fmod->tmstamp = mod->tmstamp;
 		free(mod);
@@ -2440,7 +2514,7 @@ image_load_func(PEVENT_RECORD ev, void *data)
 	}
 
 	if (pid != -1) {
-		pmod = (etw_proc_module_t *) mem_zalloc(sizeof(etw_proc_module_t));
+		pmod = (etw_proc_module_t *) mem_zalloc(sizeof (etw_proc_module_t));
 		pmod->mod =  mod;
 		pmod->base = pbase;
 		p = etw_get_proc(pid, ETW_PROC_FIND);
@@ -2453,42 +2527,49 @@ image_load_func(PEVENT_RECORD ev, void *data)
 	return (0);
 }
 
-// etw user stack event processing
-// this are additional stacks whick were not included in the
-// user event extended data stack. (ex. kernel stack trace of the user event)
+/*
+ * etw user stack event processing
+ * this are additional stacks whick were not included in the
+ * user event extended data stack.
+ * (ex. kernel stack trace of the user event)
+ */
 static int
 ustack_func(PEVENT_RECORD ev, void *data)
 {
-	ASSERT(IsEqualGUID(ev->EventHeader.ProviderId, KernelEventTracing));
-	if (ev->EventHeader.EventDescriptor.Id != 18) {
-		return (0);
-	}
-
 	int i = 0;
 	etw_sessioninfo_t *sess = sessinfo->etw;
 	int size = 0, psize = 0, matchid = 0;
 
+	ASSERT(IsEqualGUID(ev->EventHeader.ProviderId, KernelEventTracing));
+
+	if (ev->EventHeader.EventDescriptor.Id != 18) {
+		return (0);
+	}
+
 	if (ev->ExtendedDataCount) {
 		do {
-			if (ev->ExtendedData[i].ExtType == EVENT_HEADER_EXT_TYPE_STACK_TRACE64) {
-				psize = sizeof(ULONG64);
-				size = (ev->ExtendedData[i].DataSize - sizeof(ULONG64)) / psize;
+			if (ev->ExtendedData[i].ExtType ==
+			    EVENT_HEADER_EXT_TYPE_STACK_TRACE64) {
+				psize = sizeof (ULONG64);
+				size = (ev->ExtendedData[i].DataSize - sizeof (ULONG64)) / psize;
 			}
-			if (ev->ExtendedData[i].ExtType == EVENT_HEADER_EXT_TYPE_STACK_TRACE32) {
-				psize = sizeof(ULONG);
-				size = (ev->ExtendedData[i].DataSize - sizeof(ULONG64)) / psize;
+			if (ev->ExtendedData[i].ExtType ==
+			    EVENT_HEADER_EXT_TYPE_STACK_TRACE32) {
+				psize = sizeof (ULONG);
+				size = (ev->ExtendedData[i].DataSize - sizeof (ULONG64)) / psize;
 			} else {
 				continue;
 			}
 			matchid = *((ULONG64 *)ev->ExtendedData[i].DataPtr);
-			etw_stack_t *stackp = sess->Q.map[ev->BufferContext.ProcessorNumber][matchid];
+			etw_stack_t *stackp =
+			    sess->Q.map[ev->BufferContext.ProcessorNumber][matchid];
 
 			/*
 			 * processor number in the event and its stackwalk
 			 * may not match. so check for the event in all the cpu.
 			 */
 			if (stackp == NULL) {
-				for (uint32_t i = 0 ; i < sess->ncpus && stackp == NULL; i++) {
+				for (uint32_t i = 0; i < sess->ncpus && stackp == NULL; i++) {
 					stackp = sess->Q.map[i][matchid];
 				}
 			}
@@ -2499,26 +2580,28 @@ ustack_func(PEVENT_RECORD ev, void *data)
 				return (-1);
 			}
 
-			memcpy((char *) stackp->stack + (stackp->stacklen*psize),
-			    (char *) ev->ExtendedData[i].DataPtr+sizeof(ULONG64), size*psize);
+			memcpy((char *) stackp->stack + (stackp->stacklen * psize),
+			    (char *) ev->ExtendedData[i].DataPtr + sizeof (ULONG64),
+			    size * psize);
 
 			stackp->stacklen += size;
 			stackp->stackready = 1;
-		} while(++i < ev->ExtendedDataCount);
+		} while (++i < ev->ExtendedDataCount);
 	}
 	return (0);
 }
 
-//Stack
+/* Stack */
 static int
 stack_func(PEVENT_RECORD ev, void *data)
 {
 	struct ETWStackWalk *sw = (struct ETWStackWalk *) ev->UserData;
-	int offset = (sizeof(struct ETWStackWalk) - sizeof(uetwptr_t));
-	int depth =  (ev->UserDataLength - offset)/sizeof(uetwptr_t);
+	int offset = (sizeof (struct ETWStackWalk) - sizeof (uetwptr_t));
+	int depth = (ev->UserDataLength - offset) / sizeof (uetwptr_t);
 	etw_sessioninfo_t *sess = sessinfo->etw;
 
-	etw_stack_t *stackp = sess->Q.map[ev->BufferContext.ProcessorNumber][sw->EventTimeStamp];
+	etw_stack_t *stackp =
+	    sess->Q.map[ev->BufferContext.ProcessorNumber][sw->EventTimeStamp];
 
 	/*
 	 * processor number in the event and its stackwalk
@@ -2527,7 +2610,7 @@ stack_func(PEVENT_RECORD ev, void *data)
 	if ((stackp == NULL) || (stackp->dprobe.tid != -1 &&
 	        (stackp->dprobe.tid != sw->StackThread))) {
 		stackp = NULL;
-		for (uint32_t i = 0 ; i < sess->ncpus && stackp == NULL; i++) {
+		for (uint32_t i = 0; i < sess->ncpus && stackp == NULL; i++) {
 			stackp = sess->Q.map[i][sw->EventTimeStamp];
 			if (stackp && (stackp->dprobe.tid != sw->StackThread))
 				stackp = NULL;
@@ -2542,9 +2625,10 @@ stack_func(PEVENT_RECORD ev, void *data)
 	}
 
 	ASSERT(stackp->dprobe.ts == sw->EventTimeStamp);
-	ASSERT(stackp->dprobe.tid == sw->StackThread || stackp->dprobe.tid == -1);
+	ASSERT(stackp->dprobe.tid == sw->StackThread ||
+	    stackp->dprobe.tid == -1);
 
-	/* 
+	/*
 	 * if the initial events process id or thread id is equal to -1
 	 * update it here
 	 */
@@ -2553,14 +2637,14 @@ stack_func(PEVENT_RECORD ev, void *data)
 		stackp->dprobe.tid = sw->StackThread;
 	}
 
-	if (depth+stackp->stacklen > ETW_MAX_STACK) {
+	if (depth + stackp->stacklen > ETW_MAX_STACK) {
 		depth = ETW_MAX_STACK - stackp->stacklen;
 	}
 
 	if (depth) {
-		memcpy((char *)stackp->stack + (stackp->stacklen*sizeof(uetwptr_t)),
-		    (char *)ev->UserData+offset,
-		    (ev->UserDataLength - offset));
+		memcpy((char *)stackp->stack + (stackp->stacklen * sizeof (uetwptr_t)),
+		    (char *)ev->UserData + offset,
+		    (depth * sizeof (uetwptr_t)));
 		stackp->stacklen += depth;
 		stackp->stackready = 1;
 	}
@@ -2568,12 +2652,13 @@ stack_func(PEVENT_RECORD ev, void *data)
 	return (0);
 }
 
-// lost event //opcode = 32
+/* lost event - opcode = 32 */
 static int
 lost_event_func(PEVENT_RECORD ev, void *data)
 {
 	ASSERT(IsEqualGUID(ev->EventHeader.ProviderId, RTLostEvent));
 	dprintf("Lost Events\n");
+
 	return (0);
 }
 
@@ -2587,7 +2672,7 @@ dtrace_etw_pid_modules(pid_t pid)
 
 	p = etw_get_proc(pid, ETW_PROC_FIND);
 
-	return (etw_proc_module_t *) (p ? p->mod: NULL);
+	return ((etw_proc_module_t *) (p ? p->mod : NULL));
 }
 
 char *
@@ -2597,19 +2682,21 @@ dtrace_etw_lookup_jit_module(pid_t pid, uetwptr_t addr, char *buf,
 	etw_jitsym_map_t& symmap = pid_jit_symtable[pid];
 	wchar_t *tmod = NULL;
 	etw_jit_symbol_t *tsym = etw_lookup_jit_sym(pid, addr);
+
 	if (tsym == NULL) {
 		buf[0] = 0;
-		return buf;
+		return (buf);
 	}
 	tmod = symmap.jit_modules[tsym->ModuleID];
 	if (tmod == NULL) {
 		buf[0] = 0;
-		return buf;
+		return (buf);
 	}
 	wchar_t name[MAX_PATH];
 	_wsplitpath(tmod, NULL, NULL, name, NULL);
 	wcstombs_d(buf, name, size);
-	return buf;
+
+	return (buf);
 }
 
 int
@@ -2617,20 +2704,25 @@ dtrace_etw_lookup_jit_addr(pid_t pid, uetwptr_t addr, char *buf,
     size_t size, GElf_Sym *symp)
 {
 	etw_jit_symbol_t *jsym = etw_lookup_jit_sym(pid, addr);
+	int ls, lw;
+
 	if (jsym) {
-		symp->st_name = 0;
-		symp->st_info = GELF_ST_INFO((STB_GLOBAL), (STT_FUNC));
-		symp->st_other = 0;
-		symp->st_shndx = 1;
-		symp->st_value = jsym->MethodStartAddress;
-		symp->st_size = jsym->MethodSize;
-		int ls = wcstombs_d(buf, jsym->MethodFullName, size);
-		int lw = wcslen(jsym->MethodFullName);
-		buf[ls++] = '.';
-		ls = wcstombs_d(buf+ls, jsym->MethodFullName + lw+1,  size-ls);
+		if (symp != NULL) {
+			symp->st_name = 0;
+			symp->st_info = GELF_ST_INFO((STB_GLOBAL), (STT_FUNC));
+			symp->st_other = 0;
+			symp->st_shndx = 1;
+			symp->st_value = jsym->MethodStartAddress;
+			symp->st_size = jsym->MethodSize;
+		}
+		if (buf != NULL && size > 0) {
+			ls = wcstombs_d(buf, jsym->MethodFullName, size);
+		}
+
 		return (0);
 	}
-	return -1;
+
+	return (-1);
 }
 
 /*
@@ -2642,7 +2734,8 @@ dtrace_etw_lookup_jit_addr(pid_t pid, uetwptr_t addr, char *buf,
  * is found, reversed  to get the actual address.
  */
 int
-dtrace_etw_lookup_addr(etw_proc_module_t *pmod, pid_t pid, uetwptr_t addr,
+dtrace_etw_lookup_addr(etw_proc_module_t *pmod, pid_t pid,
+    uetwptr_t addr,
     char *buf, size_t size, GElf_Sym *symp)
 {
 	int fnd = 0;
@@ -2660,13 +2753,12 @@ dtrace_etw_lookup_addr(etw_proc_module_t *pmod, pid_t pid, uetwptr_t addr,
 	}
 
 	NTKERNEL:
-
-	while(pmod) {
+	while (pmod) {
 		mod = pmod->mod;
 
 		ASSERT(mod != NULL);
 
-		if (addr >= pmod->base && addr < pmod->base+mod->size) {
+		if (addr >= pmod->base && addr < pmod->base + mod->size) {
 			if (pmod->symloaded) {
 				ASSERT(mod->sym != NULL);
 				fnd = 1;
@@ -2678,9 +2770,11 @@ dtrace_etw_lookup_addr(etw_proc_module_t *pmod, pid_t pid, uetwptr_t addr,
 				fnd = 1;
 				break;
 			} else if (mod->sym == &nopdbsyms) {
-				/* if module previously loaded in dbghelp without
-					pdb info. try again with this process pdb info
-					collection */
+				/*
+				 * if module previously loaded in dbghelp without
+				 * pdb info. try again with this process pdb info
+				 * collection.
+				 */
 				p = etw_get_proc(pid, ETW_PROC_FIND);
 				if (p->cvinfo) {
 					cv = etw_match_cvinfo((etw_proc_cvinfo *) p->cvinfo,
@@ -2696,22 +2790,31 @@ dtrace_etw_lookup_addr(etw_proc_module_t *pmod, pid_t pid, uetwptr_t addr,
 			if (cv == NULL || (cv = mod->cvinfo) == NULL) {
 				p = etw_get_proc(pid, ETW_PROC_FIND);
 				if (p->cvinfo) {
-					cv = mod->cvinfo = etw_match_cvinfo((etw_proc_cvinfo *) p->cvinfo,
+					cv = mod->cvinfo =
+					        etw_match_cvinfo((etw_proc_cvinfo *) p->cvinfo,
 					            mod, pmod->base);
 				} else {
-					cv = mod->cvinfo = etw_match_datatime(pdbsyms.h, mod, pmod->base);
+					cv = mod->cvinfo =
+					        etw_match_datatime(pdbsyms.h, mod, pmod->base);
 				}
 			}
 
 			if (cv == NULL) {
-				/* No symbol file found. load anyway into dbghelp
-				 * at the next free address
+				/*
+				 * No symbol file found. load anyway into dbghelp
+				 * at the next free address.
 				 */
 				wchar_t *ws0 = PathFindFileNameW(mod->name);
-				uint64_t base0 = SymLoadModuleExW(nopdbsyms.h, 0, ws0, NULL,
-				        nopdbsyms.endaddr, (DWORD) mod->size, NULL, 0);
-				mod->dbgbase = nopdbsyms.endaddr;
-				nopdbsyms.endaddr += mod->size;
+				if (INKERNEL(pmod->base)) {
+					uint64_t base0 = SymLoadModuleExW(nopdbsyms.h, 0, ws0, NULL,
+					        pmod->base, (DWORD) mod->size, NULL, 0);
+					mod->dbgbase = pmod->base;
+				} else {
+					uint64_t base0 = SymLoadModuleExW(nopdbsyms.h, 0, ws0, NULL,
+					        nopdbsyms.endaddr, (DWORD) mod->size, NULL, 0);
+					mod->dbgbase = nopdbsyms.endaddr;
+					nopdbsyms.endaddr += mod->size;
+				}
 				mod->sym = &nopdbsyms;
 				pmod->symloaded = 1;
 				fnd = 1;
@@ -2721,28 +2824,34 @@ dtrace_etw_lookup_addr(etw_proc_module_t *pmod, pid_t pid, uetwptr_t addr,
 			size_t len = strlen((char *)cv->pdbname);
 			size_t size = offsetof(cvpdbinfo_t, pdbname)
 			    + len + 1;
-			size_t sz = sizeof(MODLOAD_CVMISC) + size;
+			size_t sz = sizeof (MODLOAD_CVMISC) + size;
 
 			MODLOAD_CVMISC * cvmisc = (MODLOAD_CVMISC *) mem_zalloc(sz);
-			cvmisc->oCV = sizeof(MODLOAD_CVMISC);
+			cvmisc->oCV = sizeof (MODLOAD_CVMISC);
 			cvmisc->cCV = size;
 			cvmisc->oMisc = 0;
 			cvmisc->cMisc = 0;
 			cvmisc->dtImage = 0;
 			cvmisc->cImage = 0;
-			memcpy((char *) cvmisc + sizeof(MODLOAD_CVMISC), cv, size);
+			memcpy((char *) cvmisc + sizeof (MODLOAD_CVMISC), cv, size);
 
 			MODLOAD_DATA md = {0};
-			md.ssize = sizeof(md);
+			md.ssize = sizeof (md);
 			md.ssig = DBHHEADER_CVMISC;
 			md.data = cvmisc;
 			md.size = (DWORD) sz;
 			wchar_t *ws = PathFindFileNameW(mod->name);
 			/* load into dbghelp at the next free address */
-			base = SymLoadModuleExW(pdbsyms.h, 0, ws, NULL,
-			        pdbsyms.endaddr, (DWORD) mod->size, &md, 0);
-			mod->dbgbase = pdbsyms.endaddr;
-			pdbsyms.endaddr += mod->size;
+			if (INKERNEL(pmod->base)) {
+				base = SymLoadModuleExW(pdbsyms.h, 0, ws, NULL,
+				        pmod->base, (DWORD) mod->size, &md, 0);
+				mod->dbgbase = pmod->base;
+			} else {
+				base = SymLoadModuleExW(pdbsyms.h, 0, ws, NULL,
+				        pdbsyms.endaddr, (DWORD) mod->size, &md, 0);
+				mod->dbgbase = pdbsyms.endaddr;
+				pdbsyms.endaddr += mod->size;
+			}
 			pmod->symloaded = 1;
 			mod->sym = &pdbsyms;
 			fnd = 1;
@@ -2760,26 +2869,29 @@ dtrace_etw_lookup_addr(etw_proc_module_t *pmod, pid_t pid, uetwptr_t addr,
 	}
 	/* not found, try with jitted functions */
 	if (fnd == 0) {
-		return dtrace_etw_lookup_jit_addr(pid, addr, buf, size, symp);
+		return (dtrace_etw_lookup_jit_addr(pid, addr, buf, size, symp));
 	}
 
 	SYMBOL_INFO *s;
-	s = (SYMBOL_INFO *) malloc(sizeof(SYMBOL_INFO) + size-1);
+	s = (SYMBOL_INFO *) malloc(sizeof (SYMBOL_INFO) + size - 1);
 	if (s == NULL)
-		return -1;
-
-	s->SizeOfStruct = sizeof(SYMBOL_INFO);
+		return (-1);
+	ZeroMemory(s, sizeof (SYMBOL_INFO) + size - 1);
+	s->SizeOfStruct = sizeof (SYMBOL_INFO);
 	s->MaxNameLen = size;
-	int64_t fac =  (int64_t) mod->dbgbase - pmod->base;
+	int64_t fac =  ((uint64_t) mod->dbgbase - pmod->base) ;
 	tmpa = addr + fac;
 	if (SymFromAddr(mod->sym->h, tmpa, 0, s) == TRUE) {
-		symp->st_name = 0;
-		symp->st_info = GELF_ST_INFO((STB_GLOBAL), (STT_FUNC));
-		symp->st_other = 0;
-		symp->st_shndx = 1;
-		symp->st_value = s->Address - fac;
-		symp->st_size = s->Size;
-		strncpy(buf, s->Name, size);
+		if (symp != NULL) {
+			symp->st_name = 0;
+			symp->st_info = GELF_ST_INFO((STB_GLOBAL), (STT_FUNC));
+			symp->st_other = 0;
+			symp->st_shndx = 1;
+			symp->st_value = s->Address - fac;
+			symp->st_size = s->Size;
+		}
+		if (buf != NULL && size > 0)
+			strncpy(buf, s->Name, size);
 		return (0);
 	}
 
@@ -2793,20 +2905,20 @@ dtrace_etw_objname(etw_proc_module_t *pmod, pid_t pid, uetwptr_t addr,
 	int fnd = 0;
 	etw_module_t *mod;
 
-	while(pmod) {
+	while (pmod) {
 		mod = pmod->mod;
 
 		ASSERT(mod != NULL);
 
-		if (addr >= pmod->base && addr < pmod->base+mod->size) {
+		if (addr >= pmod->base && addr < pmod->base + mod->size) {
 			wchar_t *ws = PathFindFileNameW(mod->name);
-			WideCharToMultiByte(CP_UTF8, 0, ws, -1, buffer, bufsize, NULL, NULL );
-			buffer[bufsize-1] = 0;
-			return buffer;
+			WideCharToMultiByte(CP_UTF8, 0, ws, -1, buffer, bufsize, NULL, NULL);
+			buffer[bufsize - 1] = 0;
+			return (buffer);
 		}
 		pmod = pmod->next;
 	}
-	return dtrace_etw_lookup_jit_module(pid, addr, buffer, bufsize);;
+	return (dtrace_etw_lookup_jit_module(pid, addr, buffer, bufsize));
 }
 
 etw_proc_module_t *
@@ -2815,9 +2927,9 @@ dtrace_etw_pid_symhandle(pid_t pid)
 	proc_t *p;
 	p = etw_get_proc(pid, ETW_PROC_FIND);
 	if (p) {
-		return (etw_proc_module_t *) (p->mod);
+		return ((etw_proc_module_t *) (p->mod));
 	}
-	return 0;
+	return (0);
 }
 
 /*
@@ -2847,7 +2959,8 @@ dtrace_etw_td_find(pid_t pid, pid_t tid, int current)
 
 	if (current) {
 		if (sessinfo == NULL) {
-			sessioninfo_t *tmp = (sessioninfo_t *) mem_zalloc(sizeof(sessioninfo_t));
+			sessioninfo_t *tmp = (sessioninfo_t *) mem_zalloc(
+			        sizeof (sessioninfo_t));
 			sessinfo = tmp;
 		}
 		sessinfo->td = td;
@@ -2856,7 +2969,7 @@ dtrace_etw_td_find(pid_t pid, pid_t tid, int current)
 		sessinfo->proc = td->proc;
 	}
 
-	return td;
+	return (td);
 }
 
 /*
@@ -2865,7 +2978,8 @@ dtrace_etw_td_find(pid_t pid, pid_t tid, int current)
 int
 dtrace_etw_session_on(etw_sessions_t *sinfo)
 {
-	return (int) dtrace_etw_sessions[DT_ETW_KERNEL_SESSION]->psession; //XXX
+	return (int)
+	    dtrace_etw_sessions[DT_ETW_KERNEL_SESSION]->psession;
 }
 
 int
@@ -2874,7 +2988,7 @@ dtrace_set_ft_stack(uetwptr_t *stack, uint32_t size)
 	sessinfo->etw->ftstack = stack;
 	sessinfo->etw->ftsize = size;
 
-	return 0;
+	return (0);
 }
 
 /*
@@ -2886,7 +3000,8 @@ dtrace_etw_session_ft_on(etw_sessions_t *sinfo)
 {
 	etw_sessioninfo_t *sess = NULL;
 	int hb = 0, loop = 40;
-	while((sess = dtrace_etw_sessions[DT_ETW_FT_SESSION]) && loop) {
+
+	while ((sess = dtrace_etw_sessions[DT_ETW_FT_SESSION]) && loop) {
 		Sleep(2000);
 		if (sess->hb == hb) {
 			etw_stop_ft();
@@ -2896,7 +3011,8 @@ dtrace_etw_session_ft_on(etw_sessions_t *sinfo)
 		loop--;
 	}
 	etw_stop_ft();
-	return 0; //XXX
+
+	return (0);
 }
 
 /*
@@ -2906,11 +3022,11 @@ thread_t *
 dtrace_etw_curthread()
 {
 	if (sessinfo) {
-		return sessinfo->td;
+		return (sessinfo->td);
 	} else {
 		thread_t *td = etw_get_td(GetCurrentThreadId(),
 		        GetCurrentProcessId(), ETW_THREAD_CREATE);
-		return td;
+		return (td);
 	}
 }
 
@@ -2921,10 +3037,10 @@ proc_t *
 dtrace_etw_curproc()
 {
 	if (sessinfo) {
-		return sessinfo->proc;
+		return (sessinfo->proc);
 	} else {
 		proc_t *p = etw_get_proc(GetCurrentProcessId(), ETW_PROC_CREATE);
-		return p;
+		return (p);
 	}
 }
 
@@ -2932,9 +3048,9 @@ int
 dtrace_etw_current_cpu()
 {
 	if (sessinfo) {
-		return sessinfo->cpuno;
+		return (sessinfo->cpuno);
 	} else {
-		return -1;
+		return (-1);
 	}
 }
 
@@ -2962,11 +3078,14 @@ dtrace_etw_probe(dtrace_id_t id, uetwptr_t arg0, uetwptr_t arg1,
     uetwptr_t arg2, uetwptr_t arg3, uetwptr_t arg4, int isstack)
 {
 	HANDLE *lock = 0;
-	etw_stack_t *del, *stackp = (etw_stack_t *) mem_zalloc(sizeof(etw_stack_t));
-	etw_dprobe_t *dprobe = &stackp->dprobe;
+	etw_stack_t *del, *stackp;
+	etw_dprobe_t *dprobe;
 
+	stackp = (etw_stack_t *) mem_zalloc(sizeof (etw_stack_t));
 	stackp->stacklen = 0;
 	stackp->stackready = 0;
+	dprobe = &stackp->dprobe;
+
 	dprobe->id = id;
 	dprobe->args[0] = arg0;
 	dprobe->args[1] = arg1;
@@ -2980,46 +3099,47 @@ dtrace_etw_probe(dtrace_id_t id, uetwptr_t arg0, uetwptr_t arg1,
 	dprobe->pid = sessinfo->pid;
 	dprobe->tid = sessinfo->tid;
 
-	while(InterlockedExchange(&sessinfo->etw->Q.lock, TRUE) == TRUE)
+	while (InterlockedExchange(&sessinfo->etw->Q.lock, TRUE) == TRUE)
 		Sleep(1);
 
 	sessinfo->etw->Q.queue.push(stackp);
 
 	/* user mode ETW stacktrace */
 	if (sessinfo->etw->ev && sessinfo->etw->ev->ExtendedDataCount) {
-		PEVENT_RECORD ev= sessinfo->etw->ev;
+		PEVENT_RECORD ev = sessinfo->etw->ev;
 		int size = 0, psize = 0, matchid = 0, i = 0;
 
 		if (ev->ExtendedDataCount) {
 			do {
 				if (ev->ExtendedData[i].ExtType ==
 				    EVENT_HEADER_EXT_TYPE_STACK_TRACE64) {
-					psize = sizeof(ULONG64);
-					size = (ev->ExtendedData[i].DataSize - sizeof(ULONG64)) / psize;
+					psize = sizeof (ULONG64);
+					size = (ev->ExtendedData[i].DataSize - sizeof (ULONG64)) / psize;
 				} else if (ev->ExtendedData[i].ExtType ==
 				    EVENT_HEADER_EXT_TYPE_STACK_TRACE32) {
-					psize = sizeof(ULONG);
-					size = (ev->ExtendedData[i].DataSize - sizeof(ULONG64)) / psize;
+					psize = sizeof (ULONG);
+					size = (ev->ExtendedData[i].DataSize - sizeof (ULONG64)) / psize;
 				} else {
 					continue;
 				}
 
-				memcpy((char *) stackp->stack + (stackp->stacklen*psize),
-				    (char *) ev->ExtendedData[i].DataPtr+sizeof(ULONG64), size*psize);
+				memcpy((char *) stackp->stack + (stackp->stacklen * psize),
+				    (char *) ev->ExtendedData[i].DataPtr + sizeof (ULONG64),
+				    size * psize);
 				stackp->stacklen += size;
 				stackp->stackready = 1;
 				matchid = *((ULONG64 *)ev->ExtendedData[i].DataPtr);
-				//if matchid == 0 both kernel and user stack complete;
+				/* if matchid == 0 both kernel and user stack complete; */
 				if (matchid != 0) {
 					sessinfo->etw->Q.map[dprobe->cpuno][matchid] = stackp;
 				}
-			} while(++i < ev->ExtendedDataCount);
+			} while (++i < ev->ExtendedDataCount);
 		}
 	}
 
 	if (sessinfo->etw->ftsize) {
 		memcpy(stackp->stack, sessinfo->etw->ftstack,
-		    sessinfo->etw->ftsize*sizeof(uetwptr_t));
+		    sessinfo->etw->ftsize * sizeof (uetwptr_t));
 		stackp->stacklen = sessinfo->etw->ftsize;
 		sessinfo->etw->ftsize = 0;
 		stackp->stackready = 1;
@@ -3034,7 +3154,7 @@ dtrace_etw_probe(dtrace_id_t id, uetwptr_t arg0, uetwptr_t arg1,
 		sessinfo->etw->Q.map[stackp->dprobe.cpuno].erase(stackp->dprobe.ts);
 
 		etw_send_dprobe(stackp);
-		free(stackp); 
+		free(stackp);
 	}
 	InterlockedExchange(&sessinfo->etw->Q.lock, FALSE);
 }
@@ -3042,13 +3162,13 @@ dtrace_etw_probe(dtrace_id_t id, uetwptr_t arg0, uetwptr_t arg1,
 void
 dtrace_etw_reset_cur(HANDLE *lock)
 {
-	return etw_reset_cur(lock);
+	return (etw_reset_cur(lock));
 }
 
 HANDLE *
 dtrace_etw_set_cur(pid_t pid, pid_t tid, hrtime_t tm, int cpuno)
 {
-	return etw_set_cur(pid, tid, tm, cpuno);
+	return (etw_set_cur(pid, tid, tm, cpuno));
 }
 
 /*
@@ -3057,7 +3177,7 @@ dtrace_etw_set_cur(pid_t pid, pid_t tid, hrtime_t tm, int cpuno)
 int
 dtrace_etw_samplerate(int interval)
 {
-	return etw_set_freqNT(interval);
+	return (etw_set_freqNT(interval));
 }
 
 int
@@ -3065,11 +3185,12 @@ dtrace_etw_set_stackid(CLASSIC_EVENT_ID id[], int len)
 {
 	int fnd = 0;
 	etw_sessioninfo_t *sess = dtrace_etw_sessions[DT_ETW_KERNEL_SESSION];
+	int err;
 
-	ASSERT(sess->stackidlen+len < ETW_MAX_STACKID);
+	ASSERT(sess->stackidlen + len < ETW_MAX_STACKID);
 
-	for(int i = 0; i < len; i++) {
-		for (int j=0 ; j < sess->stackidlen; j++) {
+	for (int i = 0; i < len; i++) {
+		for (int j = 0; j < sess->stackidlen; j++) {
 			if (sess->stackid[j].EventGuid == id[i].EventGuid &&
 			    sess->stackid[j].Type == id[i].Type) {
 				fnd = 1;
@@ -3083,8 +3204,9 @@ dtrace_etw_set_stackid(CLASSIC_EVENT_ID id[], int len)
 		}
 	}
 
-	return etw_set_kernel_stacktrace(sess->hsession,
+	err = etw_set_kernel_stacktrace(sess->hsession,
 	        sess->stackid, sess->stackidlen);
+	return (err);
 }
 
 /*
@@ -3092,13 +3214,14 @@ dtrace_etw_set_stackid(CLASSIC_EVENT_ID id[], int len)
  * returns stack depth
  */
 int
-dtrace_etw_get_stack(uint64_t *pcstack, int pcstack_limit, int usermode)
+dtrace_etw_get_stack(uint64_t *pcstack, int pcstack_limit,
+    int usermode)
 {
 	int n = pcstack_limit;
 	etw_stack_t *stackp;
 
 	if (!sessinfo || sessinfo->etw == NULL)
-		return 0;
+		return (0);
 
 	stackp = sessinfo->etw->stackinfo;
 
@@ -3131,11 +3254,11 @@ dtrace_etw_gethrtime()
 	int tmp;
 	hrtime_t ts = 0;
 
-	if (sessinfo) {
-		tmp = sessinfo->etw->timescale*100UL;
+	if (sessinfo && sessinfo->etw) {
+		tmp = sessinfo->etw->timescale * 100UL;
 		ts = sessinfo->timestamp * tmp;
 	}
-	return ts == 0 ? sys_gethrtime(): ts;
+	return (ts == 0 ? sys_gethrtime() : ts);
 }
 
 hrtime_t
@@ -3148,15 +3271,16 @@ dtrace_etw_gethrestime(void)
 }
 
 int
-dtrace_etw_hook_event(const GUID *guid, Function efunc, void *data, int place)
+dtrace_etw_hook_event(const GUID *guid, Function efunc, void *data,
+    int place)
 {
-	return etw_hook_event(guid, efunc, data, place, TRUE);
+	return (etw_hook_event(guid, efunc, data, place, TRUE));
 }
 
 int
 dtrace_etw_unhook_event(const GUID *guid, Function efunc, void *data)
 {
-	return etw_unhook_event(guid, efunc, data, FALSE);
+	return (etw_unhook_event(guid, efunc, data, FALSE));
 }
 
 int
@@ -3164,42 +3288,43 @@ dtrace_etw_nprocessors()
 {
 	if (!sessinfo) {
 		if (dtrace_etw_sessions[DT_ETW_KERNEL_SESSION]) {
-			return dtrace_etw_sessions[DT_ETW_KERNEL_SESSION]->ncpus;
+			return (dtrace_etw_sessions[DT_ETW_KERNEL_SESSION]->ncpus);
 		}
-		return -1;
+		return (-1);
 	}
-	return sessinfo->etw->ncpus;
+	return (sessinfo->etw->ncpus);
 }
 
 wchar_t *
 dtrace_etw_get_fname(uetwptr_t fobj)
 {
-	return etw_get_fname(fobj);
+	return (etw_get_fname(fobj));
 }
+
 int
 dtrace_etw_kernel_stack_enable(CLASSIC_EVENT_ID id[], int len)
 {
-	return dtrace_etw_set_stackid(id, len);
+	return (dtrace_etw_set_stackid(id, len));
 }
 
 int
 dtrace_etw_profile_enable(hrtime_t interval, int type)
 {
 	etw_sessioninfo_t *sess = dtrace_etw_sessions[DT_ETW_KERNEL_SESSION];
+	CLASSIC_EVENT_ID  id[1];
 
-	etw_hook_event(&PerfInfoGuid, profile_func_first, NULL, ETW_EVENTCB_ORDER_FRIST, TRUE);
+	etw_hook_event(&PerfInfoGuid, profile_func_first, NULL,
+	    ETW_EVENTCB_ORDER_FRIST, TRUE);
 
 	if (sess->isfile)
-		return 0;
-
-	CLASSIC_EVENT_ID  id[1];
+		return (0);
 
 	id[0].EventGuid = PerfInfoGuid;
 	id[0].Type = 46;
 
 	dtrace_etw_set_stackid(id, 1);
 
-	dtrace_etw_samplerate((int)(interval/100.0));
+	dtrace_etw_samplerate((int)(interval / 100.0));
 
 	if (etw_enable_kernel_prov(NULL, sess->sessname,
 	        EVENT_TRACE_FLAG_PROFILE, TRUE) != 0) {
@@ -3216,7 +3341,7 @@ dtrace_etw_profile_disable()
 	etw_sessioninfo_t *sess = dtrace_etw_sessions[DT_ETW_KERNEL_SESSION];
 
 	if (!sess || sess->isfile)
-		return 0;
+		return (0);
 
 	if (etw_enable_kernel_prov(NULL, sess->sessname,
 	        EVENT_TRACE_FLAG_PROFILE, FALSE) != 0) {
@@ -3235,14 +3360,14 @@ dtrace_etw_prov_enable(int flags)
 	etw_sessioninfo_t *sess = dtrace_etw_sessions[DT_ETW_KERNEL_SESSION];
 
 	if (sess->isfile)
-		return 0;
+		return (0);
 
 	if (etw_enable_kernel_prov(NULL, sess->sessname,
 	        flags, TRUE) != 0) {
 		dprintf("dtrace_etw_prov_enable, failed for flags (%d)\n ", flags);
 		return (-1);
 	}
-	return 0;
+	return (0);
 }
 
 /*
@@ -3254,11 +3379,12 @@ dtrace_etw_prov_disable(int flags)
 	etw_sessioninfo_t *sess = dtrace_etw_sessions[DT_ETW_KERNEL_SESSION];
 
 	if (sess == NULL || sess->isfile)
-		return 0;
+		return (0);
 
 	if (etw_enable_kernel_prov(NULL, sess->sessname,
 	        flags, FALSE) != 0) {
-		dprintf("dtrace_etw_prov_disable, failed for flags (%d)\n ", flags);
+		dprintf("dtrace_etw_prov_disable, failed for flags (%d)\n ",
+		    flags);
 		return (-1);
 	}
 	return (0);
@@ -3269,12 +3395,13 @@ dtrace_etw_uprov_enable(GUID *pguid, uint64_t keyword,
     uint32_t eventno, int level, int estack)
 {
 	if (dtrace_etw_sessions[DT_ETW_USER_SESSION]) {
-		return etw_enable_user(dtrace_etw_sessions[DT_ETW_USER_SESSION]->hsession,
-	        	pguid, keyword, level, estack);
+		return etw_enable_user(
+		        dtrace_etw_sessions[DT_ETW_USER_SESSION]->hsession,
+		        pguid, keyword, level, estack);
 	} else if (dtrace_etw_sessions[DT_ETW_KERNEL_SESSION]->isfile) {
 		return (0);
 	}
-	
+
 	return (-1);
 }
 
@@ -3282,13 +3409,15 @@ dtrace_etw_uprov_enable(GUID *pguid, uint64_t keyword,
  * Initialize ETW to read from a etl file
  */
 etw_sessions_t *
-dtrace_etwfile_init(etw_dtrace_probe_t probef, etw_dtrace_ioctl_t ioctlf,
+dtrace_etwfile_init(etw_dtrace_probe_t probef,
+    etw_dtrace_ioctl_t ioctlf,
     wchar_t *etlfile)
 {
 	int iskevent = 0;
+	etw_sessioninfo_t *sinfo;
 
 	etw_initialize();
-	etw_sessioninfo_t *sinfo = new etw_sessioninfo_t();
+	sinfo = new etw_sessioninfo_t();
 
 	sinfo->dtrace_probef = probef;
 	sinfo->dtrace_ioctlf = ioctlf;
@@ -3306,16 +3435,19 @@ dtrace_etwfile_init(etw_dtrace_probe_t probef, etw_dtrace_ioctl_t ioctlf,
 	etw_hook_event(&ProcessGuid, process_func_last, NULL, 2, iskevent);
 	etw_hook_event(&ThreadGuid, thread_func_first, NULL, 1, iskevent);
 	etw_hook_event(&ThreadGuid, thread_func_last, NULL, 2, iskevent);
-	///etw_hook_event(&PerfInfoGuid, profile_func_first, NULL, 1, iskevent);
+	/* etw_hook_event(&PerfInfoGuid, profile_func_first, NULL, 1, iskevent); */
 	etw_hook_event(&StackWalkGuid, stack_func, NULL, 0, iskevent);
 	etw_hook_event(&ImageLoadGuid, image_load_func, NULL, 0, iskevent);
 	etw_hook_event(&FileIoGuid, fileio_func, NULL, 0, iskevent);
-	//etw_hook_event(&RTLostEvent, lost_event_func, NULL, 0, iskevent);
-	etw_hook_event(&KernelTraceControlGuid, xperf_image_events, NULL, 0, iskevent);
-	etw_hook_event(&MSDotNETRuntimeRundownGuid, clr_jitted_rd_func, NULL, 1, iskevent);
-	etw_hook_event(&MSDotNETRuntimeGuid, clr_jitted_func, NULL, 1, iskevent);
+	/* etw_hook_event(&RTLostEvent, lost_event_func, NULL, 0, iskevent); */
+	etw_hook_event(&KernelTraceControlGuid, xperf_image_events, NULL, 0,
+	    iskevent);
+	etw_hook_event(&MSDotNETRuntimeRundownGuid, clr_jitted_rd_func, NULL,
+	    1,
+	    iskevent);
+	etw_hook_event(&MSDotNETRuntimeGuid, clr_jitted_func, NULL, 1,
+	    iskevent);
 	etw_hook_event(&KernelEventTracing, ustack_func, NULL, 0, iskevent);
-
 
 	dtrace_etw_sessions[DT_ETW_KERNEL_SESSION] = sinfo;
 
@@ -3325,39 +3457,41 @@ dtrace_etwfile_init(etw_dtrace_probe_t probef, etw_dtrace_ioctl_t ioctlf,
 		return (NULL);
 	}
 	sinfo->data = etw_get_providers();
-	return dtrace_etw_sessions;
+
+	return (dtrace_etw_sessions);
 }
 
-etw_sessioninfo_t*
+etw_sessioninfo_t *
 etw_session_add_fileext(etw_sessioninfo_t *sess, wchar_t *ext, int id)
 {
 	int len;
-	len = (wcslen(sess->etlfile) + wcslen(ext)+1)*2;
+	len = (wcslen(sess->etlfile) + wcslen(ext) + 1) * 2;
+	wchar_t *etlrdfile, *dot;
+	etw_sessioninfo_t *sinfo;
 
-	wchar_t *etlrdfile = (wchar_t *) mem_zalloc(len);
+	etlrdfile = (wchar_t *) mem_zalloc(len);
 	wcscpy(etlrdfile, sess->etlfile);
-	wchar_t *dot = wcsrchr(etlrdfile, L'.');
+	dot = wcsrchr(etlrdfile, L'.');
 	wcscpy(++dot, ext);
 
 	if (!PathFileExistsW(etlrdfile))
-		return NULL;
-	etw_sessioninfo_t *sinfo = new etw_sessioninfo_t();
+		return (NULL);
 
+	sinfo = new etw_sessioninfo_t();
 
 	sinfo->isfile = 1;
 	sinfo->etlfile = etlrdfile;
 	if ((etw_start_trace(sinfo, FALSE,
 	            etw_event_cb, etw_event_thread, 0)) == 0) {
-
 		etw_end_session(sinfo, NULL);
 		delete sinfo;
-		return NULL;
+		return (NULL);
 	}
 	sinfo->dtrace_ioctlf = sess->dtrace_ioctlf;
 	sinfo->dtrace_probef = sess->dtrace_probef;
 	dtrace_etw_sessions[id] = sinfo;
 
-	return sinfo;
+	return (sinfo);
 }
 
 /*
@@ -3367,17 +3501,18 @@ HANDLE
 dtrace_etwfile_start(etw_sessions_t *dummy)
 {
 	HANDLE thr;
-	etw_sessioninfo_t *session = dtrace_etw_sessions[DT_ETW_KERNEL_SESSION];
+	etw_sessioninfo_t *session =
+	    dtrace_etw_sessions[DT_ETW_KERNEL_SESSION];
 
 	if (session->isfile == 0)
 		return (NULL);
 	/* perfview trace file */
 	etw_session_add_fileext(session, L"kernel.etl", DT_ETW_USER_SESSION);
-	etw_session_add_fileext(session, L"clrRundown.etl", DT_ETW_KERNEL_SESSION);
+	etw_session_add_fileext(session, L"clrRundown.etl",
+	    DT_ETW_KERNEL_SESSION);
 
 	if ((thr = etw_start_trace(session, FALSE,
 	                etw_event_cb, etw_event_thread, 0)) == 0) {
-
 		etw_end_session(session, NULL);
 		return (0);
 	}
@@ -3389,12 +3524,13 @@ dtrace_etwfile_start(etw_sessions_t *dummy)
  * missed events and missed stack
  */
 int
-dtrace_etw_set_diagnostic(int (*cb) (PEVENT_RECORD, void *), uint32_t id)
+dtrace_etw_set_diagnostic(int (*cb) (PEVENT_RECORD, void *),
+    uint32_t id)
 {
 	etw_diag_cb = cb;
 	etw_diag_id = id;
 
-	return 0;
+	return (0);
 }
 
 /*
@@ -3403,10 +3539,12 @@ dtrace_etw_set_diagnostic(int (*cb) (PEVENT_RECORD, void *), uint32_t id)
 int
 dtrace_etw_enable_ft(GUID *guid, int kw, int enablestack)
 {
-	etw_sessioninfo_t * sinfo, *ksinfo = dtrace_etw_sessions[DT_ETW_KERNEL_SESSION];
+	etw_sessioninfo_t * sinfo, *ksinfo;
 
+	ksinfo = dtrace_etw_sessions[DT_ETW_KERNEL_SESSION];
 	if (!dtrace_etw_sessions[DT_ETW_FT_SESSION]) {
-		sinfo = etw_new_session(DTRACE_SESSION_NAME_FT, &DtraceSessionGuidFT,
+		sinfo = etw_new_session(DTRACE_SESSION_NAME_FT,
+		        &DtraceSessionGuidFT,
 		        ETW_TS_QPC, EVENT_TRACE_REAL_TIME_MODE,
 		        ksinfo->dtrace_probef, ksinfo->dtrace_ioctlf);
 		if (sinfo == NULL) {
@@ -3415,8 +3553,9 @@ dtrace_etw_enable_ft(GUID *guid, int kw, int enablestack)
 		dtrace_etw_sessions[DT_ETW_FT_SESSION] = sinfo;
 	}
 
-	return etw_enable_user(dtrace_etw_sessions[DT_ETW_FT_SESSION]->hsession, guid, kw,
-	        TRACE_LEVEL_VERBOSE, enablestack);
+	return etw_enable_user(
+	        dtrace_etw_sessions[DT_ETW_FT_SESSION]->hsession, guid,
+	        kw, TRACE_LEVEL_VERBOSE, enablestack);
 }
 
 /*
@@ -3433,7 +3572,7 @@ dtrace_etw_init(etw_dtrace_probe_t probef, etw_dtrace_ioctl_t ioctlf)
 	HANDLE thread = 0;
 	int iskevent;
 	const GUID *sguid;
-	void (WINAPI *cb)(PEVENT_RECORD ev);
+	void (WINAPI * cb)(PEVENT_RECORD ev);
 	wchar_t *sname;
 	etw_sessioninfo_t *sinfo;
 
@@ -3451,7 +3590,8 @@ dtrace_etw_init(etw_dtrace_probe_t probef, etw_dtrace_ioctl_t ioctlf)
 		sname = DTRACE_SESSION_NAME;
 		sguid = &DtraceSessionGuid;
 		cb = etw_event_cb;
-		iflags = EVENT_TRACE_REAL_TIME_MODE|EVENT_TRACE_SYSTEM_LOGGER_MODE;
+		iflags = EVENT_TRACE_REAL_TIME_MODE |
+		    EVENT_TRACE_SYSTEM_LOGGER_MODE;
 	} else {
 		iskevent = FALSE;
 		sname = KERNEL_LOGGER_NAME;
@@ -3464,12 +3604,13 @@ dtrace_etw_init(etw_dtrace_probe_t probef, etw_dtrace_ioctl_t ioctlf)
 	etw_hook_event(&ProcessGuid, process_func_last, NULL, 2, iskevent);
 	etw_hook_event(&ThreadGuid, thread_func_first, NULL, 1, iskevent);
 	etw_hook_event(&ThreadGuid, thread_func_last, NULL, 2, iskevent);
-	//etw_hook_event(&PerfInfoGuid, profile_func_first, NULL, 1, iskevent);
+	/* etw_hook_event(&PerfInfoGuid, profile_func_first, NULL, 1, iskevent); */
 	etw_hook_event(&StackWalkGuid, stack_func, NULL, 0, iskevent);
 	etw_hook_event(&ImageLoadGuid, image_load_func, NULL, 0, iskevent);
 	etw_hook_event(&FileIoGuid, fileio_func, NULL, 0, iskevent);
-	//etw_hook_event(&RTLostEvent, lost_event_func, NULL, 0, iskevent);
-	etw_hook_event(&MSDotNETRuntimeRundownGuid, clr_jitted_rd_func, NULL, 1, 0);
+	/* etw_hook_event(&RTLostEvent, lost_event_func, NULL, 0, iskevent); */
+	etw_hook_event(&MSDotNETRuntimeRundownGuid, clr_jitted_rd_func, NULL,
+	    1, 0);
 	etw_hook_event(&MSDotNETRuntimeGuid, clr_jitted_func, NULL, 1, 0);
 	etw_hook_event(&KernelEventTracing, ustack_func, NULL, 0, iskevent);
 	if ((hsession =
@@ -3482,10 +3623,12 @@ dtrace_etw_init(etw_dtrace_probe_t probef, etw_dtrace_ioctl_t ioctlf)
 	 * Get rundown of all the open files
 	 * Slows down the startup
 	 */
-	LONG result = EnableTraceEx(&KernelRundownGuid_I, NULL, hsession, 1, 0, 0x10, 0, 0, NULL);
+	LONG result = EnableTraceEx(&KernelRundownGuid_I, NULL, hsession, 1,
+	        0, 0x10, 0, 0, NULL);
 
 	if (result != ERROR_SUCCESS) {
-		dprintf("dtrace_etw_init, failed to get rundown of open files (%x)\n", result);
+		dprintf("dtrace_etw_init, failed to get rundown of open files (%x)\n",
+		    result);
 	}
 
 	if (etw_enable_kernel_prov(hsession, sname, flags, TRUE) != 0) {
@@ -3502,7 +3645,8 @@ dtrace_etw_init(etw_dtrace_probe_t probef, etw_dtrace_ioctl_t ioctlf)
 	sinfo->sessguid = (GUID *) sguid;
 	sinfo->hsession = hsession;
 
-	if ((thread = etw_start_trace(sinfo, TRUE, cb, etw_event_thread, 0)) == 0) {
+	if ((thread = etw_start_trace(sinfo, TRUE, cb,
+	                etw_event_thread, 0)) == 0) {
 		free(sinfo);
 		etw_end_session(sinfo, NULL);
 		return (NULL);
@@ -3511,10 +3655,12 @@ dtrace_etw_init(etw_dtrace_probe_t probef, etw_dtrace_ioctl_t ioctlf)
 	dtrace_etw_sessions[DT_ETW_KERNEL_SESSION] = sinfo;
 	sinfo->data = etw_get_providers();
 
-	sinfo = etw_new_session(DTRACE_SESSION_NAME_USER, &DtraceSessionGuidUser,
+	sinfo = etw_new_session(DTRACE_SESSION_NAME_USER,
+	        &DtraceSessionGuidUser,
 	        ETW_TS_QPC, EVENT_TRACE_REAL_TIME_MODE, probef, ioctlf);
 	dtrace_etw_sessions[DT_ETW_USER_SESSION] = sinfo;
-	sinfo = etw_new_session(DTRACE_SESSION_NAME_CLR, &DtraceSessionGuidCLR,
+	sinfo = etw_new_session(DTRACE_SESSION_NAME_CLR,
+	        &DtraceSessionGuidCLR,
 	        ETW_TS_QPC, EVENT_TRACE_REAL_TIME_MODE, probef, ioctlf);
 	dtrace_etw_sessions[DT_ETW_CLR_SESSION] = sinfo;
 
@@ -3527,10 +3673,11 @@ dtrace_etw_init(etw_dtrace_probe_t probef, etw_dtrace_ioctl_t ioctlf)
 	result = EnableTraceEx(&MSDotNETRuntimeGuid, NULL,
 	        sinfo->hsession, 1, 0, 0x10, 0, 0, NULL);
 	if (result != ERROR_SUCCESS) {
-		dprintf("dtrace_etw_init, failed to get event fot jit methods (%x)\n", result);
+		dprintf("dtrace_etw_init, failed to get event fot jit methods (%x)\n",
+		    result);
 	}
 
-	return dtrace_etw_sessions;
+	return (dtrace_etw_sessions);
 }
 
 void
@@ -3538,14 +3685,14 @@ dtrace_etw_stop(etw_sessions_t *sinfo)
 {
 	ULONG status[DT_ETW_MAX_SESSION] = {0};
 
-	for (int i=0; i<DT_ETW_MAX_SESSION; i++) {
+	for (int i = 0; i < DT_ETW_MAX_SESSION; i++) {
 		if (dtrace_etw_sessions[i]) {
 			status[i] = CloseTrace(dtrace_etw_sessions[i]->psession);
 			dtrace_etw_sessions[i]->psession = 0;
 		}
 	}
 
-	for (int i=0; i<DT_ETW_MAX_SESSION; i++) {
+	for (int i = 0; i < DT_ETW_MAX_SESSION; i++) {
 		if (status[i] == ERROR_CTX_CLOSE_PENDING) {
 			Sleep(100);
 			break;
@@ -3556,8 +3703,9 @@ dtrace_etw_stop(etw_sessions_t *sinfo)
 void
 dtrace_etw_close(etw_sessions_t *sinfo)
 {
-	for (int i=0; i<DT_ETW_MAX_SESSION; i++) {
-		if (dtrace_etw_sessions[i] && dtrace_etw_sessions[i]->sessname != NULL) {
+	for (int i = 0; i < DT_ETW_MAX_SESSION; i++) {
+		if (dtrace_etw_sessions[i] &&
+		    dtrace_etw_sessions[i]->sessname != NULL) {
 			etw_end_session(dtrace_etw_sessions[i], NULL);
 		}
 	}

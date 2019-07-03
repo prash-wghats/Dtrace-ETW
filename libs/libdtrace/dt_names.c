@@ -5,13 +5,6 @@
 
 #pragma ident	"%Z%%M%	%I%	%E% SMI"
 
-#if defined(sun)
-#include <stdint.h>
-#else
-#include <dtrace_misc.h>
-#endif
-
-#include <libctf.h>
 #include <dtrace.h>
 
 /*ARGSUSED*/
@@ -65,12 +58,11 @@ dtrace_subrstr(dtrace_hdl_t *dtp, int subr)
 	case DIF_SUBR_INET_NTOA6: return ("inet_ntoa6");
 	case DIF_SUBR_TOUPPER: return ("toupper");
 	case DIF_SUBR_TOLOWER: return ("tolower");
-	case DIF_SUBR_MEMREF: return ("memref");
-	case DIF_SUBR_TYPEREF: return ("typeref");
-	case DIF_SUBR_SX_SHARED_HELD: return ("sx_shared_held");
-	case DIF_SUBR_SX_EXCLUSIVE_HELD: return ("sx_exclusive_held");
-	case DIF_SUBR_SX_ISEXCLUSIVE: return ("sx_isexclusive");
+	case DIF_SUBR_GETF: return ("getf");
+	case DIF_SUBR_JSON: return ("json");
+	case DIF_SUBR_STRTOLL: return ("strtoll");
 	case DIF_SUBR_WSTRINGOF: return ("wstringof");
+	case DIF_SUBR_WSTRLEN: return ("wstrlen");
 	default: return ("unknown");
 	}
 }

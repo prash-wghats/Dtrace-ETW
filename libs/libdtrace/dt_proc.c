@@ -25,6 +25,10 @@
  */
 
 /*
+ * Copyright (c) 2012 by Delphix. All rights reserved.
+ */
+
+/*
  * DTrace Process Control
  *
  * This file provides a set of routines that permit libdtrace and its clients
@@ -76,21 +80,16 @@
  * up using this condition and will then call the client handler as necessary.
  */
 
-#if defined(sun)
-#include <stdint.h>
-#include <strings.h>
+#if !defined(windows)
 #include <sys/wait.h>
 #include <sys/lwp.h>
+#include <strings.h>
 #else
 #include <dtrace_misc.h>
-#include <dbghelp.h>
 #endif
-
 #include <signal.h>
 #include <assert.h>
 #include <errno.h>
-#include <libctf.h>
-#include <libproc.h>
 
 #include <dt_proc.h>
 #include <dt_pid.h>
@@ -105,7 +104,7 @@ dt_proc_bpcreate(dt_proc_t *dpr, uintptr_t addr, dt_bkpt_f *func, void *data)
 	struct ps_prochandle *P = dpr->dpr_proc;
 	dt_bkpt_t *dbp;
 
-	assert(DT_MUTEX_HELD(&dpr->dpr_lock));
+	assert(MUTEX_HELD(&dpr->dpr_lock));
 
 	if ((dbp = dt_zalloc(dpr->dpr_hdl, sizeof (dt_bkpt_t))) != NULL) {
 		dbp->dbp_func = func;
@@ -127,7 +126,7 @@ dt_proc_bpdestroy(dt_proc_t *dpr, int delbkpts)
 	int state = Pstate(dpr->dpr_proc);
 	dt_bkpt_t *dbp, *nbp;
 
-	assert(DT_MUTEX_HELD(&dpr->dpr_lock));
+	assert(MUTEX_HELD(&dpr->dpr_lock));
 
 	for (dbp = dt_list_next(&dpr->dpr_bps); dbp != NULL; dbp = nbp) {
 		if (delbkpts && dbp->dbp_active &&
@@ -144,39 +143,40 @@ dt_proc_bpdestroy(dt_proc_t *dpr, int delbkpts)
 static void
 dt_proc_bpmatch(dtrace_hdl_t *dtp, dt_proc_t *dpr)
 {
-#if defined(sun)
-	const lwpstatus_t *psp = &Pstatus(dpr->dpr_proc)->pr_lwp;
-#endif
+#if defined(windows)
 	dt_bkpt_t *dbp;
 
-	assert(DT_MUTEX_HELD(&dpr->dpr_lock));
-
-#if defined(freebsd)
-	proc_regget(dpr->dpr_proc, REG_PC, &pc);
-	proc_bkptregadj(&pc);
-#endif
+	assert(MUTEX_HELD(&dpr->dpr_lock));
 
 	for (dbp = dt_list_next(&dpr->dpr_bps);
 	    dbp != NULL; dbp = dt_list_next(dbp)) {
-#if defined(sun)
-		if (psp->pr_reg[R_PC] == dbp->dbp_addr)
-			break;
-#else
 		if (rd_event_type(dpr->dpr_proc) == dbp->dbp_addr)
 			break;
-#endif
 	}
 
 	if (dbp == NULL) {
-#if defined(sun)
-		dt_dprintf("pid %d: spurious breakpoint wakeup for %lx\n",
-		    (int)dpr->dpr_pid, (ulong_t)psp->pr_reg[R_PC]);
-#else
-		dt_dprintf("pid %d: spurious breakpoint wakeup\n", (int)dpr->dpr_pid);
-#endif
+		dt_dprintf("pid %d: spurious breakpoint wakeup\n",
+		    (int)dpr->dpr_pid);
 		return;
 	}
+#else
+	const lwpstatus_t *psp = &Pstatus(dpr->dpr_proc)->pr_lwp;
+	dt_bkpt_t *dbp;
 
+	assert(MUTEX_HELD(&dpr->dpr_lock));
+
+	for (dbp = dt_list_next(&dpr->dpr_bps);
+	    dbp != NULL; dbp = dt_list_next(dbp)) {
+		if (psp->pr_reg[R_PC] == dbp->dbp_addr)
+			break;
+	}
+
+	if (dbp == NULL) {
+		dt_dprintf("pid %d: spurious breakpoint wakeup for %lx\n",
+		    (int)dpr->dpr_pid, (ulong_t)psp->pr_reg[R_PC]);
+		return;
+	}
+#endif
 	dt_dprintf("pid %d: hit breakpoint at %lx (%lu)\n",
 	    (int)dpr->dpr_pid, (ulong_t)dbp->dbp_addr, ++dbp->dbp_hits);
 
@@ -189,7 +189,7 @@ dt_proc_bpenable(dt_proc_t *dpr)
 {
 	dt_bkpt_t *dbp;
 
-	assert(DT_MUTEX_HELD(&dpr->dpr_lock));
+	assert(MUTEX_HELD(&dpr->dpr_lock));
 
 	for (dbp = dt_list_next(&dpr->dpr_bps);
 	    dbp != NULL; dbp = dt_list_next(dbp)) {
@@ -206,7 +206,7 @@ dt_proc_bpdisable(dt_proc_t *dpr)
 {
 	dt_bkpt_t *dbp;
 
-	assert(DT_MUTEX_HELD(&dpr->dpr_lock));
+	assert(MUTEX_HELD(&dpr->dpr_lock));
 
 	for (dbp = dt_list_next(&dpr->dpr_bps);
 	    dbp != NULL; dbp = dt_list_next(dbp)) {
@@ -254,7 +254,7 @@ dt_proc_notify(dtrace_hdl_t *dtp, dt_proc_hash_t *dph, dt_proc_t *dpr,
 static void
 dt_proc_stop(dt_proc_t *dpr, uint8_t why)
 {
-	assert(DT_MUTEX_HELD(&dpr->dpr_lock));
+	assert(MUTEX_HELD(&dpr->dpr_lock));
 	assert(why != DT_PROC_STOP_IDLE);
 
 	if (dpr->dpr_stop & why) {
@@ -285,52 +285,6 @@ dt_proc_bpmain(dtrace_hdl_t *dtp, dt_proc_t *dpr, const char *fname)
 	dt_proc_stop(dpr, DT_PROC_STOP_MAIN);
 }
 
-#if defined(_WIN32) && defined(_AMD64_)
-void dtrace_update_user_modules(dtrace_hdl_t *dtp, dt_proc_t *dpr, int flags)
-{
-	dtrace_user_module_t mod;
-	uintptr_t base;
-	uint64_t size;
-	char *name;
-	struct ps_module_info latest;
-	
-	if (Pmodel(dpr->dpr_proc) == PR_MODEL_ILP32)
-		return;
-		
-	if (flags == PS_LOADED_MOD && Ploadedmod(dpr->dpr_proc, &latest) == 0) {
-		mod.imgbase = latest.imgbase;
-		mod.size = latest.size;
-		strcpy(mod.name, latest.name);
-		mod.pid = Ppid(dpr->dpr_proc);
-		
-		dt_ioctl(dtp, DTRACEIOC_USERMOD, &mod);
-		
-	} else if (flags == PS_ALL_MODS) {
-		int count, i;
-		struct ps_module_info *user;
-		
-		if (Pmodinfo(dpr->dpr_proc, NULL, &count) == -1)
-			return;
-		user = malloc(sizeof(struct ps_module_info) * count);
-		if (user == NULL)
-			return;
-		if (Pmodinfo(dpr->dpr_proc, user, &count) == -1) {
-			free(user);
-			return;
-		}
-		for (i = 0; i < count; i++) {
-			mod.imgbase = user[i].imgbase;
-			mod.size = user[i].size;
-			strcpy(mod.name, user[i].name);
-			mod.pid = Ppid(dpr->dpr_proc);
-			
-			dt_ioctl(dtp, DTRACEIOC_USERMOD, &mod);
-		}
-		free(user);
-	}	
-}
-#endif
-
 static void
 dt_proc_rdevent(dtrace_hdl_t *dtp, dt_proc_t *dpr, const char *evname)
 {
@@ -352,11 +306,12 @@ dt_proc_rdevent(dtrace_hdl_t *dtp, dt_proc_t *dpr, const char *evname)
 			break;
 
 		Pupdate_syms(dpr->dpr_proc);
-#if defined(_WIN32) && defined(_AMD64_)
+#if defined(windows)
 		dtrace_update_user_modules(dtp, dpr, PS_LOADED_MOD);
-#endif	
-		if (dt_pid_create_probes_module(dtp, dpr) != 0) 
-			dt_proc_notify(dtp, dtp->dt_procs, dpr, dpr->dpr_errmsg);
+#endif
+		if (dt_pid_create_probes_module(dtp, dpr) != 0)
+			dt_proc_notify(dtp, dtp->dt_procs, dpr,
+			    dpr->dpr_errmsg);
 
 		break;
 	case RD_PREINIT:
@@ -399,22 +354,24 @@ dt_proc_rdwatch(dt_proc_t *dpr, rd_event_e event, const char *evname)
 static void
 dt_proc_attach(dt_proc_t *dpr, int exec)
 {
-#if defined(sun)
+#ifdef illumos
 	const pstatus_t *psp = Pstatus(dpr->dpr_proc);
 #endif
 	rd_err_e err;
 	GElf_Sym sym;
 
-	assert(DT_MUTEX_HELD(&dpr->dpr_lock));
-
+	assert(MUTEX_HELD(&dpr->dpr_lock));
+	
+#if !defined(windows)
 	if (exec) {
-#if defined(sun)
 		if (psp->pr_lwp.pr_errno != 0)
 			return; /* exec failed: nothing needs to be done */
+
 		dt_proc_bpdestroy(dpr, B_FALSE);
 		Preset_maps(dpr->dpr_proc);
-#endif
 	}
+#endif
+
 	if ((dpr->dpr_rtld = Prd_agent(dpr->dpr_proc)) != NULL &&
 	    (err = rd_event_enable(dpr->dpr_rtld, B_TRUE)) == RD_OK) {
 		dt_proc_rdwatch(dpr, RD_PREINIT, "RD_PREINIT");
@@ -425,7 +382,8 @@ dt_proc_attach(dt_proc_t *dpr, int exec)
 		    (int)dpr->dpr_pid, dpr->dpr_rtld ? rd_errstr(err) :
 		    "rtld_db agent initialization failed");
 	}
-#if defined(sun)
+
+#if !defined(windows)
 	Pupdate_maps(dpr->dpr_proc);
 
 	if (Pxlookup_by_name(dpr->dpr_proc, LM_ID_BASE,
@@ -465,8 +423,7 @@ dt_proc_attach(dt_proc_t *dpr, int exec)
 static void
 dt_proc_waitrun(dt_proc_t *dpr)
 {
-printf("%s:%s(%d): DOODAD\n",__FUNCTION__,__FILE__,__LINE__);
-#ifdef DOODAD
+#ifdef illumos
 	struct ps_prochandle *P = dpr->dpr_proc;
 	const lwpstatus_t *psp = &Pstatus(P)->pr_lwp;
 
@@ -477,7 +434,7 @@ printf("%s:%s(%d): DOODAD\n",__FUNCTION__,__FILE__,__LINE__);
 	const long wstop = PCWSTOP;
 	int pfd = Pctlfd(P);
 
-	assert(DT_MUTEX_HELD(&dpr->dpr_lock));
+	assert(MUTEX_HELD(&dpr->dpr_lock));
 	assert(psp->pr_flags & PR_STOPPED);
 	assert(Pstate(P) == PS_STOP);
 
@@ -542,14 +499,17 @@ dt_proc_control(void *arg)
 	dt_proc_control_data_t *datap = arg;
 	dtrace_hdl_t *dtp = datap->dpcd_hdl;
 	dt_proc_t *dpr = datap->dpcd_proc;
-	dt_proc_hash_t *dph = dpr->dpr_hdl->dt_procs;
+	dt_proc_hash_t *dph = dtp->dt_procs;
 	struct ps_prochandle *P = dpr->dpr_proc;
-	int pid = dpr->dpr_pid;
-	int found = 0;
-#if defined(sun)
+
+#ifdef illumos
 	int pfd = Pctlfd(P);
+	int pid = dpr->dpr_pid;
 
 	const long wstop = PCWSTOP;
+#else
+	int pid = dpr->dpr_pid;
+	int found = 0;
 #endif
 	int notify = B_FALSE;
 
@@ -568,7 +528,7 @@ dt_proc_control(void *arg)
 	 */
 	(void) pthread_mutex_lock(&dpr->dpr_lock);
 
-#if defined(sun)
+#ifdef illumos
 	(void) Punsetflags(P, PR_ASYNC);	/* require synchronous mode */
 	(void) Psetflags(P, PR_BPTADJ);		/* always adjust eip on x86 */
 	(void) Punsetflags(P, PR_FORK);		/* do not inherit on fork */
@@ -596,11 +556,12 @@ dt_proc_control(void *arg)
 	Psync(P);				/* enable all /proc changes */
 #endif
 	dt_proc_attach(dpr, B_FALSE);		/* enable rtld breakpoints */
+
 	/*
 	 * If PR_KLC is set, we created the process; otherwise we grabbed it.
 	 * Check for an appropriate stop request and wait for dt_proc_continue.
 	 */
-#if defined(sun)
+#ifdef illumos
 	if (Pstatus(P)->pr_flags & PR_KLC)
 #else
 	if (Pstatus(P) & PR_KLC)
@@ -608,13 +569,16 @@ dt_proc_control(void *arg)
 		dt_proc_stop(dpr, DT_PROC_STOP_CREATE);
 	else
 		dt_proc_stop(dpr, DT_PROC_STOP_GRAB);
-#if defined(_WIN32) && defined(_AMD64_)
+
+#if defined(windows)
 	dtrace_update_user_modules(dtp, dpr, PS_ALL_MODS);
 #endif
+
 	if (Psetrun(P, 0, 0) == -1) {
 		dt_dprintf("pid %d: failed to set running: %s\n",
 		    (int)dpr->dpr_pid, strerror(errno));
 	}
+
 	(void) pthread_mutex_unlock(&dpr->dpr_lock);
 
 	/*
@@ -627,32 +591,22 @@ dt_proc_control(void *arg)
 	 * Pwait() (which will return immediately) and do our processing.
 	 */
 	while (!dpr->dpr_quit) {
-#if defined(sun)
+#ifdef illumos
 		const lwpstatus_t *psp;
 
 		if (write(pfd, &wstop, sizeof (wstop)) == -1 && errno == EINTR)
 			continue; /* check dpr_quit and continue waiting */
-#else
-		if (Pstopstatus(P))
-			continue; /* check dpr_quit and continue waiting */
-#endif
 
 		(void) pthread_mutex_lock(&dpr->dpr_lock);
-
-#if defined(sun)
 pwait_locked:
 		if (Pstopstatus(P, PCNULL, 0) == -1 && errno == EINTR) {
 			(void) pthread_mutex_unlock(&dpr->dpr_lock);
 			continue; /* check dpr_quit and continue waiting */
 		}
-#endif
 
 		switch (Pstate(P)) {
 		case PS_STOP:
-#if defined(sun)
 			psp = &Pstatus(P)->pr_lwp;
-
-
 
 			dt_dprintf("pid %d: proc stopped showing %d/%d\n",
 			    pid, psp->pr_why, psp->pr_what);
@@ -695,22 +649,14 @@ pwait_locked:
 			    IS_SYS_EXEC(psp->pr_what))
 				dt_proc_attach(dpr, B_TRUE);
 			break;
-#else
-			dt_dprintf("pid %d: proc stopped\n", pid);
-			dt_proc_bpmatch(dtp, dpr);
-			found = 1;
-			break;
-#endif
+
 		case PS_LOST:
-#if defined(sun)
 			if (Preopen(P) == 0)
 				goto pwait_locked;
 
 			dt_dprintf("pid %d: proc lost: %s\n",
 			    pid, strerror(errno));
-#else
-			dt_dprintf("pid %d: proc lost\n", pid);
-#endif
+
 			dpr->dpr_quit = B_TRUE;
 			notify = B_TRUE;
 			break;
@@ -722,18 +668,43 @@ pwait_locked:
 			break;
 		}
 
-		if (Pstate(P) != PS_UNDEAD && found && Psetrun(P, 0, 0) == -1) {
-#if defined(sun)
+		if (Pstate(P) != PS_UNDEAD && Psetrun(P, 0, 0) == -1) {
 			dt_dprintf("pid %d: failed to set running: %s\n",
 			    (int)dpr->dpr_pid, strerror(errno));
+		}
 #else
+		if (Pstopstatus(P))
+			continue; /* check dpr_quit and continue waiting */
+	
+		(void) pthread_mutex_lock(&dpr->dpr_lock);
+	
+		switch (Pstate(P)) {
+		case PS_STOP:
+			dt_dprintf("pid %d: proc stopped\n", pid);
+			dt_proc_bpmatch(dtp, dpr);
+			found = 1;
+			break;
+		case PS_LOST:
+			dt_dprintf("pid %d: proc lost\n", pid);
+			dpr->dpr_quit = B_TRUE;
+			notify = B_TRUE;
+			break;
+			
+		case PS_UNDEAD:
+			dt_dprintf("pid %d: proc died\n", pid);
+			dpr->dpr_quit = B_TRUE;
+			notify = B_TRUE;
+			break;
+		}
+		
+		if (Pstate(P) != PS_UNDEAD && found && Psetrun(P, 0, 0) == -1) {
 			dt_dprintf("pid %d: failed to set running\n", (int)dpr->dpr_pid);
-#endif
 		}
 		found = 0;
+#endif
 		(void) pthread_mutex_unlock(&dpr->dpr_lock);
 	}
-	
+
 	/*
 	 * If the control thread detected PS_UNDEAD or PS_LOST, then enqueue
 	 * the dt_proc_t structure on the dt_proc_hash_t notification list.
@@ -750,7 +721,7 @@ pwait_locked:
 
 	dt_proc_bpdestroy(dpr, B_TRUE);
 	dpr->dpr_done = B_TRUE;
-#if defined(sun)
+#if !defined(windows)
 	dpr->dpr_tid = 0;
 #else
 	dpr->dpr_tid.p = 0;
@@ -758,7 +729,7 @@ pwait_locked:
 
 	(void) pthread_cond_broadcast(&dpr->dpr_cv);
 	(void) pthread_mutex_unlock(&dpr->dpr_lock);
-	
+
 	return (NULL);
 }
 
@@ -784,7 +755,7 @@ dt_proc_t *
 dt_proc_lookup(dtrace_hdl_t *dtp, struct ps_prochandle *P, int remove)
 {
 	dt_proc_hash_t *dph = dtp->dt_procs;
-#if defined(sun)
+#ifdef illumos
 	pid_t pid = Pstatus(P)->pr_pid;
 #else
 	pid_t pid = Ppid(P);
@@ -822,14 +793,14 @@ dt_proc_destroy(dtrace_hdl_t *dtp, struct ps_prochandle *P)
 	 * an external debugger and we were waiting in dt_proc_waitrun().
 	 * Leave the process in this condition using PRELEASE_HANG.
 	 */
-#if defined(sun)
+#ifdef illumos
 	if (!(Pstatus(dpr->dpr_proc)->pr_flags & (PR_KLC | PR_RLC))) {
 #else
 	if (!(Pstatus(dpr->dpr_proc) & (PR_KLC | PR_RLC))) {
 #endif
 		dt_dprintf("abandoning pid %d\n", (int)dpr->dpr_pid);
 		rflag = PRELEASE_HANG;
-#if defined(sun)
+#ifdef illumos
 	} else if (Pstatus(dpr->dpr_proc)->pr_flags & PR_KLC) {
 #else
 	} else if (Pstatus(dpr->dpr_proc) & PR_KLC) {
@@ -841,7 +812,11 @@ dt_proc_destroy(dtrace_hdl_t *dtp, struct ps_prochandle *P)
 		rflag = 0; /* apply run-on-last-close */
 	}
 
+#if defined(windows)
 	if (dpr->dpr_tid.p != NULL) {
+#else
+	if (dpr->dpr_tid) {
+#endif
 		/*
 		 * Set the dpr_quit flag to tell the daemon thread to exit.  We
 		 * send it a SIGCANCEL to poke it out of PCWSTOP or any other
@@ -858,12 +833,11 @@ dt_proc_destroy(dtrace_hdl_t *dtp, struct ps_prochandle *P)
 		 */
 		(void) pthread_mutex_lock(&dpr->dpr_lock);
 		dpr->dpr_quit = B_TRUE;
-#if defined(sun)
+#ifdef illumos
 		(void) _lwp_kill(dpr->dpr_tid, SIGCANCEL);
 #else
 		pthread_kill(dpr->dpr_tid, 0);
 #endif
-
 		/*
 		 * If the process is currently idling in dt_proc_stop(), re-
 		 * enable breakpoints and poke it into running again.
@@ -918,9 +892,9 @@ static int
 dt_proc_create_thread(dtrace_hdl_t *dtp, dt_proc_t *dpr, uint_t stop)
 {
 	dt_proc_control_data_t data;
-#if defined(sun)
+#if !defined(windows)
 	sigset_t nset, oset;
-#endif	
+#endif
 	pthread_attr_t a;
 	int err;
 
@@ -929,22 +903,24 @@ dt_proc_create_thread(dtrace_hdl_t *dtp, dt_proc_t *dpr, uint_t stop)
 
 	(void) pthread_attr_init(&a);
 	(void) pthread_attr_setdetachstate(&a, PTHREAD_CREATE_DETACHED);
-#if defined(sun)
+	
+#if !defined(windows)
 	(void) sigfillset(&nset);
 	(void) sigdelset(&nset, SIGABRT);	/* unblocked for assert() */
-
 	(void) sigdelset(&nset, SIGCANCEL);	/* see dt_proc_destroy() */
 #endif
 
 	data.dpcd_hdl = dtp;
 	data.dpcd_proc = dpr;
-#if defined(sun)
-	(void) pthread_sigmask(SIG_SETMASK, &nset, &oset);
-#endif	
+	
+#if defined(windows)
 	err = pthread_create(&dpr->dpr_tid, &a, dt_proc_control, &data);
-#if defined(sun)
+#else
+	(void) pthread_sigmask(SIG_SETMASK, &nset, &oset);
+	err = pthread_create(&dpr->dpr_tid, &a, dt_proc_control, &data);
 	(void) pthread_sigmask(SIG_SETMASK, &oset, NULL);
 #endif
+
 	/*
 	 * If the control thread was created, then wait on dpr_cv for either
 	 * dpr_done to be set (the victim died or the control thread failed)
@@ -956,7 +932,7 @@ dt_proc_create_thread(dtrace_hdl_t *dtp, dt_proc_t *dpr, uint_t stop)
 	if (err == 0) {
 		while (!dpr->dpr_done && !(dpr->dpr_stop & DT_PROC_STOP_IDLE))
 			(void) pthread_cond_wait(&dpr->dpr_cv, &dpr->dpr_lock);
-			
+
 		/*
 		 * If dpr_done is set, the control thread aborted before it
 		 * reached the rendezvous event.  This is either due to PS_LOST
@@ -964,19 +940,18 @@ dt_proc_create_thread(dtrace_hdl_t *dtp, dt_proc_t *dpr, uint_t stop)
 		 * small amount of useful information to help figure it out.
 		 */
 		if (dpr->dpr_done) {
-#if defined(sun)
+#ifdef illumos
 			const psinfo_t *prp = Ppsinfo(dpr->dpr_proc);
 			int stat = prp ? prp->pr_wstat : 0;
 #endif
 			int pid = dpr->dpr_pid;
-			
+
 			if (Pstate(dpr->dpr_proc) == PS_LOST) {
 				(void) dt_proc_error(dpr->dpr_hdl, dpr,
 				    "failed to control pid %d: process exec'd "
 				    "set-id or unobservable program\n", pid);
-			}
-#if defined(sun)
-			 else if (WIFSIGNALED(stat)) {
+#if !defined(windows)
+			} else if (WIFSIGNALED(stat)) {
 				(void) dt_proc_error(dpr->dpr_hdl, dpr,
 				    "failed to control pid %d: process died "
 				    "from signal %d\n", pid, WTERMSIG(stat));
@@ -985,12 +960,12 @@ dt_proc_create_thread(dtrace_hdl_t *dtp, dt_proc_t *dpr, uint_t stop)
 				    "failed to control pid %d: process exited "
 				    "with status %d\n", pid, WEXITSTATUS(stat));
 			}
-#endif
-			else {
+#else
+			} else {
 				(void) dt_proc_error(dpr->dpr_hdl, dpr,
 				    "failed to control pid %d: process exited \n", pid);
 			}
-
+#endif
 			err = ESRCH; /* cause grab() or create() to fail */
 		}
 	} else {
@@ -999,8 +974,10 @@ dt_proc_create_thread(dtrace_hdl_t *dtp, dt_proc_t *dpr, uint_t stop)
 		    (int)dpr->dpr_pid, strerror(err));
 	}
 
+#ifndef illumos
 	if (err == 0)
-		(void) pthread_mutex_unlock(&dpr->dpr_lock);
+#endif
+	(void) pthread_mutex_unlock(&dpr->dpr_lock);
 	(void) pthread_attr_destroy(&a);
 
 	return (err);
@@ -1019,14 +996,14 @@ dt_proc_create(dtrace_hdl_t *dtp, const char *file, char *const *argv)
 	(void) pthread_mutex_init(&dpr->dpr_lock, NULL);
 	(void) pthread_cond_init(&dpr->dpr_cv, NULL);
 
-	if ((dpr->dpr_proc = Pcreate(file, argv, &err, NULL, 0)) == NULL) {
-
+	dpr->dpr_proc = Pxcreate(file, argv, dtp->dt_proc_env, &err, NULL, 0);
+	if (dpr->dpr_proc == NULL) {
 		return (dt_proc_error(dtp, dpr,
 		    "failed to execute %s: %s\n", file, Pcreate_error(err)));
 	}
 
 	dpr->dpr_hdl = dtp;
-#if defined(sun)
+#ifdef illumos
 	dpr->dpr_pid = Pstatus(dpr->dpr_proc)->pr_pid;
 #else
 	dpr->dpr_pid = Ppid(dpr->dpr_proc);
@@ -1128,6 +1105,7 @@ dt_proc_grab(dtrace_hdl_t *dtp, pid_t pid, int flags, int nomonitor)
 			dpr->dpr_rdonly = B_TRUE;
 			dph->dph_lrucnt++;
 		}
+
 	} else if (dt_proc_create_thread(dtp, dpr, DT_PROC_STOP_GRAB) != 0)
 		return (NULL); /* dt_proc_error() has been called for us */
 
@@ -1187,30 +1165,75 @@ dt_proc_unlock(dtrace_hdl_t *dtp, struct ps_prochandle *P)
 }
 
 void
-dt_proc_hash_create(dtrace_hdl_t *dtp)
+dt_proc_init(dtrace_hdl_t *dtp)
 {
+	extern char **environ;
+	static char *envdef[] = {
+		"LD_NOLAZYLOAD=1",	/* linker lazy loading hides funcs */
+		NULL
+	};
+	char **p;
+	int i;
+
 	if ((dtp->dt_procs = dt_zalloc(dtp, sizeof (dt_proc_hash_t) +
-	    sizeof (dt_proc_t *) * _dtrace_pidbuckets - 1)) != NULL) {
+	    sizeof (dt_proc_t *) * _dtrace_pidbuckets - 1)) == NULL)
+		return;
 
-		(void) pthread_mutex_init(&dtp->dt_procs->dph_lock, NULL);
-		(void) pthread_cond_init(&dtp->dt_procs->dph_cv, NULL);
+	(void) pthread_mutex_init(&dtp->dt_procs->dph_lock, NULL);
+	(void) pthread_cond_init(&dtp->dt_procs->dph_cv, NULL);
 
-		dtp->dt_procs->dph_hashlen = _dtrace_pidbuckets;
-		dtp->dt_procs->dph_lrulim = _dtrace_pidlrulim;
+	dtp->dt_procs->dph_hashlen = _dtrace_pidbuckets;
+	dtp->dt_procs->dph_lrulim = _dtrace_pidlrulim;
+
+
+	/*
+	 * Count how big our environment needs to be.
+	 */
+	for (i = 1, p = environ; *p != NULL; i++, p++)
+		continue;
+	for (p = envdef; *p != NULL; i++, p++)
+		continue;
+
+	if ((dtp->dt_proc_env = dt_zalloc(dtp, sizeof (char *) * i)) == NULL)
+		return;
+
+	for (i = 0, p = environ; *p != NULL; i++, p++) {
+		if ((dtp->dt_proc_env[i] = strdup(*p)) == NULL)
+			goto err;
 	}
+	for (p = envdef; *p != NULL; i++, p++) {
+		if ((dtp->dt_proc_env[i] = strdup(*p)) == NULL)
+			goto err;
+	}
+
+	return;
+
+err:
+	while (--i != 0) {
+		dt_free(dtp, dtp->dt_proc_env[i]);
+	}
+	dt_free(dtp, dtp->dt_proc_env);
+	dtp->dt_proc_env = NULL;
 }
 
 void
-dt_proc_hash_destroy(dtrace_hdl_t *dtp)
+dt_proc_fini(dtrace_hdl_t *dtp)
 {
 	dt_proc_hash_t *dph = dtp->dt_procs;
 	dt_proc_t *dpr;
+	char **p;
 
 	while ((dpr = dt_list_next(&dph->dph_lrulist)) != NULL)
 		dt_proc_destroy(dtp, dpr->dpr_proc);
 
 	dtp->dt_procs = NULL;
 	dt_free(dtp, dph);
+
+	for (p = dtp->dt_proc_env; *p != NULL; p++)
+		dt_free(dtp, *p);
+
+	dt_free(dtp, dtp->dt_proc_env);
+	dtp->dt_proc_env = NULL;
 }
 
 struct ps_prochandle *
@@ -1219,13 +1242,12 @@ dtrace_proc_create(dtrace_hdl_t *dtp, const char *file, char *const *argv)
 	dt_ident_t *idp = dt_idhash_lookup(dtp->dt_macros, "target");
 	struct ps_prochandle *P = dt_proc_create(dtp, file, argv);
 
-	if (P != NULL && idp != NULL && idp->di_id == 0) {
-#if defined(sun)
+	if (P != NULL && idp != NULL && idp->di_id == 0)
+#ifdef illumos
 		idp->di_id = Pstatus(P)->pr_pid; /* $target = created pid */
 #else
 		idp->di_id = Ppid(P); /* $target = created pid */
 #endif
-	}
 
 	return (P);
 }
@@ -1253,3 +1275,49 @@ dtrace_proc_continue(dtrace_hdl_t *dtp, struct ps_prochandle *P)
 {
 	dt_proc_continue(dtp, P);
 }
+
+#if defined(windows)
+void dtrace_update_user_modules(dtrace_hdl_t *dtp, dt_proc_t *dpr, int flags)
+{
+	dtrace_user_module_t mod;
+	uintptr_t base;
+	uint64_t size;
+	char *name;
+	struct ps_module_info latest;
+	
+	if (Pmodel(dpr->dpr_proc) == PR_MODEL_ILP32)
+		return;
+		
+	if (flags == PS_LOADED_MOD && Ploadedmod(dpr->dpr_proc, &latest) == 0) {
+		mod.imgbase = latest.imgbase;
+		mod.size = latest.size;
+		strcpy(mod.name, latest.name);
+		mod.pid = Ppid(dpr->dpr_proc);
+		
+		dt_ioctl(dtp, DTRACEIOC_USERMOD, &mod);
+		
+	} else if (flags == PS_ALL_MODS) {
+		int count, i;
+		struct ps_module_info *user;
+		
+		if (Pmodinfo(dpr->dpr_proc, NULL, &count) == -1)
+			return;
+		user = malloc(sizeof(struct ps_module_info) * count);
+		if (user == NULL)
+			return;
+		if (Pmodinfo(dpr->dpr_proc, user, &count) == -1) {
+			free(user);
+			return;
+		}
+		for (i = 0; i < count; i++) {
+			mod.imgbase = user[i].imgbase;
+			mod.size = user[i].size;
+			strcpy(mod.name, user[i].name);
+			mod.pid = Ppid(dpr->dpr_proc);
+			
+			dt_ioctl(dtp, DTRACEIOC_USERMOD, &mod);
+		}
+		free(user);
+	}	
+}
+#endif

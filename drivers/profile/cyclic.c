@@ -37,7 +37,8 @@ int profile_detach();
 
 static ULONG64 max_interval = ~0;
 #if !defined(STATIC)
-BOOL APIENTRY DllMain(HMODULE hmodule, DWORD  reason, LPVOID notused)
+BOOL APIENTRY
+DllMain(HMODULE hmodule, DWORD  reason, LPVOID notused)
 {
 	switch (reason) {
 	case DLL_PROCESS_ATTACH:
@@ -52,11 +53,12 @@ BOOL APIENTRY DllMain(HMODULE hmodule, DWORD  reason, LPVOID notused)
 		}
 		break;
 	}
-	return TRUE;
+	return (TRUE);
 }
 #endif
 
-int profilebg(PEVENT_RECORD event, void *data)
+int
+profilebg(PEVENT_RECORD event, void *data)
 {
 	HANDLE ev = (HANDLE) data;
 	dtrace_etw_unhook_event(&PerfInfoGuid, profilebg, data);
@@ -70,39 +72,45 @@ int profilebg(PEVENT_RECORD event, void *data)
  * before returning to dtrace
  */
 
-HANDLE ProfileInitate(hrtime_t interval, int type)
+HANDLE
+ProfileInitate(hrtime_t interval, int type)
 {
-	HANDLE event = CreateEvent(NULL,FALSE,FALSE,NULL);
+	int isreal;
+	HANDLE event = CreateEvent(NULL, FALSE, FALSE, NULL);
+
 	if (event) {
-		dtrace_etw_hook_event(&PerfInfoGuid, profilebg, (void *) event, ETW_EVENTCB_ORDER_ANY);
+		dtrace_etw_hook_event(&PerfInfoGuid, profilebg,
+		    (void *) event, ETW_EVENTCB_ORDER_ANY);
 	}
-	int isreal = dtrace_etw_profile_enable(interval, type);
+	isreal = dtrace_etw_profile_enable(interval, type);
 	if (isreal) {
 		WaitForSingleObject(event, INFINITE);
 	} else {
 		dtrace_etw_unhook_event(&PerfInfoGuid, profilebg, event);
 		CloseHandle(event);
 	}
-	return event;
+
+	return (event);
 }
 
-int CycFuncProc(PEVENT_RECORD event, void *data)
+int
+CycFuncProc(PEVENT_RECORD event, void *data)
 {
-	if (event->EventHeader.EventDescriptor.Opcode != 46)
-		return 0;
-	
 	cyclic_omni_t *c = (cyclic_omni_t *) data;
 	cyclic_t *cyclic;
 	void *s;
 	struct reg rp = {0};
-	thread_t *td = curthread; 
+	thread_t *td = curthread;
 	hrtime_t now, exp;
 	int cpu;
-	struct SampledProfile *samp = (struct SampledProfile *) event->UserData;
 	cpu_data_t *cpus = &CPU[curcpu];
+	struct SampledProfile *samp =
+	    (struct SampledProfile *) event->UserData;
+
+	if (event->EventHeader.EventDescriptor.Opcode != 46)
+		return (0);
 
 	now = dtrace_etw_gethrtime();
-
 	cpus->cpu_profile_upc = 0;
 	cpus->cpu_profile_pc = 0;
 
@@ -123,7 +131,7 @@ int CycFuncProc(PEVENT_RECORD event, void *data)
 	s = cyclic->cy_arg;
 	td->tf = &rp;
 
-	/* 
+	/*
 	 * "sample" probe will just fire every time a profile event is seen.
 	 * for "sample" probe cyclic->cy_expire  == -1
 	 */
@@ -154,20 +162,21 @@ int CycFuncProc(PEVENT_RECORD event, void *data)
 	return (0);
 }
 
-#define ONLINE  0
-#define OFFLINE  1
+#define	ONLINE  0
+#define	OFFLINE  1
 
-int StartProfile(PEVENT_RECORD ev, void *data)
+int
+StartProfile(PEVENT_RECORD ev, void *data)
 {
-	if (ev->EventHeader.EventDescriptor.Opcode != 46)
-		return 0;
-	
 	cyclic_omni_t *c = (cyclic_omni_t *) data;
 	cyc_omni_handler_t *omni = &c->omni;
 	cyc_handler_t hdlr;
 	cyclic_t *cyc = c->cyc;
 	cyc_time_t time;
 	int cpus = c->cpus;
+
+	if (ev->EventHeader.EventDescriptor.Opcode != 46)
+		return (0);
 
 	hrtime_t now = dtrace_etw_gethrtime();
 
@@ -187,8 +196,8 @@ int StartProfile(PEVENT_RECORD ev, void *data)
 
 		if (time.cyt_when == 0) {
 			/*
-			 * If a start time hasn't been explicitly specified, we'll
-			 * start on the next interval boundary.
+			 * If a start time hasn't been explicitly specified,
+			 * we'll start on the next interval boundary.
 			 */
 			cyclic->cy_expire = (now / cyclic->cy_interval + 1) *
 			    cyclic->cy_interval;
@@ -196,8 +205,8 @@ int StartProfile(PEVENT_RECORD ev, void *data)
 			cyclic->cy_expire = time.cyt_when;
 		}
 		dprintf("profile, StartProfile - time (%lld) interval (%lld)"
-		" expire (%lld) when (%lld)\n", 
-			now, cyclic->cy_interval, cyclic->cy_expire, time.cyt_when);
+		    " expire (%lld) when (%lld)\n",
+		    now, cyclic->cy_interval, cyclic->cy_expire, time.cyt_when);
 	}
 
 	dtrace_etw_unhook_event(&PerfInfoGuid, StartProfile, data);
@@ -205,21 +214,22 @@ int StartProfile(PEVENT_RECORD ev, void *data)
 	return (0);
 }
 
-cyclic_id_t cyclic_add(cyc_handler_t *hdlr, cyc_time_t *time)
+cyclic_id_t
+cyclic_add(cyc_handler_t *hdlr, cyc_time_t *time)
 {
 	cyclic_t *cyclic;
 	LARGE_INTEGER nano;
 	int cpu = curcpu;
 	ULONG res;
 
-	cyclic_omni_t *c = kmem_zalloc(sizeof(cyclic_omni_t), KM_SLEEP);
+	cyclic_omni_t *c = kmem_zalloc(sizeof (cyclic_omni_t), KM_SLEEP);
 
 	if (c == NULL)
-		return CYCLIC_NONE;
+		return (CYCLIC_NONE);
 
-	if ((cyclic = kmem_zalloc(sizeof(cyclic_t), KM_SLEEP)) == NULL) {
-		kmem_free(c, sizeof(cyclic_omni_t));
-		return CYCLIC_NONE;
+	if ((cyclic = kmem_zalloc(sizeof (cyclic_t), KM_SLEEP)) == NULL) {
+		kmem_free(c, sizeof (cyclic_omni_t));
+		return (CYCLIC_NONE);
 	}
 
 	cyclic->cy_func = hdlr->cyh_func;
@@ -232,15 +242,17 @@ cyclic_id_t cyclic_add(cyc_handler_t *hdlr, cyc_time_t *time)
 	c->type = CYCLIC;
 	c->cpus = 1;
 
-	dtrace_etw_hook_event(&PerfInfoGuid, StartProfile, (void *) c, ETW_EVENTCB_ORDER_ANY);
-	dtrace_etw_hook_event(&PerfInfoGuid, CycFuncProc, (void *) c, ETW_EVENTCB_ORDER_LAST);
+	dtrace_etw_hook_event(&PerfInfoGuid, StartProfile,
+	    (void *) c, ETW_EVENTCB_ORDER_ANY);
+	dtrace_etw_hook_event(&PerfInfoGuid, CycFuncProc,
+	    (void *) c, ETW_EVENTCB_ORDER_LAST);
 
 	if (max_interval > time->cyt_interval) {
 		max_interval = time->cyt_interval;
 		ProfileInitate(time->cyt_interval, CYCLIC);
 	}
 
-	return (cyclic_id_t) c;
+	return ((cyclic_id_t) c);
 }
 
 cyclic_id_t
@@ -248,14 +260,14 @@ cyclic_add_omni(cyc_omni_handler_t *omni, hrtime_t interval)
 {
 	cyclic_t *cyclic;
 	ULONG cpus = NCPU;
-	cyclic_omni_t *c = kmem_zalloc(sizeof(cyclic_omni_t), KM_SLEEP);
-	
-	if (c == NULL)
-		return CYCLIC_NONE;
+	cyclic_omni_t *c = kmem_zalloc(sizeof (cyclic_omni_t), KM_SLEEP);
 
-	if ((cyclic = kmem_zalloc(sizeof(cyclic_t)*cpus, KM_SLEEP)) == NULL) {
-		kmem_free(c, sizeof(cyclic_omni_t));
-		return CYCLIC_NONE;
+	if (c == NULL)
+		return (CYCLIC_NONE);
+
+	if ((cyclic = kmem_zalloc(sizeof (cyclic_t)*cpus, KM_SLEEP)) == NULL) {
+		kmem_free(c, sizeof (cyclic_omni_t));
+		return (CYCLIC_NONE);
 	}
 
 	c->type = OMNI_CYCLIC;
@@ -263,18 +275,21 @@ cyclic_add_omni(cyc_omni_handler_t *omni, hrtime_t interval)
 	c->cpus = cpus;
 	c->omni = *omni;
 
-	dtrace_etw_hook_event(&PerfInfoGuid, StartProfile, (void *) c, ETW_EVENTCB_ORDER_ANY);
-	dtrace_etw_hook_event(&PerfInfoGuid, CycFuncProc, (void *) c, ETW_EVENTCB_ORDER_LAST);
+	dtrace_etw_hook_event(&PerfInfoGuid, StartProfile,
+	    (void *) c, ETW_EVENTCB_ORDER_ANY);
+	dtrace_etw_hook_event(&PerfInfoGuid, CycFuncProc,
+	    (void *) c, ETW_EVENTCB_ORDER_LAST);
 
 	if (max_interval > interval) {
 		max_interval = interval;
 		ProfileInitate(interval, OMNI_CYCLIC);
 	}
 
-	return (cyclic_id_t) c;
+	return ((cyclic_id_t) c);
 }
 
-void cyclic_remove(cyclic_id_t id)
+void
+cyclic_remove(cyclic_id_t id)
 {
 	cyclic_omni_t *c = (cyclic_omni_t *) id;
 	int cpus = c->cpus;
@@ -286,8 +301,8 @@ void cyclic_remove(cyclic_id_t id)
 
 		dtrace_etw_profile_disable(CYCLIC);
 
-		kmem_free(c->cyc, sizeof(cyclic_t));
-		kmem_free(c, sizeof(cyclic_omni_t));
+		kmem_free(c->cyc, sizeof (cyclic_t));
+		kmem_free(c, sizeof (cyclic_omni_t));
 	} else {
 		ASSERT(c->type == OMNI_CYCLIC);
 
@@ -304,7 +319,6 @@ void cyclic_remove(cyclic_id_t id)
 			(omni->cyo_offline)(omni->cyo_arg, NULL, cyclic->cy_arg);
 		}
 		kmem_free(c->cyc, 1);
-		kmem_free(c, sizeof(cyclic_omni_t));
+		kmem_free(c, sizeof (cyclic_omni_t));
 	}
-
 }

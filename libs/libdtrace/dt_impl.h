@@ -142,10 +142,10 @@ typedef struct dt_module {
 	GElf_Addr dm_bss_va;	/* virtual address of BSS */
 	GElf_Xword dm_bss_size;	/* size in bytes of BSS */
 	dt_idhash_t *dm_extern;	/* external symbol definitions */
-#if !defined(sun)
-	caddr_t dm_reloc_offset;	/* Symbol relocation offset. */
-	uintptr_t *dm_sec_offsets;
-#endif
+	pid_t dm_pid;		/* pid for this module */
+	uint_t dm_nctflibs;	/* number of ctf children libraries */
+	ctf_file_t **dm_libctfp; /* process library ctf pointers */
+	char **dm_libctfn;	/* names of process ctf containers */
 } dt_module_t;
 
 #define	DT_DM_LOADED	0x1	/* module symbol and type data is loaded */
@@ -189,6 +189,9 @@ typedef struct dt_print_aggdata {
 	dtrace_aggvarid_t dtpa_id;	/* aggregation variable of interest */
 	FILE *dtpa_fp;			/* file pointer */
 	int dtpa_allunprint;		/* print only unprinted aggregations */
+	int dtpa_agghist;		/* print aggregation as histogram */
+	int dtpa_agghisthdr;		/* aggregation histogram hdr printed */
+	int dtpa_aggpack;		/* pack quantized aggregations */
 } dt_print_aggdata_t;
 
 typedef struct dt_dirpath {
@@ -283,6 +286,7 @@ struct dtrace_hdl {
 	uint_t dt_linktype;	/* dtrace link output file type (see below) */
 	uint_t dt_xlatemode;	/* dtrace translator linking mode (see below) */
 	uint_t dt_stdcmode;	/* dtrace stdc compatibility mode (see below) */
+	uint_t dt_encoding;	/* dtrace output encoding (see below) */
 	uint_t dt_treedump;	/* dtrace tree debug bitmap (see below) */
 	uint64_t dt_options[DTRACEOPT_MAX]; /* dtrace run-time options */
 	int dt_version;		/* library version requested by client */
@@ -292,15 +296,14 @@ struct dtrace_hdl {
 	const char *dt_errfile;
 	int dt_errline;
 #endif
-#if defined(sun)
+#ifndef windows
 	int dt_fd;		/* file descriptor for dtrace pseudo-device */
 	int dt_ftfd;		/* file descriptor for fasttrap pseudo-device */
-	int dt_fterr;		/* saved errno from failed open of dt_ftfd */
 #else
 	HANDLE dt_fd;
 	HANDLE dt_ftfd;
-	int dt_fterr;
 #endif
+	int dt_fterr;		/* saved errno from failed open of dt_ftfd */
 	int dt_cdefs_fd;	/* file descriptor for C CTF debugging cache */
 	int dt_ddefs_fd;	/* file descriptor for D CTF debugging cache */
 #if defined(sun)
@@ -331,7 +334,9 @@ struct dtrace_hdl {
 	dtrace_handle_buffered_f *dt_bufhdlr; /* buffered handler, if any */
 	void *dt_bufarg;	/* buffered handler argument */
 	dt_dof_t dt_dof;	/* DOF generation buffers (see dt_dof.c) */
-	//struct utsname dt_uts;	/* uname(2) information for system */
+#ifndef windows
+	struct utsname dt_uts;	/* uname(2) information for system */
+#endif
 	dt_list_t dt_lib_dep;	/* scratch linked-list of lib dependencies */
 	dt_list_t dt_lib_dep_sorted;	/* dependency sorted library list */
 	dtrace_flowkind_t dt_flow;	/* flow kind */
@@ -339,6 +344,7 @@ struct dtrace_hdl {
 	int dt_indent;		/* recommended flow indent */
 	dtrace_epid_t dt_last_epid;	/* most recently consumed EPID */
 	uint64_t dt_last_timestamp;	/* most recently consumed timestamp */
+	boolean_t dt_has_sugar;	/* syntactic sugar used? */
 };
 
 /*
@@ -378,6 +384,14 @@ struct dtrace_hdl {
 #define	DT_STDC_XC	1	/* Strict ISO C: __STDC__=1 */
 #define	DT_STDC_XS	2	/* K&R C: __STDC__ not defined */
 #define	DT_STDC_XT	3	/* ISO C + K&R C compat with ISO: __STDC__=0 */
+
+/*
+ * Values for the dt_encoding property, which is used to force a particular
+ * character encoding (overriding default behavior and/or automatic detection).
+ */
+#define	DT_ENCODING_UNSET	0
+#define	DT_ENCODING_ASCII	1
+#define	DT_ENCODING_UTF8	2
 
 /*
  * Macro to test whether a given pass bit is set in the dt_treedump bit-vector.
@@ -455,8 +469,6 @@ struct dtrace_hdl {
 #define	DT_ACT_UADDR		DT_ACT(27)	/* uaddr() action */
 #define	DT_ACT_SETOPT		DT_ACT(28)	/* setopt() action */
 #define	DT_ACT_PRINT		DT_ACT(29)	/* print() action */
-#define	DT_ACT_PRINTM		DT_ACT(30)	/* printm() action */
-#define	DT_ACT_PRINTT		DT_ACT(31)	/* printt() action */
 
 /*
  * Sentinel to tell freopen() to restore the saved stdout.  This must not
@@ -541,7 +553,9 @@ enum {
 	EDT_BADSTACKPC,		/* invalid stack program counter size */
 	EDT_BADAGGVAR,		/* invalid aggregation variable identifier */
 	EDT_OVERSION,		/* client is requesting deprecated version */
-	EDT_ENABLING_ERR	/* failed to enable probe */
+	EDT_ENABLING_ERR,	/* failed to enable probe */
+	EDT_NOPROBES,		/* no probes sites for declared provider */
+	EDT_CANTLOAD		/* failed to load a module */
 };
 
 /*
@@ -584,13 +598,7 @@ extern int dt_version_defined(dt_version_t);
 extern char *dt_cpp_add_arg(dtrace_hdl_t *, const char *);
 extern char *dt_cpp_pop_arg(dtrace_hdl_t *);
 
-#if defined(sun)
 extern int dt_set_errno(dtrace_hdl_t *, int);
-#else
-int _dt_set_errno(dtrace_hdl_t *, int, const char *, int);
-void dt_get_errloc(dtrace_hdl_t *, const char **, int *);
-#define dt_set_errno(_a,_b)	_dt_set_errno(_a,_b,__FILE__,__LINE__)
-#endif
 extern void dt_set_errmsg(dtrace_hdl_t *, const char *, const char *,
     const char *, int, const char *, va_list);
 
@@ -629,6 +637,7 @@ extern int dt_options_load(dtrace_hdl_t *);
 #define DT_RW_WRITE_HELD(x)	dt_rw_write_held(x)	 
 #define DT_RW_LOCK_HELD(x)	(DT_RW_READ_HELD(x) || DT_RW_WRITE_HELD(x))
 #define DT_MUTEX_HELD(x)	dt_mutex_held(x)
+#define MUTEX_HELD(x)	dt_mutex_held(x)
 
 extern void dt_dprintf(const char *, ...);
 

@@ -25,23 +25,26 @@
  */
 
 /*
- * Copyright (c) 2011, Joyent, Inc. All rights reserved.
+ * Copyright (c) 2016, Joyent, Inc. All rights reserved.
  * Copyright (c) 2012 by Delphix. All rights reserved.
  */
-#if defined(sun)
-#include <stdint.h>
-#include <alloca.h>
+#if !defined(windows)
+#include <stdlib.h>
 #include <strings.h>
+#include <errno.h>
 #include <unistd.h>
+#include <dt_impl.h>
+#include <assert.h>
+#include <alloca.h>
+#include <limits.h>
 #else
 #include <dtrace_misc.h>
-#endif
 #include <stdlib.h>
 #include <errno.h>
 #include <dt_impl.h>
 #include <assert.h>
 #include <limits.h>
-
+#endif
 #define	DTRACE_AHASHSIZE	32779		/* big 'ol prime */
 
 /*
@@ -61,7 +64,7 @@ static int dt_keypos;
 static void
 dt_aggregate_count(int64_t *existing, int64_t *new, size_t size)
 {
-	uint_t i;
+	int i;
 
 	for (i = 0; i < size / sizeof (int64_t); i++)
 		existing[i] = existing[i] + new[i];
@@ -291,10 +294,9 @@ dt_aggregate_llquantizedcmp(int64_t *lhs, int64_t *rhs)
 static int
 dt_aggregate_quantizedcmp(int64_t *lhs, int64_t *rhs)
 {
-	int nbuckets = DTRACE_QUANTIZE_NBUCKETS;
+	int nbuckets = DTRACE_QUANTIZE_NBUCKETS, i;
 	long double ltotal = 0, rtotal = 0;
 	int64_t lzero, rzero;
-	uint_t i;
 
 	for (i = 0; i < nbuckets; i++) {
 		int64_t bucketval = DTRACE_QUANTIZE_BUCKETVAL(i);
@@ -335,15 +337,10 @@ dt_aggregate_usym(dtrace_hdl_t *dtp, uint64_t *data)
 	uint64_t *pc = &data[1];
 	struct ps_prochandle *P;
 	GElf_Sym sym;
-#if !defined(windows)
+
 	if (dtp->dt_vector != NULL)
 		return;
-#else
-	if (dtp->dt_vector != NULL) {
-		if ((P = dt_proc_grab(dtp, pid, PGRAB_RDONLY | PGRAB_ETW, 0)) == NULL)
-			return;
-	} else
-#endif
+
 	if ((P = dt_proc_grab(dtp, pid, PGRAB_RDONLY | PGRAB_FORCE, 0)) == NULL)
 		return;
 
@@ -363,15 +360,10 @@ dt_aggregate_umod(dtrace_hdl_t *dtp, uint64_t *data)
 	uint64_t *pc = &data[1];
 	struct ps_prochandle *P;
 	const prmap_t *map;
-#if !defined(windows)
+
 	if (dtp->dt_vector != NULL)
 		return;
-#else
-	if (dtp->dt_vector != NULL) {
-		if ((P = dt_proc_grab(dtp, pid, PGRAB_RDONLY | PGRAB_ETW, 0)) == NULL)
-			return;
-	} else
-#endif
+
 	if ((P = dt_proc_grab(dtp, pid, PGRAB_RDONLY | PGRAB_FORCE, 0)) == NULL)
 		return;
 
@@ -462,7 +454,7 @@ dt_aggregate_snap_cpu(dtrace_hdl_t *dtp, processorid_t cpu)
 
 	buf->dtbd_cpu = cpu;
 
-	if (dt_ioctl(dtp, DTRACEIOC_AGGSNAP, buf) == -1) {	
+	if (dt_ioctl(dtp, DTRACEIOC_AGGSNAP, buf) == -1) {
 		if (errno == ENOENT) {
 			/*
 			 * If that failed with ENOENT, it may be because the
@@ -735,7 +727,7 @@ dtrace_aggregate_snap(dtrace_hdl_t *dtp)
 		return (0);
 
 	for (i = 0; i < agp->dtat_ncpus; i++) {
-		if ((rval = dt_aggregate_snap_cpu(dtp, agp->dtat_cpus[i])))
+		if (rval = dt_aggregate_snap_cpu(dtp, agp->dtat_cpus[i]))
 			return (rval);
 	}
 
@@ -1160,7 +1152,13 @@ dt_aggwalk_rval(dtrace_hdl_t *dtp, dt_ahashent_t *h, int rval)
 		size = rec->dtrd_size;
 		data = &h->dtahe_data;
 
-		if (rec->dtrd_action == DTRACEAGG_LQUANTIZE) {
+		if (rec->dtrd_action == DTRACEAGG_LQUANTIZE ||
+		    rec->dtrd_action == DTRACEAGG_LLQUANTIZE) {
+			/*
+			 * For lquantize() and llquantize(), we want to be
+			 * sure to not zero the aggregation parameters; step
+			 * over them and adjust our size accordingly.
+			 */
 			offs = sizeof (uint64_t);
 			size -= sizeof (uint64_t);
 		}
@@ -1198,7 +1196,7 @@ dt_aggwalk_rval(dtrace_hdl_t *dtp, dt_ahashent_t *h, int rval)
 
 	case DTRACE_AGGWALK_REMOVE: {
 		dtrace_aggdata_t *aggdata = &h->dtahe_data;
-		int max_cpus = agp->dtat_maxcpu;
+		int i, max_cpus = agp->dtat_maxcpu;
 
 		/*
 		 * First, remove this hash entry from its hash chain.
@@ -1306,6 +1304,231 @@ dtrace_aggregate_walk(dtrace_hdl_t *dtp, dtrace_aggregate_f *func, void *arg)
 }
 
 static int
+dt_aggregate_total(dtrace_hdl_t *dtp, boolean_t clear)
+{
+	dt_ahashent_t *h;
+	dtrace_aggdata_t **total;
+	dtrace_aggid_t max = DTRACE_AGGVARIDNONE, id;
+	dt_aggregate_t *agp = &dtp->dt_aggregate;
+	dt_ahash_t *hash = &agp->dtat_hash;
+	uint32_t tflags;
+
+	tflags = DTRACE_A_TOTAL | DTRACE_A_HASNEGATIVES | DTRACE_A_HASPOSITIVES;
+
+	/*
+	 * If we need to deliver per-aggregation totals, we're going to take
+	 * three passes over the aggregate:  one to clear everything out and
+	 * determine our maximum aggregation ID, one to actually total
+	 * everything up, and a final pass to assign the totals to the
+	 * individual elements.
+	 */
+	for (h = hash->dtah_all; h != NULL; h = h->dtahe_nextall) {
+		dtrace_aggdata_t *aggdata = &h->dtahe_data;
+
+		if ((id = dt_aggregate_aggvarid(h)) > max)
+			max = id;
+
+		aggdata->dtada_total = 0;
+		aggdata->dtada_flags &= ~tflags;
+	}
+
+	if (clear || max == DTRACE_AGGVARIDNONE)
+		return (0);
+
+	total = dt_zalloc(dtp, (max + 1) * sizeof (dtrace_aggdata_t *));
+
+	if (total == NULL)
+		return (-1);
+
+	for (h = hash->dtah_all; h != NULL; h = h->dtahe_nextall) {
+		dtrace_aggdata_t *aggdata = &h->dtahe_data;
+		dtrace_aggdesc_t *agg = aggdata->dtada_desc;
+		dtrace_recdesc_t *rec;
+		caddr_t data;
+		int64_t val, *addr;
+
+		rec = &agg->dtagd_rec[agg->dtagd_nrecs - 1];
+		data = aggdata->dtada_data;
+		addr = (int64_t *)(uintptr_t)(data + rec->dtrd_offset);
+
+		switch (rec->dtrd_action) {
+		case DTRACEAGG_STDDEV:
+			val = dt_stddev((uint64_t *)addr, 1);
+			break;
+
+		case DTRACEAGG_SUM:
+		case DTRACEAGG_COUNT:
+			val = *addr;
+			break;
+
+		case DTRACEAGG_AVG:
+			val = addr[0] ? (addr[1] / addr[0]) : 0;
+			break;
+
+		default:
+			continue;
+		}
+
+		if (total[agg->dtagd_varid] == NULL) {
+			total[agg->dtagd_varid] = aggdata;
+			aggdata->dtada_flags |= DTRACE_A_TOTAL;
+		} else {
+			aggdata = total[agg->dtagd_varid];
+		}
+
+		if (val > 0)
+			aggdata->dtada_flags |= DTRACE_A_HASPOSITIVES;
+
+		if (val < 0) {
+			aggdata->dtada_flags |= DTRACE_A_HASNEGATIVES;
+			val = -val;
+		}
+
+		if (dtp->dt_options[DTRACEOPT_AGGZOOM] != DTRACEOPT_UNSET) {
+			val = (int64_t)((long double)val *
+			    (1 / DTRACE_AGGZOOM_MAX));
+
+			if (val > aggdata->dtada_total)
+				aggdata->dtada_total = val;
+		} else {
+			aggdata->dtada_total += val;
+		}
+	}
+
+	/*
+	 * And now one final pass to set everyone's total.
+	 */
+	for (h = hash->dtah_all; h != NULL; h = h->dtahe_nextall) {
+		dtrace_aggdata_t *aggdata = &h->dtahe_data, *t;
+		dtrace_aggdesc_t *agg = aggdata->dtada_desc;
+
+		if ((t = total[agg->dtagd_varid]) == NULL || aggdata == t)
+			continue;
+
+		aggdata->dtada_total = t->dtada_total;
+		aggdata->dtada_flags |= (t->dtada_flags & tflags);
+	}
+
+	dt_free(dtp, total);
+
+	return (0);
+}
+
+static int
+dt_aggregate_minmaxbin(dtrace_hdl_t *dtp, boolean_t clear)
+{
+	dt_ahashent_t *h;
+	dtrace_aggdata_t **minmax;
+	dtrace_aggid_t max = DTRACE_AGGVARIDNONE, id;
+	dt_aggregate_t *agp = &dtp->dt_aggregate;
+	dt_ahash_t *hash = &agp->dtat_hash;
+
+	for (h = hash->dtah_all; h != NULL; h = h->dtahe_nextall) {
+		dtrace_aggdata_t *aggdata = &h->dtahe_data;
+
+		if ((id = dt_aggregate_aggvarid(h)) > max)
+			max = id;
+
+		aggdata->dtada_minbin = 0;
+		aggdata->dtada_maxbin = 0;
+		aggdata->dtada_flags &= ~DTRACE_A_MINMAXBIN;
+	}
+
+	if (clear || max == DTRACE_AGGVARIDNONE)
+		return (0);
+
+	minmax = dt_zalloc(dtp, (max + 1) * sizeof (dtrace_aggdata_t *));
+
+	if (minmax == NULL)
+		return (-1);
+
+	for (h = hash->dtah_all; h != NULL; h = h->dtahe_nextall) {
+		dtrace_aggdata_t *aggdata = &h->dtahe_data;
+		dtrace_aggdesc_t *agg = aggdata->dtada_desc;
+		dtrace_recdesc_t *rec;
+		caddr_t data;
+		int64_t *addr;
+		int minbin = -1, maxbin = -1, i;
+		int start = 0, size;
+
+		rec = &agg->dtagd_rec[agg->dtagd_nrecs - 1];
+		size = rec->dtrd_size / sizeof (int64_t);
+		data = aggdata->dtada_data;
+		addr = (int64_t *)(uintptr_t)(data + rec->dtrd_offset);
+
+		switch (rec->dtrd_action) {
+		case DTRACEAGG_LQUANTIZE:
+			/*
+			 * For lquantize(), we always display the entire range
+			 * of the aggregation when aggpack is set.
+			 */
+			start = 1;
+			minbin = start;
+			maxbin = size - 1 - start;
+			break;
+
+		case DTRACEAGG_QUANTIZE:
+			for (i = start; i < size; i++) {
+				if (!addr[i])
+					continue;
+
+				if (minbin == -1)
+					minbin = i - start;
+
+				maxbin = i - start;
+			}
+
+			if (minbin == -1) {
+				/*
+				 * If we have no data (e.g., due to a clear()
+				 * or negative increments), we'll use the
+				 * zero bucket as both our min and max.
+				 */
+				minbin = maxbin = DTRACE_QUANTIZE_ZEROBUCKET;
+			}
+
+			break;
+
+		default:
+			continue;
+		}
+
+		if (minmax[agg->dtagd_varid] == NULL) {
+			minmax[agg->dtagd_varid] = aggdata;
+			aggdata->dtada_flags |= DTRACE_A_MINMAXBIN;
+			aggdata->dtada_minbin = minbin;
+			aggdata->dtada_maxbin = maxbin;
+			continue;
+		}
+
+		if (minbin < minmax[agg->dtagd_varid]->dtada_minbin)
+			minmax[agg->dtagd_varid]->dtada_minbin = minbin;
+
+		if (maxbin > minmax[agg->dtagd_varid]->dtada_maxbin)
+			minmax[agg->dtagd_varid]->dtada_maxbin = maxbin;
+	}
+
+	/*
+	 * And now one final pass to set everyone's minbin and maxbin.
+	 */
+	for (h = hash->dtah_all; h != NULL; h = h->dtahe_nextall) {
+		dtrace_aggdata_t *aggdata = &h->dtahe_data, *mm;
+		dtrace_aggdesc_t *agg = aggdata->dtada_desc;
+
+		if ((mm = minmax[agg->dtagd_varid]) == NULL || aggdata == mm)
+			continue;
+
+		aggdata->dtada_minbin = mm->dtada_minbin;
+		aggdata->dtada_maxbin = mm->dtada_maxbin;
+		aggdata->dtada_flags |= DTRACE_A_MINMAXBIN;
+	}
+
+	dt_free(dtp, minmax);
+
+	return (0);
+}
+
+static int
 dt_aggregate_walk_sorted(dtrace_hdl_t *dtp,
     dtrace_aggregate_f *func, void *arg,
     int (*sfunc)(const void *, const void *))
@@ -1314,6 +1537,23 @@ dt_aggregate_walk_sorted(dtrace_hdl_t *dtp,
 	dt_ahashent_t *h, **sorted;
 	dt_ahash_t *hash = &agp->dtat_hash;
 	size_t i, nentries = 0;
+	int rval = -1;
+
+	agp->dtat_flags &= ~(DTRACE_A_TOTAL | DTRACE_A_MINMAXBIN);
+
+	if (dtp->dt_options[DTRACEOPT_AGGHIST] != DTRACEOPT_UNSET) {
+		agp->dtat_flags |= DTRACE_A_TOTAL;
+
+		if (dt_aggregate_total(dtp, B_FALSE) != 0)
+			return (-1);
+	}
+
+	if (dtp->dt_options[DTRACEOPT_AGGPACK] != DTRACEOPT_UNSET) {
+		agp->dtat_flags |= DTRACE_A_MINMAXBIN;
+
+		if (dt_aggregate_minmaxbin(dtp, B_FALSE) != 0)
+			return (-1);
+	}
 
 	for (h = hash->dtah_all; h != NULL; h = h->dtahe_nextall)
 		nentries++;
@@ -1321,7 +1561,7 @@ dt_aggregate_walk_sorted(dtrace_hdl_t *dtp,
 	sorted = dt_alloc(dtp, nentries * sizeof (dt_ahashent_t *));
 
 	if (sorted == NULL)
-		return (-1);
+		goto out;
 
 	for (h = hash->dtah_all, i = 0; h != NULL; h = h->dtahe_nextall)
 		sorted[i++] = h;
@@ -1345,14 +1585,20 @@ dt_aggregate_walk_sorted(dtrace_hdl_t *dtp,
 	for (i = 0; i < nentries; i++) {
 		h = sorted[i];
 
-		if (dt_aggwalk_rval(dtp, h, func(&h->dtahe_data, arg)) == -1) {
-			dt_free(dtp, sorted);
-			return (-1);
-		}
+		if (dt_aggwalk_rval(dtp, h, func(&h->dtahe_data, arg)) == -1)
+			goto out;
 	}
 
+	rval = 0;
+out:
+	if (agp->dtat_flags & DTRACE_A_TOTAL)
+		(void) dt_aggregate_total(dtp, B_TRUE);
+
+	if (agp->dtat_flags & DTRACE_A_MINMAXBIN)
+		(void) dt_aggregate_minmaxbin(dtp, B_TRUE);
+
 	dt_free(dtp, sorted);
-	return (0);
+	return (rval);
 }
 
 int
@@ -1661,12 +1907,13 @@ dtrace_aggregate_walk_joined(dtrace_hdl_t *dtp, dtrace_aggvarid_t *aggvars,
 		rec = &aggdesc->dtagd_rec[aggdesc->dtagd_nrecs - 1];
 
 		/*
-		 * Now for the more complicated part.  If (and only if) this
-		 * is an lquantize() aggregating action, zero-filled data is
-		 * not equivalent to an empty record:  we must also get the
-		 * parameters for the lquantize().
+		 * Now for the more complicated part.  For the lquantize() and
+		 * llquantize() aggregating actions, zero-filled data is not
+		 * equivalent to an empty record:  we must also get the
+		 * parameters for the lquantize()/llquantize().
 		 */
-		if (rec->dtrd_action == DTRACEAGG_LQUANTIZE) {
+		if (rec->dtrd_action == DTRACEAGG_LQUANTIZE ||
+		    rec->dtrd_action == DTRACEAGG_LLQUANTIZE) {
 			if (aggdata->dtada_data != NULL) {
 				/*
 				 * The easier case here is if we actually have
@@ -1687,7 +1934,7 @@ dtrace_aggregate_walk_joined(dtrace_hdl_t *dtp, dtrace_aggvarid_t *aggvars,
 				 * -- either directly or indirectly.) So as
 				 * gross as it is, we'll grovel around in the
 				 * compiler-generated information to find the
-				 * lquantize() parameters.
+				 * lquantize()/llquantize() parameters.
 				 */
 				dtrace_stmtdesc_t *sdp;
 				dt_ident_t *aid;
@@ -1874,6 +2121,8 @@ dtrace_aggregate_print(dtrace_hdl_t *dtp, FILE *fp,
     dtrace_aggregate_walk_f *func)
 {
 	dt_print_aggdata_t pd;
+
+	bzero(&pd, sizeof (pd));
 
 	pd.dtpa_dtp = dtp;
 	pd.dtpa_fp = fp;

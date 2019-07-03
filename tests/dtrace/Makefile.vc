@@ -1,0 +1,30 @@
+
+!ifdef ROOT
+!include $(ROOT)\default.vc
+!else
+ROOT=..\..
+!include $(ROOT)\default.vc
+!endif
+
+CFLAGS = $(CFLAGS) /Fo$(ODIR)\
+
+UCTF=tst\common\uctf
+
+TESTS_C = $(UCTF)\tst.chasestrings.exe \
+			$(UCTF)\tst.aouttype.exe	\
+			$(UCTF)\tst.printtype.exe	\
+			$(UCTF)\tst.libtype.exe
+
+all: $(TESTS_C)
+	
+$(UCTF)\tst.chasestrings.exe: $(UCTF)\tst.chasestrings.c
+	$(CC) -Zi $(CFLAGS) $(UCTF)\tst.chasestrings.c /link /out:$@
+$(UCTF)\tst.aouttype.exe: $(UCTF)\tst.aouttype.c
+	$(CC) -Zi $(CFLAGS) $(UCTF)\tst.aouttype.c /link /out:$@
+$(UCTF)\tst.printtype.exe: $(UCTF)\tst.printtype.c
+	$(CC) -Zi $(CFLAGS) $(UCTF)\tst.printtype.c /link /out:$@
+$(UCTF)\tst.libtype.exe: $(UCTF)\tst.libtype.c
+	$(CC) -Zi $(CFLAGS) $(UCTF)\tst.libtype.c /link /out:$@
+
+clean:
+	-del  $(UCTF)\*.pdb  $(UCTF)\*.exe $(UCTF)\*.ilk

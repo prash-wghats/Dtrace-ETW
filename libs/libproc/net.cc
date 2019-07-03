@@ -1,16 +1,16 @@
 /*
- * Permission to use, copy, modify, and/or distribute this software for 
+ * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted.
  *
- * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES 
- * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF 
- * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE 
- * FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY 
- * DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER 
- * IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING 
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE
+ * FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY
+ * DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER
+ * IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING
  * OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
- * 
- * Copyright (C) 2019, PK 
+ *
+ * Copyright (C) 2019, PK
  */
 
 #include <winsock2.h>
@@ -274,10 +274,7 @@ nloadsymtype(nmodinfo_t *mod, mdTypeDef type, IMetaDataImport *mdata)
 	ptype->nt_nlen = wcstombs(ptype->nt_name, cname, MAX_NAME_LENGTH);
 	if (hr < 0)
 		return 0;
-	if (strstr(ptype->nt_name, "System.IConvertible") != NULL) {
-		int a = 0;
-		a = a + 3;
-	}
+
 	hr = mdata->EnumMethods(&fenum, type, ftok, 1024, &ret);
 	if (hr < 0) {
 		free(ptype);
@@ -408,19 +405,7 @@ class DebuggerCB : public ICorDebugManagedCallback {
 
 		process->GetHandle(&phandle);
 		P->phandle = phandle;
-		if (!P->attached) {
-			pthread_mutex_lock(&P->mutex);
 
-			P->status = PS_STOP;
-			P->msg.type = RD_NONE;
-
-			pthread_cond_signal(&P->cond);
-			if (P->status != PS_RUN)
-				SetEvent(P->event);
-			while (P->status == PS_STOP)
-				pthread_cond_wait(&P->cond, &P->mutex);
-			pthread_mutex_unlock(&P->mutex);
-		}
 		BOILER_PROCESS
 	}
 
@@ -553,13 +538,6 @@ class DebuggerCB : public ICorDebugManagedCallback {
 			pthread_mutex_lock(&P->mutex);
 			pthread_cond_signal(&P->cond);
 			HANDLE td = ::CreateThread(NULL, 0, busyloop_thread, P, 0, NULL);
-
-
-			//if (P->status != PS_RUN)
-			//	SetEvent(P->event);
-			//while (P->status == PS_STOP)
-			//	pthread_cond_wait(&P->cond, &P->mutex);
-			//pthread_mutex_unlock(&P->mutex);
 		}
 		BOILER_CON
 	}
@@ -583,8 +561,7 @@ class DebuggerCB : public ICorDebugManagedCallback {
 		mod = nloadsymmod(P, module, P->dll_load_order);
 		if (P->attached == 0 && setmain == 0)
 			nbrkonmain(P, mod, &setmain);
-
-
+		pthread_mutex_lock(&P->mutex);
 		if (P->busyloop || (P->attached && P->main == 0)) {
 			P->status = PS_RUN;
 			P->msg.type = RD_DLACTIVITY;
@@ -602,29 +579,19 @@ class DebuggerCB : public ICorDebugManagedCallback {
 					P->msg.type = RD_NONE;
 					BOILER_CON
 				}
-				/*
-				HANDLE th = OpenThread(THREAD_ALL_ACCESS, FALSE, P->thragent);
-				ResumeThread(th);
-
-				pthread_mutex_lock(&P->mutex);
-				SetEvent(P->event);
-				pthread_cond_wait(&P->cond, &P->mutex);
-				pthread_mutex_unlock(&P->mutex);
-				P->fthelper(P->pid, -1, PSYS_FPID_QUEUE_CLEAR, NULL);
-				*/
 				P->busyloop = 1;
 				P->skip = 0;
 				insbusyloop(P, !P->model);
 				P->status = PS_STOP;
 				HANDLE td = ::CreateThread(NULL, 0, busyloop_thread, P, 0, NULL);
 			} else {
-				pthread_mutex_lock(&P->mutex);
+				
 				SetEvent(P->event);
 				pthread_cond_wait(&P->cond, &P->mutex);
-				pthread_mutex_unlock(&P->mutex);
+				
 			}
 		}
-
+		pthread_mutex_unlock(&P->mutex);
 		BOILER_CON
 	}
 
@@ -859,6 +826,10 @@ class DebuggerUnmanagedcb : public ICorDebugUnmanagedCallback {
 #else
 			P->model = PR_MODEL_ILP32;
 #endif
+			P->status = PS_STOP;
+			P->msg.type = RD_NONE;
+
+			pthread_cond_signal(&P->cond);
 			break;
 		case EXIT_PROCESS_DEBUG_EVENT:
 			P->exitcode = event->u.ExitProcess.dwExitCode;
@@ -877,6 +848,8 @@ class DebuggerUnmanagedcb : public ICorDebugUnmanagedCallback {
 				if (excep == 0) {
 					assert(P->attached == 0);
 					hr = process->ClearCurrentException(event->dwThreadId);
+					P->status = PS_RUN;
+					P->msg.type = RD_NONE;
 					excep++;
 				} else if (excep == 1) {
 					if (event->u.Exception.ExceptionRecord.ExceptionAddress != 
@@ -1121,14 +1094,19 @@ Netlookup_by_addr(struct ps_prochandle *P, uintptr_t addr, char *buf, size_t siz
 			char *cn = type->nt_name;
 			for (int j=0; j < type->nt_nsyms; j++) {
 				func = type->nt_funcs[j];
-				if (func && addr >= func->nf_addr && addr < func->nf_addr+func->nf_size) {
-					symp->st_name = 0;
-					symp->st_info = GELF_ST_INFO((STB_GLOBAL), (STT_FUNC));
-					symp->st_other = 0;
-					symp->st_shndx = 1;
-					symp->st_value = func->nf_addr;
-					symp->st_size = func->nf_size;
-					snprintf(buf, size, "%s.%s", type->nt_name, func->nf_name);
+				if (func && addr >= func->nf_addr && addr <
+				    func->nf_addr+func->nf_size) {
+					if (symp != NULL) {
+						symp->st_name = 0;
+						symp->st_info = GELF_ST_INFO((STB_GLOBAL), (STT_FUNC));
+						symp->st_other = 0;
+						symp->st_shndx = 1;
+						symp->st_value = func->nf_addr;
+						symp->st_size = func->nf_size;
+					}
+					if (buf != NULL && size > 0)
+						snprintf(buf, size, "%s.%s", 
+						    type->nt_name, func->nf_name);
 
 					return 0;
 				}
@@ -1489,7 +1467,7 @@ net_cmd(char *cmd)
 		return (-1);
 	}
 	// Wait until child process exits.
-	WaitForSingleObject( pi.hProcess, INFINITE );
+	WaitForSingleObject(pi.hProcess, INFINITE);
 
 	GetExitCodeProcess(pi.hProcess, &exit_code);
 

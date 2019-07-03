@@ -1303,6 +1303,7 @@ main(int argc, char *argv[])
 			case 'E':
 				l_etw = 1;
 				l_etwfile = optarg;
+				g_oflags |= DTRACE_O_FETW;
 				break;
 #endif
 			case 'h':
@@ -1433,8 +1434,8 @@ main(int argc, char *argv[])
 	 * instrumentation attempt to reopen libdtrace using DTRACE_O_NODEV.
 	 */
 #if defined(windows)
-	while ((g_dtp = l_etw ? dtrace_vopen(DTRACE_VERSION, g_oflags, &err, Petwvector(), 
-	    l_etwfile): dtrace_open(DTRACE_VERSION, g_oflags, &err)) == NULL) {
+	while ((g_dtp = dtrace_vopen(DTRACE_VERSION, g_oflags, 
+	    &err, NULL, l_etw ? l_etwfile: NULL)) == NULL) {
 #else
 	while ((g_dtp = dtrace_open(DTRACE_VERSION, g_oflags, &err)) == NULL) {
 #endif

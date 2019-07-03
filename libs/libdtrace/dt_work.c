@@ -27,13 +27,6 @@
 
 #pragma ident	"%Z%%M%	%I%	%E% SMI"
 
-
-#if defined(sun)
-#include <stdint.h>
-#else
-#include <dtrace_misc.h>
-#endif
-
 #include <dt_impl.h>
 #include <stddef.h>
 #include <errno.h>
@@ -61,7 +54,7 @@ dtrace_sleep(dtrace_hdl_t *dtp)
 	struct timespec tv;
 	hrtime_t now;
 	int i;
-	
+
 	for (i = 0; _dtrace_sleeptab[i].dtslt_option < DTRACEOPT_MAX; i++) {
 		uintptr_t a = (uintptr_t)dtp + _dtrace_sleeptab[i].dtslt_offs;
 		int opt = _dtrace_sleeptab[i].dtslt_option;
@@ -75,6 +68,7 @@ dtrace_sleep(dtrace_hdl_t *dtp)
 		if (policy != DTRACEOPT_BUFPOLICY_SWITCH &&
 		    _dtrace_sleeptab[i].dtslt_option != DTRACEOPT_STATUSRATE)
 			continue;
+
 		if (*((hrtime_t *)a) + interval < earliest)
 			earliest = *((hrtime_t *)a) + interval;
 	}
@@ -87,8 +81,8 @@ dtrace_sleep(dtrace_hdl_t *dtp)
 		(void) pthread_mutex_unlock(&dph->dph_lock);
 		return; /* sleep duration has already past */
 	}
-	
-#if defined(sun)
+
+#if !defined(windows)
 	tv.tv_sec = (earliest - now) / NANOSEC;
 	tv.tv_nsec = (earliest - now) % NANOSEC;
 #else
@@ -102,7 +96,7 @@ dtrace_sleep(dtrace_hdl_t *dtp)
 	 * that a process is in an interesting state.  Regardless of why we
 	 * awaken, iterate over any pending notifications and process them.
 	 */
-#if defined(sun)
+#if !defined(windows)
 	(void) pthread_cond_reltimedwait_np(&dph->dph_cv, &dph->dph_lock, &tv);
 #else
 	(void) pthread_cond_timedwait(&dph->dph_cv, &dph->dph_lock, &tv);
@@ -113,6 +107,7 @@ dtrace_sleep(dtrace_hdl_t *dtp)
 			char *err = dprn->dprn_errmsg;
 			if (*err == '\0')
 				err = NULL;
+
 			dtp->dt_prochdlr(dprn->dprn_dpr->dpr_proc, err,
 			    dtp->dt_procarg);
 		}
@@ -179,11 +174,11 @@ dtrace_status(dtrace_hdl_t *dtp)
 int
 dtrace_go(dtrace_hdl_t *dtp)
 {
-#if !defined(sun)
-	dtrace_enable_io_t args;
-#endif
 	void *dof;
 	int err;
+#if !defined(illumos)
+	dtrace_enable_io_t args;
+#endif
 
 	if (dtp->dt_active)
 		return (dt_set_errno(dtp, EINVAL));
@@ -202,13 +197,14 @@ dtrace_go(dtrace_hdl_t *dtp)
 
 	if ((dof = dtrace_getopt_dof(dtp)) == NULL)
 		return (-1); /* dt_errno has been set for us */
-#if !defined(sun)
+
+#if !defined(illumos)
 	args.dof = dof;
 	args.n_matched = 0;
 	err = dt_ioctl(dtp, DTRACEIOC_ENABLE, &args);
 #else
 	err = dt_ioctl(dtp, DTRACEIOC_ENABLE, dof);
-#endif	
+#endif
 	dtrace_dof_destroy(dtp, dof);
 
 	if (err == -1 && (errno != ENOTTY || dtp->dt_vector == NULL))
@@ -251,13 +247,13 @@ dtrace_stop(dtrace_hdl_t *dtp)
 
 	if (dt_ioctl(dtp, DTRACEIOC_STOP, &dtp->dt_endedon) == -1)
 		return (dt_set_errno(dtp, errno));
-		
+
 	dtp->dt_stopped = 1;
 
 	/*
 	 * Now that we're stopped, we're going to get status one final time.
 	 */
-	if (dt_ioctl(dtp, DTRACEIOC_STATUS, &dtp->dt_status[gen]) == -1) 
+	if (dt_ioctl(dtp, DTRACEIOC_STATUS, &dtp->dt_status[gen]) == -1)
 		return (dt_set_errno(dtp, errno));
 
 	if (dt_handle_status(dtp, &dtp->dt_status[gen ^ 1],
@@ -275,7 +271,7 @@ dtrace_work(dtrace_hdl_t *dtp, FILE *fp,
 	int status = dtrace_status(dtp);
 	dtrace_optval_t policy = dtp->dt_options[DTRACEOPT_BUFPOLICY];
 	dtrace_workstatus_t rval;
-	
+
 	switch (status) {
 	case DTRACE_STATUS_EXITED:
 	case DTRACE_STATUS_FILLED:

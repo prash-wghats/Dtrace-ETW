@@ -26,15 +26,14 @@
 
 /*
  * Copyright (c) 2012 by Delphix. All rights reserved.
+ * Copyright (c) 2013, Joyent, Inc. All rights reserved.
  */
 
-#if defined(sun)
-#include <stdint.h>
+#if !defined(windows)
 #include <strings.h>
 #else
 #include <dtrace_misc.h>
 #endif
-#include <string.h>
 #include <dt_impl.h>
 
 static const struct {
@@ -114,7 +113,9 @@ static const struct {
 	{ EDT_BADSTACKPC, "Invalid stack program counter size" },
 	{ EDT_BADAGGVAR, "Invalid aggregation variable identifier" },
 	{ EDT_OVERSION,	"Client requested deprecated version of library" },
-	{ EDT_ENABLING_ERR, "Failed to enable probe" }
+	{ EDT_ENABLING_ERR, "Failed to enable probe" },
+	{ EDT_NOPROBES, "No probe sites found for declared provider" },
+	{ EDT_CANTLOAD, "Failed to load module" },
 };
 
 static const int _dt_nerr = sizeof (_dt_errlist) / sizeof (_dt_errlist[0]);
@@ -147,29 +148,12 @@ dtrace_errno(dtrace_hdl_t *dtp)
 	return (dtp->dt_errno);
 }
 
-#if defined(sun)
 int
 dt_set_errno(dtrace_hdl_t *dtp, int err)
 {
 	dtp->dt_errno = err;
 	return (-1);
 }
-#else
-int
-_dt_set_errno(dtrace_hdl_t *dtp, int err, const char *errfile, int errline)
-{
-	dtp->dt_errno = err;
-	dtp->dt_errfile = errfile;
-	dtp->dt_errline = errline;
-	return (-1);
-}
-
-void dt_get_errloc(dtrace_hdl_t *dtp, const char **p_errfile, int *p_errline)
-{
-	*p_errfile = dtp->dt_errfile;
-	*p_errline = dtp->dt_errline;
-}
-#endif
 
 void
 dt_set_errmsg(dtrace_hdl_t *dtp, const char *errtag, const char *region,

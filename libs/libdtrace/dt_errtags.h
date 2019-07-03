@@ -24,10 +24,10 @@
  * Use is subject to license terms.
  */
 
- /*
-  * Copyright (c) 2011, Joyent, Inc. All rights reserved.
-  * Copyright (c) 2012 by Delphix. All rights reserved.
-  */
+/*
+ * Copyright (c) 2011, Joyent, Inc. All rights reserved.
+ * Copyright (c) 2012 by Delphix. All rights reserved.
+ */
 
 #ifndef	_DT_ERRTAGS_H
 #define	_DT_ERRTAGS_H
@@ -262,11 +262,7 @@ typedef enum {
 	D_LLQUANT_FACTOREVEN,		/* llquantize() bad # steps/factor */
 	D_LLQUANT_FACTORSMALL,		/* llquantize() magnitude too small */
 	D_LLQUANT_MAGTOOBIG,		/* llquantize() high mag too large */
-	D_NOREG,			/* no available internal registers */
-	D_PRINTM_ADDR,			/* printm() memref bad type */
-	D_PRINTM_SIZE,			/* printm() size bad type */
-	D_PRINTT_ADDR,			/* printt() typeref bad type */
-	D_PRINTT_SIZE			/* printt() size bad type */
+	D_NOREG				/* no available internal registers */
 } dt_errtag_t;
 
 extern const char *dt_errtag(dt_errtag_t);

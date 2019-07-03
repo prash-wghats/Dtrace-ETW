@@ -28,8 +28,9 @@
  * Use is subject to license terms.
  */
 
-/*#pragma D depends_on module kernel*/
+/*
 #pragma D depends_on provider proc
+*/
 
 typedef struct psinfo {
 	pid_t	pr_ppid;	/* process id of parent */
@@ -111,3 +112,4 @@ inline psinfo_t *curpsinfo = xlate <psinfo_t *> (((struct thread *)curthread)->p
 inline lwpsinfo_t *curlwpsinfo = xlate <lwpsinfo_t *> ((struct thread *) curthread);
 #pragma D attributes Stable/Stable/Common curlwpsinfo
 #pragma D binding "1.0" curlwpsinfo
+

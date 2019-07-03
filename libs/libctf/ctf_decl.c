@@ -47,7 +47,8 @@
  * The code in ctf_type_name() can then iterate over the levels and nodes in
  * lexical precedence order and construct the final C declaration string.
  */
-#if !defined(sun)
+
+#ifdef windows
 #include <dtrace_misc.h>
 #endif
 #include <ctf_impl.h>

@@ -18,7 +18,7 @@ TYPE=dynamic
 DIRS = ext\minihook drivers\inject drivers\etw drivers\dtrace \
 		drivers\fasttrap drivers\profile drivers\sdt \
 		libs\libctf libs\libpe libs\libproc libs\libdtrace \
-		cmd\dtrace
+		cmd\dtrace tests\misc tests\dtrace
 
 #all:
 #	-@ for %%A in ($(DIRS)) DO ( \
@@ -50,7 +50,7 @@ all:
 	nmake -f Makefile.vc $(TYPE) ROOT=$(MAKEDIR) $(BUILD)
 	cd ..\..
 	cd libs\libctf
-	nmake -f Makefile.vc static ROOT=$(MAKEDIR) $(BUILD)
+	nmake -f Makefile.vc $(TYPE) ROOT=$(MAKEDIR) $(BUILD)
 	cd ..\..
 	cd libs\common
 	nmake -f Makefile.vc ROOT=$(MAKEDIR) $(BUILD)
@@ -70,7 +70,9 @@ all:
 	cd tests\misc
 	nmake -f Makefile.vc
 	cd ..\..
-
+	cd tests\dtrace
+	nmake -f Makefile.vc
+	cd ..\..
 clean:
 	-@ for %%A in ($(DIRS)) DO ( \
 		pushd  %%A &\

@@ -261,5 +261,10 @@ int gelf_getclass(const char *name, uintptr_t base);
 
 int gmatch(const char *s, const char *p);
 int ftok(const char *path, int id);
+int asprintf(char **sptr, char *fmt, ...);
+int dt_fpid_return(unsigned char *text, int size, int i, int instsz);
+
+#define     ABS(a)          ((a) < 0 ? -(a) : (a))
+#define   ASSERT(X)       ((void)0)
 
 #endif

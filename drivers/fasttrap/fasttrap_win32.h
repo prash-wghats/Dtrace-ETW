@@ -7,7 +7,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 
+ *
  * THIS SOFTWARE IS PROVIDED BY AUTHOR AND CONTRIBUTORS ``AS IS'' AND
  * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
@@ -21,9 +21,9 @@
  * SUCH DAMAGE.
  *
  */
- 
-#ifndef _FASTTRAP_WIN32_H
-#define _FASTTRAP_WIN32_H
+
+#ifndef	_FASTTRAP_WIN32_H
+#define	_FASTTRAP_WIN32_H
 
 #include <sys/dtrace_misc.h>
 #include <stdio.h>
@@ -33,8 +33,6 @@
 #include <sys/dtrace_win32.h>
 #include <sys/regset.h>
 
-extern void dtrace_hook_int(UCHAR ivec, void (*InterruptHandler)( void ), uintptr_t *paddr);
-
 #ifdef _AMD64_
 extern UINT64 FasttrapHookISR;
 extern UINT64 FasttrapRetHookISR;
@@ -43,11 +41,10 @@ extern UINT32 FasttrapHookISR;
 extern UINT32 FasttrapRetHookISR;
 #endif
 
-
-#define T_DTRACE_RET 0x7f
-#define T_DTRACE_FASTTRAP 0x03
-#define T_BPTFLT 0x3
-#define T_DTRACE_PROBE 0xfe
+#define	T_DTRACE_RET 0x7f
+#define	T_DTRACE_FASTTRAP 0x03
+#define	T_BPTFLT 0x3
+#define	T_DTRACE_PROBE 0xfe
 
 typedef PVOID timeout_id_t;
 
@@ -56,25 +53,21 @@ int64_t fuword64(const void *base);
 int suword32(void *base, int32_t word);
 int suword64(void *base, int64_t word);
 int fasttrap_copyout(void * kaddr, void * uaddr, int len);
-
 int uread(proc_t *p, void *kaddr, size_t len, uintptr_t uaddr);
 int uwrite(proc_t *p, void *kaddr, size_t len, uintptr_t uaddr);
 timeout_id_t timeout(void (*func)(void *), void* unused, hrtime_t nano);
 void untimeout(timeout_id_t id);
-
 void fasttrap_winsig(pid_t pid, uintptr_t addr);
-
 int dtrace_user_probe(struct reg *rp);
 int dtrace_attached(void);
-void interrupt_fasttrap( void );
-void interrupt_fasttrapRET( void ) ;
+void interrupt_fasttrap(void);
+void interrupt_fasttrapRET(void);
 int fasttrap_tracepoint_install_fpid(proc_t *p, fasttrap_probe_t *probe,
     fasttrap_tracepoint_t *tp);
 int fasttrap_tracepoint_remove_fpid(proc_t *p, fasttrap_probe_t *probe,
     fasttrap_tracepoint_t *tp);
 int fasttrap_tracepoint_init_fpid(proc_t *p, fasttrap_probe_t *probe,
     fasttrap_tracepoint_t *tp, uintptr_t pc, fasttrap_probe_type_t type);
-	
 VOID CreateProcFunc(HANDLE ParentId, HANDLE ProcessId, BOOLEAN Create);
 
 #endif

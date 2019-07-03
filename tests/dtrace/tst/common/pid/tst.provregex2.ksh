@@ -46,16 +46,16 @@ cat > Makefile <<EOF
 all: main altlib.so
 
 main: main.o
-	cc -o main main.o
+	cc -g -o main main.o
 
 main.o: main.c
-	cc -c main.c
+	cc -g -c main.c
 
 altlib.so: altlib.o
-	cc -z defs -G -o altlib.so altlib.o -lc
+	cc -g -shared -o altlib.so altlib.o
 
 altlib.o: altlib.c
-	cc -c altlib.c
+	cc -g -c altlib.c
 EOF
 
 cat > altlib.c <<EOF

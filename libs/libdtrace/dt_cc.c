@@ -668,6 +668,8 @@ dt_action_printflike(dtrace_hdl_t *dtp, dt_node_t *dnp, dtrace_stmtdesc_t *sdp,
 static void
 dt_action_trace(dtrace_hdl_t *dtp, dt_node_t *dnp, dtrace_stmtdesc_t *sdp)
 {
+	int ctflib;
+
 	dtrace_actdesc_t *ap = dt_stmt_action(dtp, sdp);
 	boolean_t istrace = (dnp->dn_ident->di_id == DT_ACT_TRACE);
 	const char *act = istrace ?  "trace" : "print";
@@ -699,7 +701,10 @@ dt_action_trace(dtrace_hdl_t *dtp, dt_node_t *dnp, dtrace_stmtdesc_t *sdp)
 	 * like arrays and function pointers that can't be resolved by
 	 * ctf_type_lookup().  This is later processed by dtrace_dof_create()
 	 * and turned into a reference into the string table so that we can
-	 * get the type information when we process the data after the fact.
+	 * get the type information when we process the data after the fact.  In
+	 * the case where we are referring to userland CTF data, we also need to
+	 * to identify which ctf container in question we care about and encode
+	 * that within the name.
 	 */
 	if (dnp->dn_ident->di_id == DT_ACT_PRINT) {
 		dt_node_t *dret;
@@ -709,12 +714,25 @@ dt_action_trace(dtrace_hdl_t *dtp, dt_node_t *dnp, dtrace_stmtdesc_t *sdp)
 		dret = yypcb->pcb_dret;
 		dmp = dt_module_lookup_by_ctf(dtp, dret->dn_ctfp);
 
-		n = snprintf(NULL, 0, "%s`%ld", dmp->dm_name, dret->dn_type) + 1;
+		if (dmp->dm_pid != 0) {
+			ctflib = dt_module_getlibid(dtp, dmp, dret->dn_ctfp);
+			assert(ctflib >= 0);
+			n = snprintf(NULL, 0, "%s`%d`%d", dmp->dm_name,
+			    ctflib, dret->dn_type) + 1;
+		} else {
+			n = snprintf(NULL, 0, "%s`%d", dmp->dm_name,
+			    dret->dn_type) + 1;
+		}
 		sdp->dtsd_strdata = dt_alloc(dtp, n);
 		if (sdp->dtsd_strdata == NULL)
 			longjmp(yypcb->pcb_jmpbuf, EDT_NOMEM);
-		(void) snprintf(sdp->dtsd_strdata, n, "%s`%ld", dmp->dm_name,
-		    dret->dn_type);
+		if (dmp->dm_pid != 0) {
+			(void) snprintf(sdp->dtsd_strdata, n, "%s`%d`%d",
+			    dmp->dm_name, ctflib, dret->dn_type);
+		} else {
+			(void) snprintf(sdp->dtsd_strdata, n, "%s`%d",
+			    dmp->dm_name, dret->dn_type);
+		}
 	}
 
 	ap->dtad_difo = dt_as(yypcb);
@@ -1011,77 +1029,6 @@ dt_action_speculate(dtrace_hdl_t *dtp, dt_node_t *dnp, dtrace_stmtdesc_t *sdp)
 }
 
 static void
-dt_action_printm(dtrace_hdl_t *dtp, dt_node_t *dnp, dtrace_stmtdesc_t *sdp)
-{
-	dtrace_actdesc_t *ap = dt_stmt_action(dtp, sdp);
-
-	dt_node_t *size = dnp->dn_args;
-	dt_node_t *addr = dnp->dn_args->dn_list;
-
-	char n[DT_TYPE_NAMELEN];
-
-	if (dt_node_is_posconst(size) == 0) {
-		dnerror(size, D_PRINTM_SIZE, "printm( ) argument #1 must "
-		    "be a non-zero positive integral constant expression\n");
-	}
-
-	if (dt_node_is_pointer(addr) == 0) {
-		dnerror(addr, D_PRINTM_ADDR,
-		    "printm( ) argument #2 is incompatible with "
-		    "prototype:\n\tprototype: pointer\n"
-		    "\t argument: %s\n",
-		    dt_node_type_name(addr, n, sizeof (n)));
-	}
-
-	dt_cg(yypcb, addr);
-	ap->dtad_difo = dt_as(yypcb);
-	ap->dtad_kind = DTRACEACT_PRINTM;
-
-	ap->dtad_difo->dtdo_rtype.dtdt_flags |= DIF_TF_BYREF;
-	ap->dtad_difo->dtdo_rtype.dtdt_size = size->dn_value + sizeof(uintptr_t);
-}
-
-static void
-dt_action_printt(dtrace_hdl_t *dtp, dt_node_t *dnp, dtrace_stmtdesc_t *sdp)
-{
-	dtrace_actdesc_t *ap = dt_stmt_action(dtp, sdp);
-
-	dt_node_t *size = dnp->dn_args;
-	dt_node_t *addr = dnp->dn_args->dn_list;
-
-	char n[DT_TYPE_NAMELEN];
-
-	if (dt_node_is_posconst(size) == 0) {
-		dnerror(size, D_PRINTT_SIZE, "printt( ) argument #1 must "
-		    "be a non-zero positive integral constant expression\n");
-	}
-
-	if (addr == NULL || addr->dn_kind != DT_NODE_FUNC ||
-	    addr->dn_ident != dt_idhash_lookup(dtp->dt_globals, "typeref")) {
-		dnerror(addr, D_PRINTT_ADDR,
-		    "printt( ) argument #2 is incompatible with "
-		    "prototype:\n\tprototype: typeref()\n"
-		    "\t argument: %s\n",
-		    dt_node_type_name(addr, n, sizeof (n)));
-	}
-
-	dt_cg(yypcb, addr);
-	ap->dtad_difo = dt_as(yypcb);
-	ap->dtad_kind = DTRACEACT_PRINTT;
-
-	ap->dtad_difo->dtdo_rtype.dtdt_flags |= DIF_TF_BYREF;
-
-	/*
-	 * Allow additional buffer space for the data size, type size,
-	 * type string length and a stab in the dark (32 bytes) for the
-	 * type string. The type string is part of the typeref() that
-	 * this action references.
-	 */
-	ap->dtad_difo->dtdo_rtype.dtdt_size = size->dn_value + 3 * sizeof(uintptr_t) + 32;
-
-}
-
-static void
 dt_action_commit(dtrace_hdl_t *dtp, dt_node_t *dnp, dtrace_stmtdesc_t *sdp)
 {
 	dtrace_actdesc_t *ap = dt_stmt_action(dtp, sdp);
@@ -1149,12 +1096,6 @@ dt_compile_fun(dtrace_hdl_t *dtp, dt_node_t *dnp, dtrace_stmtdesc_t *sdp)
 		break;
 	case DT_ACT_PRINTF:
 		dt_action_printflike(dtp, dnp->dn_expr, sdp, DTRACEACT_PRINTF);
-		break;
-	case DT_ACT_PRINTM:
-		dt_action_printm(dtp, dnp->dn_expr, sdp);
-		break;
-	case DT_ACT_PRINTT:
-		dt_action_printt(dtp, dnp->dn_expr, sdp);
 		break;
 	case DT_ACT_RAISE:
 		dt_action_raise(dtp, dnp->dn_expr, sdp);
@@ -1493,8 +1434,7 @@ dt_compile_agg(dtrace_hdl_t *dtp, dt_node_t *dnp, dtrace_stmtdesc_t *sdp)
 
 			args[i].value = (uint16_t)llarg->dn_value;
 
-			assert(!(arg & ((uint64_t)UINT16_MAX <<
-			    args[i].shift)));
+			assert(!(arg & ((uint64_t)UINT16_MAX << args[i].shift)));
 			arg |= ((uint64_t)args[i].value << args[i].shift);
 			llarg = llarg->dn_list;
 		}
@@ -1872,6 +1812,7 @@ dt_preproc(dtrace_hdl_t *dtp, FILE *ifp)
 	int argc = dtp->dt_cpp_argc;
 	char **argv = malloc(sizeof (char *) * (argc + 5));
 	FILE *ofp = tmpfile();
+	
 	char ipath[20], opath[20]; /* big enough for /dev/fd/ + INT_MAX + \0 */
 	char verdef[32]; /* big enough for -D__SUNW_D_VERSION=0x%08x + \0 */
 
@@ -1881,7 +1822,6 @@ dt_preproc(dtrace_hdl_t *dtp, FILE *ifp)
 	int wstat, estat;
 	pid_t pid;
 	off64_t off;
-
 	int c;
 
 	if (argv == NULL || ofp == NULL) {
@@ -1917,7 +1857,6 @@ dt_preproc(dtrace_hdl_t *dtp, FILE *ifp)
 	    "-D__SUNW_D_VERSION=0x%08x", dtp->dt_vmax);
 	argv[argc++] = verdef;
 
-
 	switch (dtp->dt_stdcmode) {
 	case DT_STDC_XA:
 	case DT_STDC_XT:
@@ -1930,7 +1869,6 @@ dt_preproc(dtrace_hdl_t *dtp, FILE *ifp)
 
 	argv[argc++] = ipath;
 	argv[argc++] = opath;
-
 	argv[argc] = NULL;
 
 	/*
@@ -1994,6 +1932,7 @@ dt_preproc(dtrace_hdl_t *dtp, FILE *ifp)
 err:
 	free(argv);
 	(void) fclose(ofp);
+	return (NULL);
 }
 #else
 static FILE *
@@ -2103,7 +2042,7 @@ dt_preproc(dtrace_hdl_t *dtp, FILE *ifp)
 err:
 	free(argv);
 	(void) fclose(ofp);
-
+	return (NULL);
 }
 #endif
 
@@ -2368,12 +2307,15 @@ dt_load_libs_dir(dtrace_hdl_t *dtp, const char *path)
 			dt_dprintf("skipping library %s, already processed "
 			    "library with the same name: %s", dp->d_name,
 			    dld->dtld_library);
+			(void) fclose(fp);
 			continue;
 		}
 
 		dtp->dt_filetag = fname;
-		if (dt_lib_depend_add(dtp, &dtp->dt_lib_dep, fname) != 0)
+		if (dt_lib_depend_add(dtp, &dtp->dt_lib_dep, fname) != 0) {
+			(void) fclose(fp);
 			return (-1); /* preserve dt_errno */
+		}
 
 		rv = dt_compile(dtp, DT_CTX_DPROG,
 		    DTRACE_PROBESPEC_NAME, NULL,
@@ -2381,8 +2323,10 @@ dt_load_libs_dir(dtrace_hdl_t *dtp, const char *path)
 
 		if (rv != NULL && dtp->dt_errno &&
 		    (dtp->dt_errno != EDT_COMPILER ||
-		    dtp->dt_errtag != dt_errtag(D_PRAGMA_DEPEND)))
+		    dtp->dt_errtag != dt_errtag(D_PRAGMA_DEPEND))) {
+			(void) fclose(fp);
 			return (-1); /* preserve dt_errno */
+		}
 
 		if (dtp->dt_errno)
 			dt_dprintf("error parsing library %s: %s\n",
@@ -2509,7 +2453,7 @@ dt_compile(dtrace_hdl_t *dtp, int context, dtrace_probespec_t pspec, void *arg,
 	dt_node_t *dnp;
 	dt_decl_t *ddp;
 	dt_pcb_t pcb;
-	void *rv;
+	void *volatile rv;
 	int err;
 
 	if ((fp == NULL && s == NULL) || (cflags & ~DTRACE_C_MASK) != 0) {
@@ -2592,6 +2536,28 @@ dt_compile(dtrace_hdl_t *dtp, int context, dtrace_probespec_t pspec, void *arg,
 	}
 
 	/*
+	 * Perform sugar transformations (for "if" / "else") and replace the
+	 * existing clause chain with the new one.
+	 */
+	if (context == DT_CTX_DPROG) {
+		dt_node_t *dnp, *next_dnp;
+		dt_node_t *new_list = NULL;
+
+		for (dnp = yypcb->pcb_root->dn_list;
+		    dnp != NULL; dnp = next_dnp) {
+			/* remove this node from the list */
+			next_dnp = dnp->dn_list;
+			dnp->dn_list = NULL;
+
+			if (dnp->dn_kind == DT_NODE_CLAUSE)
+				dnp = dt_compile_sugar(dtp, dnp);
+			/* append node to the new list */
+			new_list = dt_node_link(new_list, dnp);
+		}
+		yypcb->pcb_root->dn_list = new_list;
+	}
+	
+	/*
 	 * If we have successfully created a parse tree for a D program, loop
 	 * over the clauses and actions and instantiate the corresponding
 	 * libdtrace program.  If we are parsing a D expression, then we
@@ -2611,6 +2577,8 @@ dt_compile(dtrace_hdl_t *dtp, int context, dtrace_probespec_t pspec, void *arg,
 		for (; dnp != NULL; dnp = dnp->dn_list) {
 			switch (dnp->dn_kind) {
 			case DT_NODE_CLAUSE:
+				if (DT_TREEDUMP_PASS(dtp, 4))
+					dt_printd(dnp, stderr, 0);
 				dt_compile_clause(dtp, dnp);
 				break;
 			case DT_NODE_XLATOR:

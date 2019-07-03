@@ -21,7 +21,9 @@
  * @APPLE_LICENSE_HEADER_END@
  */
 
-/*#pragma D depends_on provider sched*/
+/*
+#pragma D depends_on provider sched
+*/
 
 struct _processor_info {
     int pi_state;           /* processor state, see above */

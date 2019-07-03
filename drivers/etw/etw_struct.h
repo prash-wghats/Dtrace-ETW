@@ -197,6 +197,14 @@ struct Thread_V3_TypeGroup1 { //: Thread
 	uint8_t  PagePriority;
 	uint8_t  IoPriority;
 	uint8_t  ThreadFlags;
+	wchar_t ThreadName[1];
+};
+
+//EventType{72} EventTypeName{"SetName"}
+struct Thread_V2_SetName {
+	uint32_t ProcessId;
+	uint32_t TThreadId;
+	wchar_t ThreadName[1];
 };
 
 //[EventType{1, 2, 3, 4}, EventTypeName{"Start", "End", "DCStart", "DCEnd"}]

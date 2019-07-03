@@ -69,9 +69,9 @@ typedef struct cpu_cores {
 } cpu_core_t;
 
 typedef struct cpu_data {
-	uintptr_t	cpu_dtrace_caller; /* fbt pc ????*/
-	uintptr_t	cpu_profile_upc;
-	uintptr_t	cpu_profile_pc;
+	uint64_t	cpu_dtrace_caller; /* fbt pc ????*/
+	uint64_t	cpu_profile_upc;
+	uint64_t	cpu_profile_pc;
 	hrtime_t	cpu_dtrace_nsec;
 } cpu_data_t;
 

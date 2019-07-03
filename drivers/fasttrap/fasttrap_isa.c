@@ -59,7 +59,7 @@
 #define	r_rip	r_eip
 #define	r_rflags r_eflags
 #define	r_rsp	r_esp
-#define r_rbp   r_ebp
+#define	r_rbp   r_ebp
 #endif
 
 #if defined(windows)
@@ -158,9 +158,9 @@ __declspec(dllimport) cpu_core_t *cpu_core;
 /*
  * Two-byte op-codes (second byte only).
  */
-#if defined (windows)
-#define FASTTRAP_MOV_EDI_EDI0_V0 0x8b
-#define FASTTRAP_MOV_EDI_EDI1_V0 0xff
+#if defined(windows)
+#define	FASTTRAP_MOV_EDI_EDI0_V0 0x8b
+#define	FASTTRAP_MOV_EDI_EDI1_V0 0xff
 #endif
 #define	FASTTRAP_0F_JO		0x80
 #define	FASTTRAP_0F_JNO		0x81
@@ -283,7 +283,7 @@ fasttrap_tracepoint_init(proc_t *p, fasttrap_tracepoint_t *tp, uintptr_t pc,
 	uint8_t seg, rex = 0;
 #ifdef _notyet_
 	int model;
-	if  (p->p_model == DATAMODEL_LP64)
+	if (p->p_model == DATAMODEL_LP64)
 		model = DATAMODEL_LP64;
 	else
 		model = DATAMODEL_LP32;
@@ -360,7 +360,7 @@ fasttrap_tracepoint_init(proc_t *p, fasttrap_tracepoint_t *tp, uintptr_t pc,
 		case FASTTRAP_PREFIX_REPNE:
 			if (seg != 0) {
 #if defined(windows)
-				/* segment descriptors not implemented in windows, so DO NOT TRACE */
+				/* segment descriptors not implemented */
 				return (-1);
 #else
 				/*
@@ -577,7 +577,8 @@ fasttrap_tracepoint_init(proc_t *p, fasttrap_tracepoint_t *tp, uintptr_t pc,
 			break;
 #if defined(windows)
 		case FASTTRAP_MOV_EDI_EDI0_V0:
-			if (start == 0 && (instr[start+1] == FASTTRAP_MOV_EDI_EDI1_V0))
+			if (start == 0 && (instr[start+1] ==
+			    FASTTRAP_MOV_EDI_EDI1_V0))
 				tp->ftt_type = FASTTRAP_T_MOV_EDIEDI;
 			break;
 #endif
@@ -650,12 +651,12 @@ fasttrap_tracepoint_init(proc_t *p, fasttrap_tracepoint_t *tp, uintptr_t pc,
 				if (reg != 0) {
 					tp->ftt_ripmode = FASTTRAP_RIP_1 |
 					    (FASTTRAP_RIP_X *
-					        FASTTRAP_REX_B(rex));
+					    FASTTRAP_REX_B(rex));
 					rm = 0;
 				} else {
 					tp->ftt_ripmode = FASTTRAP_RIP_2 |
 					    (FASTTRAP_RIP_X *
-					        FASTTRAP_REX_B(rex));
+					    FASTTRAP_REX_B(rex));
 					rm = 1;
 				}
 
@@ -798,7 +799,7 @@ fasttrap_sigsegv(proc_t *p, kthread_t *t, uintptr_t addr)
 	if (t != NULL)
 		aston(t);
 #else
-	dprintf(stderr, "fastrap.sys: fasttrap_sigsegv  %p\n", addr);
+	dprintf("fastrap.sys: fasttrap_sigsegv  %p\n", addr);
 	fasttrap_winsig(p->pid, addr);
 #endif
 }
@@ -985,7 +986,7 @@ fasttrap_do_seg(fasttrap_tracepoint_t *tp, struct reg *rp, uintptr_t *addr)
 
 	*addr += USD_GETBASE(desc);
 #else
-	dprintf(stderr, "fasttrap.sys: fasttrap_do_seg()!! Not Implemented\n");
+	dprintf("fasttrap_do_seg()!! Not Implemented\n");
 	return (-1);
 #endif
 	return (0);
@@ -1005,10 +1006,10 @@ fasttrap_pid_probe(struct reg *rp)
 	dtrace_icookie_t cookie;
 	uint_t is_enabled = 0;
 	thread_t *td = curthread;
-
 #ifdef _notyet_
 	int model;
-	if  (p->p_model == DATAMODEL_LP64)
+	
+	if (p->p_model == DATAMODEL_LP64)
 		model = DATAMODEL_LP64;
 	else
 		model = DATAMODEL_LP32;
@@ -1078,7 +1079,7 @@ fasttrap_pid_probe(struct reg *rp)
 #if defined(sun)
 		mutex_exit(pid_mtx);
 #endif
-		dprintf(stderr, "fasttrap.sys: fasttrap_pid_probe: missed pid %d tid %d pc %p\n", 
+		dprintf("fasttrap_pid_probe: missed pid %d tid %d pc %p\n",
 			pid, curthread->tid, pc);
 		return (-1);
 	}
@@ -1754,7 +1755,6 @@ fasttrap_pid_probe(struct reg *rp)
 
 		ASSERT(i <= sizeof (scratch));
 
-		//if (uwrite(p, scratch, i, (uintptr_t)addr)) {
 		if (fasttrap_copyout(scratch, addr, i)) {
 			fasttrap_sigtrap(p, curthread, pc);
 			new_pc = pc;
@@ -1880,70 +1880,42 @@ fasttrap_getreg(struct reg *rp, uint_t reg)
 {
 #ifdef __amd64
 	switch (reg) {
-	case REG_R15:
-		return (rp->r_r15);
-	case REG_R14:
-		return (rp->r_r14);
-	case REG_R13:
-		return (rp->r_r13);
-	case REG_R12:
-		return (rp->r_r12);
-	case REG_R11:
-		return (rp->r_r11);
-	case REG_R10:
-		return (rp->r_r10);
-	case REG_R9:
-		return (rp->r_r9);
-	case REG_R8:
-		return (rp->r_r8);
-	case REG_RDI:
-		return (rp->r_rdi);
-	case REG_RSI:
-		return (rp->r_rsi);
-	case REG_RBP:
-		return (rp->r_rbp);
-	case REG_RBX:
-		return (rp->r_rbx);
-	case REG_RDX:
-		return (rp->r_rdx);
-	case REG_RCX:
-		return (rp->r_rcx);
-	case REG_RAX:
-		return (rp->r_rax);
-	case REG_TRAPNO:
-		return (rp->r_trapno);
-	case REG_ERR:
-		return (rp->r_err);
-	case REG_RIP:
-		return (rp->r_rip);
-	case REG_CS:
-		return (rp->r_cs);
-
-	case REG_RFL:
-		return (rp->r_rflags);
-
-	case REG_RSP:
-		return (rp->r_rsp);
-	case REG_SS:
-		return (rp->r_ss);
-	case REG_FS:
-		return (rp->r_fs);
-	case REG_GS:
-		return (rp->r_gs);
-	case REG_DS:
-		return (rp->r_ds);
-	case REG_ES:
-		return (rp->r_es);
-	//case REG_FSBASE:	return (rdmsr(MSR_FSBASE));
-	//case REG_GSBASE:	return (rdmsr(MSR_GSBASE));
-	default:
-		return 0;
+	case REG_R15:		return (rp->r_r15);
+	case REG_R14:		return (rp->r_r14);
+	case REG_R13:		return (rp->r_r13);
+	case REG_R12:		return (rp->r_r12);
+	case REG_R11:		return (rp->r_r11);
+	case REG_R10:		return (rp->r_r10);
+	case REG_R9:		return (rp->r_r9);
+	case REG_R8:		return (rp->r_r8);
+	case REG_RDI:		return (rp->r_rdi);
+	case REG_RSI:		return (rp->r_rsi);
+	case REG_RBP:		return (rp->r_rbp);
+	case REG_RBX:		return (rp->r_rbx);
+	case REG_RDX:		return (rp->r_rdx);
+	case REG_RCX:		return (rp->r_rcx);
+	case REG_RAX:		return (rp->r_rax);
+	case REG_TRAPNO:	return (rp->r_trapno);
+	case REG_ERR:		return (rp->r_err);
+	case REG_RIP:		return (rp->r_rip);
+	case REG_CS:		return (rp->r_cs);
+	case REG_RFL:		return (rp->r_rflags);
+	case REG_RSP:		return (rp->r_rsp);
+	case REG_SS:		return (rp->r_ss);
+	case REG_FS:		return (rp->r_fs);
+	case REG_GS:		return (rp->r_gs);
+	case REG_DS:		return (rp->r_ds);
+	case REG_ES:		return (rp->r_es);
+#ifdef illumos
+	case REG_FSBASE:	return (rdmsr(MSR_FSBASE));
+	case REG_GSBASE:	return (rdmsr(MSR_GSBASE));
+#endif
 	}
 
 	panic("dtrace: illegal register constant");
 	/*NOTREACHED*/
 #else
-#define _NGREG 19
+#define	_NGREG 19
 	if (reg >= _NGREG)
 		panic("dtrace: illegal register constant");
 

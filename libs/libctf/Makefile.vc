@@ -23,7 +23,8 @@ OBJS = $(ODIR)\ctf_create.obj \
 	 $(ODIR)\ctf_open.obj \
 	 $(ODIR)\ctf_subr.obj \
 	 $(ODIR)\ctf_types.obj \
-	 $(ODIR)\ctf_util.obj 
+	 $(ODIR)\ctf_util.obj
+
 OBJA =
 
 
@@ -37,7 +38,7 @@ $(INST_LIB_DIR)/$(STATICLIB): $(OBJS) $(OBJA)
 $(INST_LIB_DIR)/$(IMPLIB): $(INST_EXE_DIR)/$(SHAREDLIB)
 
 $(INST_EXE_DIR)/$(SHAREDLIB): $(OBJS) $(OBJA)
-	$(LD) $(LDFLAGS)  -dll -implib:$(INST_LIB_DIR)/$(IMPLIB) \
+	$(LD) $(LDFLAGS)  -def:$(DEF) -dll -implib:$(INST_LIB_DIR)/$(IMPLIB) \
 	  -out:$@  $(OBJS) $(OBJA) zlib.lib
 
 {$(TOP)}.c.obj:

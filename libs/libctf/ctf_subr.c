@@ -26,20 +26,20 @@
 
 #pragma ident	"%Z%%M%	%I%	%E% SMI"
 
-#if defined(sun)
-#include <sys/mman.h>
-#else
+#ifdef windows
 #include <dtrace_misc.h>
-#include <stdlib.h>
-#endif
 #include <ctf_impl.h>
-
 #include <stdarg.h>
+#else
+#include <ctf_impl.h>
+#include <sys/mman.h>
+#include <stdarg.h>
+#endif
 
 void *
 ctf_data_alloc(size_t size)
 {
-#if defined(sun)
+#ifndef windows
 	return (mmap(NULL, size, PROT_READ | PROT_WRITE,
 	    MAP_PRIVATE | MAP_ANON, -1, 0));
 #else
@@ -47,14 +47,14 @@ ctf_data_alloc(size_t size)
 	if ((p = malloc(size)) == NULL)
 		return MAP_FAILED;
 	else
-		p;
+		return p;
 #endif
 }
 
 void
 ctf_data_free(void *buf, size_t size)
 {
-#if defined(sun)
+#ifndef windows
 	(void) munmap(buf, size);
 #else
 	free(buf);
@@ -64,7 +64,9 @@ ctf_data_free(void *buf, size_t size)
 void
 ctf_data_protect(void *buf, size_t size)
 {
-	//(void) mprotect(buf, size, PROT_READ);
+#ifndef windows
+	(void) mprotect(buf, size, PROT_READ);
+#endif
 }
 
 void *

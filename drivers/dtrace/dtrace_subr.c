@@ -100,7 +100,7 @@ dtrace_invop_remove(int (*func)(uintptr_t, uintptr_t *, uintptr_t))
 int
 dtrace_getipl(void)
 {
-	return 0;
+	return (0);
 }
 
 void
@@ -123,7 +123,8 @@ void
 dtrace_sync(void)
 {
 #if 0
-	dtrace_xcall((uint_t) DTRACE_CPUALL, (dtrace_xcall_t)dtrace_sync_func, NULL);
+	dtrace_xcall((uint_t) DTRACE_CPUALL,
+	    (dtrace_xcall_t) dtrace_sync_func, NULL);
 #endif
 }
 
@@ -133,14 +134,14 @@ dtrace_toxic_ranges(void (*func)(uintptr_t base, uintptr_t limit))
 	(func)(0, (uintptr_t) kernelbase);
 }
 
-extern dtrace_id_t      dtrace_probeid_error;   /* special ERROR probe */
+extern dtrace_id_t dtrace_probeid_error;	/* special ERROR probe */
 
 void
-dtrace_probe_error(dtrace_state_t *state, dtrace_epid_t epid, 
+dtrace_probe_error(dtrace_state_t *state, dtrace_epid_t epid,
 	int which, int fltoffs, int fault, uintptr_t illval)
 {
-	dtrace_probe( dtrace_probeid_error, (uint64_t)(uintptr_t)state, epid, 
-		which, fltoffs, fault );
+	dtrace_probe(dtrace_probeid_error, (uint64_t)(uintptr_t)state, epid,
+		which, fltoffs, fault);
 }
 
 
@@ -173,14 +174,15 @@ dtrace_gethrtime()
 	QueryPerformanceCounter(&StartingTime);
 	ret = (StartingTime.QuadPart) * frequency;
 
-	return ret;
+	return (ret);
 }
 
-/* Pthread
+/*
+ * Pthread
  * time between jan 1, 1601 and jan 1, 1970 in units of 100 nanoseconds
  */
-#define PTW32_TIMESPEC_TO_FILETIME_OFFSET \
-	  ( ((int64_t) 27111902 << 32) + (int64_t) 3577643008 )
+#define	PTW32_TIMESPEC_TO_FILETIME_OFFSET \
+	(((int64_t) 27111902 << 32) + (int64_t) 3577643008)
 
 /* system time in nanoseconds */
 hrtime_t
@@ -193,27 +195,29 @@ dtrace_gethrestime(void)
 	GetSystemTimeAsFileTime(&FileTime);
 	SystemTime.LowPart = FileTime.dwLowDateTime;
 	SystemTime.HighPart = FileTime.dwHighDateTime;
-	ret = ((SystemTime.QuadPart - PTW32_TIMESPEC_TO_FILETIME_OFFSET) * 100UL);
-	return ret;
+	ret = ((SystemTime.QuadPart - PTW32_TIMESPEC_TO_FILETIME_OFFSET) *
+	    100UL);
+
+	return (ret);
 }
 
 dtrace_icookie_t
 dtrace_interrupt_disable(void)
 {
 	int wait = 0, cpu;
-	
+
 	cpu = dtrace_etw_current_cpu();
 
 	if (cpu == -1) {
 		if (xcall_cpu == -1) {
 			cpu = 0;
-		} else 
+		} else
 			cpu = xcall_cpu;
-	} 
+	}
 
 	mutex_enter(&intr_cpu[cpu]);
 
-	return cpu;
+	return (cpu);
 }
 
 void
@@ -226,5 +230,5 @@ uintptr_t
 dtrace_caller(int ignore)
 {
 	UNREFERENCED_PARAMETER(ignore);
-	return -1;
+	return (-1);
 }

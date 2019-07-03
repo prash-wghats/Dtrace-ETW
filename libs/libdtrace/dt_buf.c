@@ -39,7 +39,7 @@
  * to check for errors and then perform a single check before using the buffer.
  */
 
-#if defined(sun)
+#if !defined(windows)
 #include <stdint.h>
 #include <strings.h>
 #include <sys/sysmacros.h>

@@ -1,5 +1,6 @@
-
-/*#pragma D depends_on provider reg*/
+/*
+#pragma D depends_on provider reg
+*/
 
 typedef struct registry {
 	int r_index;			/* The subkey index for the registry operation (such as EnumerateKey) */
@@ -15,3 +16,4 @@ translator registry_t < struct reginfo *R > {
 	r_intime = R->r_time;
 	r_rname = wstringof(R->r_name);
 };
+

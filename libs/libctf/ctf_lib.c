@@ -26,23 +26,28 @@
 
 #pragma ident	"%Z%%M%	%I%	%E% SMI"
 
-#if defined(sun)
-#include <sys/mman.h>
-#include <sys/zmod.h>
-#include <dlfcn.h>
-#include <gelf.h>
-#include <unistd.h>
-#else
-#include <dtrace_misc.h>
-#include <zlib.h>
-#endif
+#ifdef windows
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <dtrace_misc.h>
 #include <ctf_impl.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <zlib.h>
+#else
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/mman.h>
+#include <ctf_impl.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <dlfcn.h>
+#include <gelf.h>
+#include <zlib.h>
+#endif
 
-#if defined(sun)
+#ifdef illumos
 #ifdef _LP64
 static const char *_libctf_zlib = "/usr/lib/64/libz.so";
 #else
@@ -103,7 +108,7 @@ static void _libctf_init(void)
 void *
 ctf_zopen(int *errp)
 {
-#if defined(sun)
+#ifdef illumos
 	ctf_dprintf("decompressing CTF data using %s\n", _libctf_zlib);
 
 	if (zlib.z_dlp != NULL)
@@ -217,14 +222,14 @@ ctf_sect_mmap(ctf_sect_t *sp, int fd)
 void
 ctf_sect_munmap(const ctf_sect_t *sp)
 {
-#if defined(sun)
+#ifndef windows
 	uintptr_t addr = (uintptr_t)sp->cts_data;
 	uintptr_t pageoff = addr & ~_PAGEMASK;
 
 	(void) munmap((void *)(addr - pageoff), sp->cts_size + pageoff);
 #endif
 }
-#if defined(sun)
+
 /*
  * Open the specified file descriptor and return a pointer to a CTF container.
  * The file can be either an ELF file or raw CTF file.  The caller is
@@ -237,6 +242,7 @@ ctf_fdopen(int fd, int *errp)
 	ctf_file_t *fp = NULL;
 	size_t shstrndx, shnum;
 
+#ifndef windows
 	struct stat64 st;
 	ssize_t nbytes;
 
@@ -474,10 +480,11 @@ bad:
 		(void) munmap(strs_map, strs_mapsz);
 		return (fp);
 	}
+#endif
 
 	return (ctf_set_open_errno(errp, ECTF_FMT));
 }
-#endif
+
 /*
  * Open the specified file and return a pointer to a CTF container.  The file
  * can be either an ELF file or raw CTF file.  This is just a convenient
@@ -486,7 +493,7 @@ bad:
 ctf_file_t *
 ctf_open(const char *filename, int *errp)
 {
-#if defined(sun)
+#ifndef windows
 	ctf_file_t *fp;
 	int fd;
 

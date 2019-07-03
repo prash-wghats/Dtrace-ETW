@@ -1,6 +1,10 @@
 using System;  
 namespace Strings  
 {  
+	class MyString {
+		UInt16 size;
+		UInt64[] array64;
+	}
     class Program  
     {  
 		static string Function0(string str)

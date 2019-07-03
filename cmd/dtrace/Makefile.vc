@@ -7,19 +7,33 @@ ROOT=..\..
 
 TOP = .
 
-EXE=dtrace.exe
-PDB=dtrace.pdb
-
-
-
 #LDFLAGS = -nologo -debug -incremental:no /fixed:no /subsystem:console /LIBPATH:$(INST_LIB_DIR)  #/NODEFAULTLIB:libcmt 
 LDFLAGS = $(LDFLAGS) /subsystem:console
 OBJS = $(ODIR)/dtrace.obj $(ODIR)/getopt.obj
 
 OBJA =
 
+DLIB = library.d
+DBASE = $(ROOT)\libs\scripts
+DLIB_SRC = $(DBASE)\types.d $(DBASE)\unistd.d $(DBASE)\windows.d \
+	$(DBASE)\psinfo.d $(DBASE)\io.d $(DBASE)\sched.d \
+	$(DBASE)\tcpip.d $(DBASE)\registry.d
+
+!IF "$(PROCESSOR_ARCHITECTURE)" == "x86"
+BDLL = $(ROOT)\libs\i386
+EXE=dtrace32.exe
+PDB=dtrace32.pdb
+!else
+BDLL = $(ROOT)\libs\amd64
+EXE=dtrace.exe
+PDB=dtrace.pdb
+!endif
+
+DLLSBASE = $(BDLL)\dbghelp.dll $(BDLL)\pthreadVC2.dll $(BDLL)\symsrv.dll
+
+DLLS = $(INST_EXE_DIR)/dbghelp.dll $(INST_EXE_DIR)/pthreadVC2.dll $(INST_EXE_DIR)/symsrv.dll
 STATIC_LIBS =  libproc.lib libctf.lib libdtrace.lib libpe.lib libcommon.lib
-DYNAMIC_LIBS = libprocdll.lib libctf.lib libdtracedll.lib
+DYNAMIC_LIBS = libprocdll.lib libctfdll.lib libdtracedll.lib
 STATIC_SYS_LIBS = libdtracesys.lib fasttrap.lib libetw.lib profile.lib sdt.lib ole32.lib \
 		rpcrt4.lib Shlwapi.lib tdh.lib
 DYNAMIC_SYS_LIBS = libdtracesysdll.lib fasttrapdll.lib libetwdll.lib  
@@ -31,14 +45,20 @@ LIBS = $(DYNAMIC_LIBS) $(DYNAMIC_SYS_LIBS)
 !endif
 
 
-all: setup $(INST_EXE_DIR)/$(EXE)
-dynamic: setup $(INST_EXE_DIR)/$(EXE)
-static: setup $(INST_EXE_DIR)/$(EXE)
+all: setup $(INST_EXE_DIR)/$(EXE) $(INST_EXE_DIR)/$(DLIB)
+dynamic: setup $(INST_EXE_DIR)/$(EXE) $(INST_EXE_DIR)/$(DLIB)
+static: setup $(INST_EXE_DIR)/$(EXE) $(INST_EXE_DIR)/$(DLIB) $(INST_LIB_DIR)/libdtrace.lib \
+	$(INST_LIB_DIR)/libproc.lib $(INST_LIB_DIR)/libctf.lib
 
-$(INST_EXE_DIR)/$(EXE): $(OBJS)
+$(INST_EXE_DIR)/$(EXE): $(OBJS) 
 	$(LD) $(LDFLAGS) /out:$(INST_EXE_DIR)/$(EXE) $(OBJS)  $(LIBS) dbghelp.lib psapi.lib advapi32.lib \
-		pthreadVC2.lib zlib.lib corguids.lib mscoree.lib Shlwapi.lib  
+		pthreadVC2.lib zlib.lib corguids.lib mscoree.lib Shlwapi.lib
+	xcopy /y $(BDLL)\*.dll $(INST_EXE_DIR)\*
+	cat $(DLIB_SRC) > $(INST_EXE_DIR)\$(DLIB)
 	mt.exe -manifest "dtrace.exe.manifest" -outputresource:$(INST_EXE_DIR)/$(EXE);#1
+
+$(INST_EXE_DIR)/$(DLIB): $(SCR_DLIB)
+	copy $(SCR_DLIB) $(INST_EXE_DIR)/$(DLIB)
 
 {$(TOP)}.c.obj:
 	$(CC)  $(ARCH_FLAGS) $(CFLAGS) /Fo$(ODIR)\ /c $<

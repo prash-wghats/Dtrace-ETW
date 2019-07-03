@@ -19,10 +19,12 @@ CFLAGS  =  $(CFLAGS) -DHAVE_STRUCT_TIMESPEC -DLIBDTRACE_EXPORTS
 
 OBJS = $(ODIR)/libproc.obj \
 	 $(ODIR)/net.obj \
+	 $(ODIR)/pr_ctf.obj \
 	 $(ODIR)/pr_common.obj
 
 OBJA = $(ODIR)/libproc.obj \
 	 $(ODIR)/net.obj \
+	 $(ODIR)/pr_ctf.obj
 
 all: setup $(INST_LIB_DIR)/$(STATICLIB) $(INST_EXE_DIR)/$(SHAREDLIB) $(INST_LIB_DIR)/$(IMPLIB)
 dynamic: setup $(INST_EXE_DIR)/$(SHAREDLIB) $(INST_LIB_DIR)/$(IMPLIB)
@@ -33,9 +35,9 @@ $(INST_LIB_DIR)/$(STATICLIB): $(OBJA)
 
 $(INST_LIB_DIR)/$(IMPLIB): $(INST_EXE_DIR)/$(SHAREDLIB)
 
-$(INST_EXE_DIR)/$(SHAREDLIB): $(OBJS) $(OBJA)
+$(INST_EXE_DIR)/$(SHAREDLIB): $(OBJS) $(OBJA) $(INST_LIB_DIR)/libctfdll.lib
 	$(LD) $(LDFLAGS)  -def:$(DEF) -dll -implib:$(INST_LIB_DIR)/$(IMPLIB) \
-	  -out:$@  $(OBJS) $(OBJA) libpe.lib dbghelp.lib libetwdll.lib psapi.lib pthreadVC2.lib \
+	  -out:$@  $(OBJS) $(OBJA) libpe.lib libctfdll.lib zlib.lib dbghelp.lib libetwdll.lib psapi.lib pthreadVC2.lib \
 	  corguids.lib mscoree.lib Shlwapi.lib
 	  
 {$(TOP)}.c.obj:

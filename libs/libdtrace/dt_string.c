@@ -22,14 +22,12 @@
 /*
  * Copyright (c) 2003, 2010, Oracle and/or its affiliates. All rights reserved.
  */
- 
-#if defined(sun)
-#include <stdint.h>
-#include <strings.h>
-#else
-#include <dtrace_misc.h>
-#endif
 
+#ifdef windows
+#include <dtrace_misc.h>
+#else
+#include <strings.h>
+#endif
 #include <stdlib.h>
 #include <errno.h>
 #include <ctype.h>

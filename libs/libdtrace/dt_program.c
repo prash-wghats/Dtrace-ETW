@@ -23,22 +23,21 @@
  * Copyright (c) 2003, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2011 by Delphix. All rights reserved.
  */
-
-
-#if defined(sun)
-#include <stdint.h>
-#include <strings.h>
+#if !defined(windows)
 #include <unistd.h>
-#include <alloca.h>
-#else
-#include <dtrace_misc.h>
-#endif
-
+#include <strings.h>
 #include <stdlib.h>
 #include <errno.h>
 #include <assert.h>
 #include <ctype.h>
-
+#include <alloca.h>
+#else
+#include <stdlib.h>
+#include <errno.h>
+#include <assert.h>
+#include <ctype.h>
+#include <dtrace_misc.h>
+#endif
 #include <dt_impl.h>
 #include <dt_program.h>
 #include <dt_printf.h>
@@ -158,24 +157,24 @@ int
 dtrace_program_exec(dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
     dtrace_proginfo_t *pip)
 {
-#if !defined(sun)
-	dtrace_enable_io_t args;
-#endif
 	void *dof;
 	int n, err;
+#if !defined(illumos)
+	dtrace_enable_io_t args;
+#endif
 
 	dtrace_program_info(dtp, pgp, pip);
 
 	if ((dof = dtrace_dof_create(dtp, pgp, DTRACE_D_STRIP)) == NULL)
 		return (-1);
 
-#if !defined(sun)
+#if !defined(illumos)
 	args.dof = dof;
 	args.n_matched = 0;
 	n = dt_ioctl(dtp, DTRACEIOC_ENABLE, &args);
 #else
 	n = dt_ioctl(dtp, DTRACEIOC_ENABLE, dof);
-#endif	
+#endif
 	dtrace_dof_destroy(dtp, dof);
 
 	if (n == -1) {
@@ -200,7 +199,11 @@ dtrace_program_exec(dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
 	}
 
 	if (pip != NULL)
+#if !defined(illumos)
 		pip->dpi_matches += args.n_matched;
+#else
+		pip->dpi_matches += n;
+#endif
 
 	return (0);
 }
@@ -570,10 +573,11 @@ dt_header_provider(dtrace_hdl_t *dtp, dt_provider_t *pvp, FILE *out)
 	info.dthi_pfname = alloca(strlen(pvp->pv_desc.dtvd_name) + 1 + i);
 	dt_header_fmt_func(info.dthi_pfname, pvp->pv_desc.dtvd_name);
 
-#ifdef __FreeBSD__
+#ifdef __FreeBSD__ || windows
 	if (fprintf(out, "#include <sys/sdt.h>\n\n") < 0)
 		return (dt_set_errno(dtp, errno));
 #endif
+
 	if (fprintf(out, "#if _DTRACE_VERSION\n\n") < 0)
 		return (dt_set_errno(dtp, errno));
 

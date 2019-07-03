@@ -2,4 +2,6 @@ NAME FASTTRAP.DLL
 EXPORTS
 	FasttrapOpen
 	FasttrapIoctl
+	FasttrapClose
+	
 	

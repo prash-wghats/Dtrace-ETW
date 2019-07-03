@@ -44,11 +44,10 @@
  * in the future by adding locks to libdtrace or switching to Flex and Bison.
  */
 
-#if defined(sun)
-#include <stdint.h>
-#include <strings.h>
-#else
+#ifdef windows
 #include <dtrace_misc.h>
+#else
+#include <strings.h>
 #endif
 #include <stdlib.h>
 #include <assert.h>

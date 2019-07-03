@@ -1,5 +1,5 @@
 #ifndef _INJECT_H_
-#define _INJECT_H_
+#define	_INJECT_H_
 
 #include <windows.h>
 #include <stdio.h>
@@ -24,7 +24,7 @@ struct dt_pipe {
 	size_t size;		/* size of memory */
 	HANDLE evh;			/* host event */
 	HANDLE evp;			/* peer event */
-	HANDLE htd;			/* control thread handle */	 
+	HANDLE htd;			/* control thread handle */
 	dt_pipe_t * (*pfunc_data)(dt_pipe_t *);	/* message processing func */
 };
 
@@ -52,27 +52,25 @@ typedef struct dt_pmsg {
 /* probe function */
 typedef struct dt_msg_func {
 	uetwptr_t addr;			/* trace address */
-	uetwptr_t faddr;			/*  function address */
+	uetwptr_t faddr;		/*  function address */
 	int type;				/* type, entry/return */
 } dt_msg_func_t;
 
-
-dt_pipe_t *dt_create_pipe(DWORD pid, int size, dt_pipe_t * (*func)(dt_pipe_t *));
+dt_pipe_t *dt_create_pipe(DWORD pid, int size,
+    dt_pipe_t * (*func)(dt_pipe_t *));
 dt_pmsg_t *dt_pipe_sndrcv(dt_pipe_t *pipe, dt_pmsg_t *msg);
 HANDLE dt_pipe_wait(dt_pipe_t *pipe);
 int dt_injectdll(DWORD pid, wchar_t *dllpath);
 void dt_pipe_destroy(dt_pipe_t *pipe);
 void dt_unload_msg(dt_pipe_t *pipe);
 
-#define MAX_SYM_NAME 2000
 HMODULE WINAPI GetRemoteModuleHandle(HANDLE hProcess, LPCSTR lpModuleName);
-FARPROC WINAPI GetRemoteProcAddress (HANDLE hProcess, HMODULE hModule,
+FARPROC WINAPI GetRemoteProcAddress(HANDLE hProcess, HMODULE hModule,
     LPCSTR lpProcName, UINT Ordinal, BOOL UseOrdinal);
 
-#define AGENTDLL64 L"agent64.dll"
-#define AGENTDLL32 L"agent32.dll"
-
-
+#define	MAX_SYM_NAME 2000
+#define	AGENTDLL64 L"agent64.dll"
+#define	AGENTDLL32 L"agent32.dll"
 
 #pragma pack(1)
 struct etwft {
@@ -109,7 +107,7 @@ typedef struct etw_event {
 } etw_event_t;
 #pragma pack()
 
-#define FT_ETW_EVENT_SIZE (sizeof(etw_event_t) / sizeof(uetwptr_t))
+#define	FT_ETW_EVENT_SIZE (sizeof (etw_event_t) / sizeof (uetwptr_t))
 
 #ifdef __cplusplus
 }

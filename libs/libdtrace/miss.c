@@ -501,3 +501,29 @@ char *setlibdir()
 	
 	return exepath;
 }
+
+//https://groups.google.com/forum/#!topic/jansson-users/dqiNY9lRmXg
+
+int vasprintf( char **sptr, char *fmt, va_list argv )
+{
+    int wanted;
+
+	*sptr = NULL;
+	wanted = vsnprintf(*sptr, 0, fmt, argv);
+    if((wanted > 0) && ((*sptr = malloc( 1 + wanted )) != NULL))
+        return vsprintf(*sptr, fmt, argv);
+
+    return 0;
+}
+
+int asprintf(char **sptr, char *fmt, ...)
+{
+    int retval;
+
+    va_list argv;
+    va_start(argv, fmt);
+    retval = vasprintf(sptr, fmt, argv);
+    va_end(argv);
+
+    return retval;
+}

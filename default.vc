@@ -30,7 +30,7 @@ CSCFLAGS = -platform:x86
 INST_LIB_DIR=$(BASE)\amd64\lib
 CMN_LIB_DIR=$(ROOT)\libs\amd64
 INST_EXE_DIR=$(BASE)\amd64\bin
-ARCH=/D__amd64__ /D__amd64 
+ARCH=/D__amd64__ /D__amd64 /D_LP64
 ETW_FLAGS= /D__amd64_etw__
 ODIR = $(BASE)\amd64\obj
 !ENDIF
@@ -49,14 +49,14 @@ RC = rc
 INCLUDES = -I$(ROOT)\inc\include -I$(ROOT)\inc -I$(ROOT)\libs\common -I$(ROOT)\drivers\etw -I.
 
 !ifdef STATIC
-!ifdef DEBUG
+!if $(DEBUG) > 0
 MSVCRT = /MTd
 !else
 MSVCRT = /MT
 !endif
 INCLUDES = $(INCLUDES) /DSTATIC
 !else
-!ifdef DEBUG
+!if $(DEBUG) > 0
 MSVCRT = /MDd
 !else
 MSVCRT = /MD
@@ -70,12 +70,13 @@ ARFLAGS = -nologo
 !if $(DEBUG) > 0
 CFLAGS  =  $(INCLUDES) $(DEFS) $(ARCH) -nologo -W3 -Od -Zi $(MSVCRT)
 ASFLAGS = -coff -Zi
-LDFLAGS = -nologo -debug -incremental:no /fixed:no /LIBPATH:$(CMN_LIB_DIR) /LIBPATH:$(INST_LIB_DIR)
+LDFLAGS = -nologo -debug -incremental:no /fixed:no /LIBPATH:$(CMN_LIB_DIR) /LIBPATH:$(INST_LIB_DIR) /ignore:4099
 !else
 CFLAGS  =  $(INCLUDES) $(DEFS) $(ARCH) -nologo -W3 -O2 -Zi $(MSVCRT)
 ASFLAGS = -coff -Zi
-LDFLAGS = -nologo  -debug -incremental:no /fixed:no /LIBPATH:$(CMN_LIB_DIR) /LIBPATH:$(INST_LIB_DIR)
+LDFLAGS = -nologo -incremental:no /fixed:no /LIBPATH:$(CMN_LIB_DIR) /LIBPATH:$(INST_LIB_DIR) /ignore:4099
 !endif
 
+CFLAGS = $(CFLAGS) /Fd$(ODIR)\ 
 
 !endif

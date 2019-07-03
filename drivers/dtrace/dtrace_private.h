@@ -1,5 +1,5 @@
 #if !defined(_DTRACE_PRIVATE)
-#define _DTRACE_PRIVATE
+#define	_DTRACE_PRIVATE
 
 extern hrtime_t Hertz;
 extern cpu_data_t *CPU;

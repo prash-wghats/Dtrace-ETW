@@ -26,21 +26,18 @@
 
 #pragma ident	"%Z%%M%	%I%	%E% SMI"
 
-#if defined(sun)
-#include <stdint.h>
-#include <strings.h>
+#include <sys/types.h>
+#if !defined(windows)
 #include <sys/sysmacros.h>
+#include <strings.h>
 #else
 #include <dtrace_misc.h>
 #endif
-
-#include <sys/types.h>
 #include <stdlib.h>
 #include <assert.h>
 
-#include <dt_impl.h>
 #include <dt_strtab.h>
-
+#include <dt_impl.h>
 
 static int
 dt_strtab_grow(dt_strtab_t *sp)

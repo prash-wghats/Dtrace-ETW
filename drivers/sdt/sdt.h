@@ -26,7 +26,7 @@
 
 /*
  * Copyright (c) 2012, Joyent, Inc. All rights reserved.
- * Copyright (C) 2019, PK 
+ * Copyright (C) 2019, PK.
  */
 
 #ifndef _SYS_SDT_IMPL_H
@@ -50,13 +50,14 @@ int sdt_detach();
 typedef struct sdt_etw_provider sdt_etw_provider_t;
 
 typedef struct sdt_provider {
-	char			*sdtp_name;	/* name of provider */
-	char			*sdtp_prefix;	/* prefix for probe names */
-	dtrace_pattr_t		*sdtp_attr;	/* stability attributes */
+	char *sdtp_name;			/* name of provider */
+	char *sdtp_prefix;			/* prefix for probe names */
+	dtrace_pattr_t *sdtp_attr;		/* stability attributes */
 	sdt_etw_provider_t *sdtp_etw;	/* etw events */
-	uint64_t sdtp_etw_flags;		/* etw kernel prov enable flag or etw prov keyword */
-	uint32_t		sdtp_priv;	/* privilege, if any */
-	dtrace_provider_id_t	sdtp_id;	/* provider ID */
+	uint64_t sdtp_etw_flags;	/* etw kernel prov enable flag or */
+								/* etw prov keyword */
+	uint32_t sdtp_priv;				/* privilege, if any */
+	dtrace_provider_id_t sdtp_id;	/* provider ID */
 } sdt_provider_t;
 
 extern sdt_provider_t sdt_providers[];		/* array of providers */

@@ -109,7 +109,9 @@ struct ps_prochandle {
 	int netver;
 	int main;
 	int skip;
+	int detach;
 	etw_proc_module_t *etwmods;
+	ctf_file_t *p_ctf;
 };
 
 struct proc_uc {
@@ -128,6 +130,7 @@ typedef struct proc_mod {
 	ULONG64 b_code;  // begin code
 	ULONG64 e_code;  // end code
 	int loaded_order;
+	void *c_ctf;
 	struct proc_mod *next;
 } proc_mod_t;
 
@@ -148,6 +151,7 @@ int Netlookup_by_name(struct ps_prochandle *P, const char *oname, const char *sn
 int Netlookup_by_addr(struct ps_prochandle *P, uintptr_t addr, char *buf, size_t size, GElf_Sym *symp);
 int Netsymbol_iter_by_addr(struct ps_prochandle *P, const char *object_name,  proc_sym_f *func, void *cd);
 prmap_t *Netaddr_to_map(struct ps_prochandle *P, uintptr_t addr);
+prmap_t *Netname_to_map(struct ps_prochandle *P, const char *name);
 int
 adjbusyloop(struct ps_prochandle *P, int wow, uintptr_t addr);
 int insbusyloop(struct ps_prochandle *P, int wow);

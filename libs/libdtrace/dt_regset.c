@@ -29,20 +29,18 @@
  * Copyright (c) 2012 by Delphix. All rights reserved.
  */
 
-#if defined(sun)
-#include <stdint.h>
+#include <sys/types.h>
+#include <sys/bitmap.h>
+#include <assert.h>
+#if !defined(windows)
 #include <strings.h>
 #else
 #include <dtrace_misc.h>
 #endif
-
-#include <sys/types.h>
-#include <sys/bitmap.h>
-#include <assert.h>
 #include <stdlib.h>
 
-#include <dt_impl.h>
 #include <dt_regset.h>
+#include <dt_impl.h>
 
 dt_regset_t *
 dt_regset_create(ulong_t nregs)
@@ -82,7 +80,7 @@ void
 dt_regset_assert_free(dt_regset_t *drp)
 {
 	int reg;
-	int fail = B_FALSE;
+	boolean_t fail = B_FALSE;
 	for (reg = 0; reg < drp->dr_size; reg++) {
 		if (BT_TEST(drp->dr_bitmap, reg) != 0)  {
 			dt_dprintf("%%r%d was left allocated\n", reg);

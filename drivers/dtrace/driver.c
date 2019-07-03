@@ -55,7 +55,6 @@ DllMain(HMODULE hmodule, DWORD  reason, LPVOID notused)
 {
 	switch (reason) {
 	case DLL_PROCESS_ATTACH:
-		//(void) pdtrace_load((void *) 0);
 		break;
 	case DLL_THREAD_ATTACH:
 	case DLL_THREAD_DETACH:
@@ -63,7 +62,7 @@ DllMain(HMODULE hmodule, DWORD  reason, LPVOID notused)
 	case DLL_PROCESS_DETACH:
 		break;
 	}
-	return TRUE;
+	return (TRUE);
 }
 #endif
 
@@ -77,12 +76,15 @@ DtraceIoctl(HANDLE DevObj, int val, void *data)
 		dtrace_etw_session_ft_on(dtrace_etw_handle);
 	}
 	t = pdtrace_ioctl(data, val, DtraceState);
-	/* activate etw after all the dtrace dtrace buffer are active
+
+	/*
+	 * Activate ETW after all the dtrace dtrace buffer are active
 	 * dtrace_state_go()
 	 */
 	if (dtrace_etw_handle && val == DTRACEIOC_GO)
 		dtrace_etwfile_start(dtrace_etw_handle);
-	return t;
+
+	return (t);
 }
 
 extern int _wait;
@@ -93,7 +95,7 @@ DtraceClose(HANDLE DevObj)
 		pdtrace_close(DtraceState);
 	dtrace_etw_close(dtrace_etw_handle);
 
-	return 0;
+	return (0);
 }
 
 int
@@ -105,41 +107,40 @@ DtraceETWInit(char *etl)
 		etlfile = (wchar_t *) malloc(256);
 		mbstowcs(etlfile, etl, 256);
 	}
-	if ((dtrace_etw_handle = etl ? 
-		dtrace_etwfile_init(dtrace_probe, DtraceIoctl, etlfile):
+
+	if ((dtrace_etw_handle = etl ?
+	    dtrace_etwfile_init(dtrace_probe, DtraceIoctl, etlfile):
 	    dtrace_etw_init(dtrace_probe, DtraceIoctl)) == 0) {
 		fprintf(stderr, "dtrace: failed to initialize etw\n");
 		return (-1);
 	}
-	
+
 	(void) pdtrace_load((void *) 0);
+
 	return (0);
 }
+
 int
 DtraceOpen()
 {
 	int st = 1;
-	
-	DtraceGetSystemHertz();
 
-	DtraceState = malloc(sizeof(dtrace_state_t));
+	DtraceGetSystemHertz();
+	DtraceState = malloc(sizeof (dtrace_state_t));
 	if (DtraceState == NULL) {
 		st =  0;
 	} else {
-		ZeroMemory(DtraceState, sizeof(dtrace_state_t));
+		ZeroMemory(DtraceState, sizeof (dtrace_state_t));
 		if (pdtrace_open(NULL, DtraceState))
 			st = 0;
 	}
 
-	return st;
+	return (st);
 }
-
-
 
 void
 DtraceUnload(HANDLE DrvObj)
 {
-
 }
 
 void
@@ -152,4 +153,3 @@ DtraceGetSystemHertz()
 	if (Frequency.QuadPart != 0)
 		Hertz = Frequency.QuadPart;
 }
-

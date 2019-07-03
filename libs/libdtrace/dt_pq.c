@@ -17,11 +17,6 @@
  * Copyright (c) 2012 by Delphix. All rights reserved.
  */
 
-#if defined(sun)
-#include <stdint.h>
-#else
-#include <dtrace_misc.h>
-#endif
 #include <dtrace.h>
 #include <dt_impl.h>
 #include <dt_pq.h>

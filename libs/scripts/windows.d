@@ -27,9 +27,9 @@
  * Copyright 2004 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
-
+/*
 #pragma D depends_on library types.d
-
+*/
 typedef struct proc {
 	pid_t pid;
 	pid_t ppid;				/* pid of parent */
@@ -197,3 +197,4 @@ typedef struct udpip_msg
 		} ip4;
 	} ui_addr;
 } udpip_msg_t;
+

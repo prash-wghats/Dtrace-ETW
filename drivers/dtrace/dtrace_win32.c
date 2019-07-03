@@ -30,8 +30,11 @@ dtrace_cacheid_t dtrace_predcache_id;
 int panic_quiesce;
 
 int xcall_cpu = -1;		/* current cross call cpu */
-/* per cpu lock, to serialize access to dtrace buffer, between xcall and probe context */
-kmutex_t *intr_cpu;		
+/*
+ * per cpu lock, to serialize access to dtrace buffer,
+ * between xcall and probe context.
+ */
+kmutex_t *intr_cpu;
 hrtime_t Hertz;
 cpu_data_t *CPU;
 cpu_core_t *cpu_core;
@@ -46,18 +49,21 @@ dtrace_wcstombs(char *dest, wchar_t *src, int size)
 
 	__try {
 		/*
-		 * if the destination utf8 string buffer, is not enought to convert
-		 * the wchar string, truuncate it.
+		 * if the destination utf8 string buffer, is not
+		 * enought to convert the wchar string, truncate it.
 		 */
-		//len = WideCharToMultiByte(CP_UTF8, 0, src, -1, dest, size, NULL, NULL );
 		wcstombs_s(&len, dest, size, src, _TRUNCATE);
 	} __except(EXCEPTION_EXECUTE_HANDLER) {
 		*flags |= CPU_DTRACE_FAULT;
 	}
-	return len;
+
+	return (len);
 }
 
-/* XXX should return the size of wchar string, returned by dtrace_wcstombs */
+/*
+ * should return the size of wchar string,
+ * returned by dtrace_wcstombs.
+ */
 size_t
 dtrace_wstrlen(const wchar_t *s, size_t lim)
 {
@@ -68,31 +74,34 @@ dtrace_wstrlen(const wchar_t *s, size_t lim)
 	__try {
 		/*
 		 * INCOMPLETE: TODO
-		 * does not take into account that a wide char can be 1,2 or 3 bytes.
+		 * does not take into account that a wide char
+		 * can be 1,2 or 3 bytes.
 		 */
 		sz = wcsnlen_s(s, lim);
 	} __except(EXCEPTION_EXECUTE_HANDLER) {
 		*flags |= CPU_DTRACE_FAULT;
 		sz = 0;
 	}
-	return sz;
+
+	return (sz);
 }
+
 int
 GetCurrentIrql()
 {
-	return 1;
+	return (1);
 }
 
 int
 ncpus()
 {
 	static int ncpu = 0;
-	
+
 	if (ncpu == 0) {
 		ncpu = dtrace_etw_nprocessors();
 	}
 
-	return ncpu;
+	return (ncpu);
 }
 
 int
@@ -101,24 +110,23 @@ _curcpu()
 	int cpu = dtrace_etw_current_cpu();
 
 	if (cpu == -1)
-		return 0;
+		return (0);
 	else
-		return cpu;
+		return (cpu);
 }
 
 dtrace_user_module_t *user_modules = NULL;
 
 #if defined(__amd64__)
-
 int
 winos_user_module_mdl(pid_t pid, dtrace_user_module_t *mod)
 {
 	SIZE_T co = 0;
-
-	dtrace_user_module_t *p = kmem_zalloc(sizeof(dtrace_user_module_t), 0);
-	p->mdl = 0;
 	proc_t *pr = dtrace_etw_proc_find(pid, ETW_PROC_CREATE_LIVE);
-	// memcpy(p->buf, p->imgbase, mod->size);
+	dtrace_user_module_t *p =
+	    kmem_zalloc(sizeof (dtrace_user_module_t), 0);
+
+	p->mdl = 0;
 	p->imgbase = mod->imgbase;
 	strcpy(p->name, mod->name);
 	p->size = mod->size;
@@ -134,7 +142,7 @@ winos_user_module_mdl(pid_t pid, dtrace_user_module_t *mod)
 		p->next = user_modules;
 		user_modules = p;
 	}
-	return 0;
+	return (0);
 }
 
 dtrace_user_module_t *
@@ -143,14 +151,15 @@ winos_find_user_module(uintptr_t pc)
 	dtrace_user_module_t *ctl;
 
 	if (!INKERNEL(pc)) {
-		for (ctl=user_modules; ctl!= NULL; ctl = ctl->next) {
-			if (pc >= ctl->imgbase && pc < (ctl->imgbase + ctl->size)) {
-				return ctl;
+		for (ctl = user_modules; ctl != NULL; ctl = ctl->next) {
+			if (pc >= ctl->imgbase && pc <
+			    (ctl->imgbase + ctl->size)) {
+				return (ctl);
 			}
 		}
 	}
 
-	return NULL;
+	return (NULL);
 }
 
 int
@@ -160,44 +169,44 @@ winos_unwind_user_stack(thread_t *td, CONTEXT *ct, int frame, uintptr_t out)
 	uint64_t *pcstack = out;
 	int count = 0;
 	CONTEXT Context = *ct, Context0;
+	STACKFRAME64 StackFrame;
+
 	// Stack frame
 	if (td->handle == NULL) {
 		td->handle = OpenThread(THREAD_ALL_ACCESS, FALSE, td->tid);
 	}
 	if (td->handle == NULL || td->proc->symhandle == NULL)
-		return 0;
+		return (0);
+
 	Context.ContextFlags = CONTEXT_FULL;
 	GetThreadContext(td->handle, &Context);
 
-	STACKFRAME64 StackFrame;
-	memset( &StackFrame, 0, sizeof(StackFrame) );
-	MachineType                 = IMAGE_FILE_MACHINE_AMD64;
-	StackFrame.AddrPC.Offset    = Context.Rip;
-	StackFrame.AddrPC.Mode      = AddrModeFlat;
+	memset(&StackFrame, 0, sizeof (StackFrame));
+	MachineType = IMAGE_FILE_MACHINE_AMD64;
+	StackFrame.AddrPC.Offset = Context.Rip;
+	StackFrame.AddrPC.Mode = AddrModeFlat;
 	StackFrame.AddrReturn.Offset = Context.Rsp;
-	StackFrame.AddrReturn.Mode   = AddrModeFlat;
+	StackFrame.AddrReturn.Mode = AddrModeFlat;
 	StackFrame.AddrFrame.Offset = Context.Rsp;
-	StackFrame.AddrFrame.Mode   = AddrModeFlat;
+	StackFrame.AddrFrame.Mode = AddrModeFlat;
 	StackFrame.AddrStack.Offset = Context.Rsp;
-	StackFrame.AddrStack.Mode   = AddrModeFlat;
+	StackFrame.AddrStack.Mode = AddrModeFlat;
 
-	while (count < frame ) {
-		if ( ! StackWalk64(
-		        MachineType,
-		        td->proc->symhandle,
-		        td->handle,
-		        &StackFrame,
-		        MachineType == IMAGE_FILE_MACHINE_I386
-		        ? NULL
-		        : &Context,
-		        NULL,
-		        SymFunctionTableAccess64,
-		        SymGetModuleBase64,
-		        NULL ) ) {
+	while (count < frame) {
+		if (!StackWalk64(
+		    MachineType,
+		    td->proc->symhandle,
+		    td->handle,
+		    &StackFrame,
+		    MachineType == IMAGE_FILE_MACHINE_I386 ? NULL: &Context,
+		    NULL,
+		    SymFunctionTableAccess64,
+		    SymGetModuleBase64,
+		    NULL)) {
 			break;
 		}
 
-		if (StackFrame.AddrPC.Offset != 0 ) {
+		if (StackFrame.AddrPC.Offset != 0) {
 			*pcstack++  = StackFrame.AddrPC.Offset;
 			count++;
 		} else {
@@ -205,13 +214,13 @@ winos_unwind_user_stack(thread_t *td, CONTEXT *ct, int frame, uintptr_t out)
 		}
 	}
 
-	return count;
+	return (count);
 }
 
 void
 winos_reg_to_context(CONTEXT *ct, struct reg *rp)
 {
-	ZeroMemory(ct, sizeof(CONTEXT));
+	ZeroMemory(ct, sizeof (CONTEXT));
 
 	ct->Rax = rp->r_rax;
 	ct->Rbx = rp->r_rbx;
@@ -225,11 +234,13 @@ winos_reg_to_context(CONTEXT *ct, struct reg *rp)
 	ct->R8 = rp->r_r8;
 	ct->R9 = rp->r_r9;
 	ct->R10 = rp->r_r10;
-	/*ct->R11 = r->R11;
+#if 0
+	ct->R11 = r->R11;
 	ct->R12 = r->R12;
 	ct->R13 = r->R13;
 	ct->R14 = r->R14;
-	ct->R15 = r->R15;*/
+	ct->R15 = r->R15;
+#endif
 
 }
 #endif
@@ -255,12 +266,13 @@ DWORD WINAPI
 thread_function(LPVOID lpParameter)
 {
 	while (1) {
-		SleepEx(INFINITE,TRUE);
+		SleepEx(INFINITE, TRUE);
 	}
 }
 
 taskq_t *
-taskq_create(const char *name, int nthreads, pri_t pri, int minalloc, int maxalloc, uint_t flags)
+taskq_create(const char *name, int nthreads, pri_t pri, int minalloc,
+    int maxalloc, uint_t flags)
 {
 
 	UNREFERENCED_PARAMETER(name);
@@ -269,16 +281,16 @@ taskq_create(const char *name, int nthreads, pri_t pri, int minalloc, int maxall
 	UNREFERENCED_PARAMETER(minalloc);
 	UNREFERENCED_PARAMETER(maxalloc);
 	UNREFERENCED_PARAMETER(flags);
-
 	WORD thread_id;
-	HANDLE thread_handle = CreateThread(NULL,0,thread_function,NULL,0,&thread_id);
+	HANDLE thread_handle = CreateThread(NULL, 0, thread_function,
+	    NULL, 0, &thread_id);
 
 	if (!thread_handle) {
 		dprintf("dtrace.sys: tasq_create() failed\n");
-		return NULL;
+		return (NULL);
 	}
 
-	return (taskq_t *) thread_handle;
+	return ((taskq_t *) thread_handle);
 }
 
 taskqid_t
@@ -289,7 +301,8 @@ taskq_dispatch(taskq_t *pdpc, task_func_t func, void *args, uint_t i)
 	taskfunc.f = func;
 
 	QueueUserAPC(apc_function_1, (HANDLE) pdpc, (ULONG_PTR)&taskfunc);
-	return 0;
+
+	return (0);
 }
 
 void
@@ -310,7 +323,8 @@ kmem_alloc(size_t size, int kmflag)
 	p = malloc(size);
 	if (p == NULL)
 		dprintf("dtrace.sys: kmem_alloc failed %d\n", size);
-	return p;
+
+	return (p);
 }
 
 void *
@@ -324,7 +338,8 @@ kmem_zalloc(size_t size, int kmflag)
 		dprintf("dtrace.sys: kmem_zalloc failed %d\n", size);
 	else
 		ZeroMemory(p, size);
-	return p;
+
+	return (p);
 }
 
 void
@@ -332,6 +347,7 @@ kmem_free(void *buf, size_t size)
 {
 	if (buf == NULL || size == 0)
 		return;
+
 	free(buf);
 }
 
@@ -342,36 +358,38 @@ uint32_t
 dtrace_cas32(uint32_t *target, uint32_t cmp, uint32_t new)
 {
 	LONG tmp;
-	tmp = InterlockedCompareExchange((volatile LONG *)target, (LONG)new, (LONG)cmp);
+
+	tmp = InterlockedCompareExchange((volatile LONG *)target,
+	    (LONG)new, (LONG)cmp);
 	if (tmp != *target)
-		return cmp;
+		return (cmp);
 	else
-		return ~cmp;
+		return (~cmp);
 }
 
 void *
-dtrace_casptr(volatile void *target, volatile void *cmp, volatile void *new)
+dtrace_casptr(volatile void *target, volatile void *cmp,
+    volatile void *new)
 {
 	ULONG *tmp;
-	
+
 	tmp = InterlockedCompareExchangePointer((VOID **)target, new, cmp);
 	if (tmp != *(ULONG **)target)
-		return cmp;
+		return (cmp);
 	else
-		return (void *) (~(uintptr_t)cmp);
+		return ((void *) (~(uintptr_t)cmp));
 }
 
 /*
  * interprocessor interrupt (IPI) or cross-call
  * dtrace_xcall
  */
-
 void
 dtrace_init_xcall()
 {
 	int i;
 
-	intr_cpu = kmem_zalloc(sizeof(kmutex_t) * NCPU, KM_SLEEP);
+	intr_cpu = kmem_zalloc(sizeof (kmutex_t) * NCPU, KM_SLEEP);
 	CPU_FOREACH(i) {
 		mutex_init(&intr_cpu[i]);
 	}
@@ -381,6 +399,7 @@ void
 dtrace_xcall(processorid_t cpu, dtrace_xcall_t func, void *arg)
 {
 	int i;
+
 	if (cpu == DTRACE_CPUALL) {
 		CPU_FOREACH(i) {
 			xcall_cpu = i;
@@ -397,14 +416,14 @@ int
 copyin(void * uaddr, void * kaddr, int len)
 {
 	RtlCopyMemory((void *)kaddr, (void *)uaddr, len);
-	return 0;
+	return (0);
 }
 
 int
 copyout(void * kaddr, void * uaddr, int len)
 {
 	RtlCopyMemory((void *)uaddr, (void *)kaddr, len);
-	return 0;
+	return (0);
 }
 
 /*
@@ -416,7 +435,7 @@ int
 pcopyin(void *uaddr, void *kaddr, int len)
 {
 	proc_t *p = curproc;
-	return uread(p, kaddr, len, uaddr);
+	return (uread(p, kaddr, len, uaddr));
 }
 
 /*
@@ -427,7 +446,7 @@ int
 pcopyout(void *kaddr, void *uaddr, int len)
 {
 	proc_t *p = curproc;
-	return uwrite(p, kaddr, len, uaddr);
+	return (uwrite(p, kaddr, len, uaddr));
 }
 
 /*
@@ -440,7 +459,7 @@ pcopyout(void *kaddr, void *uaddr, int len)
 int
 copyinstr(void *uaddr, void *kaddr, int len)
 {
-	return pcopyin(uaddr, kaddr, len);
+	return (pcopyin(uaddr, kaddr, len));
 }
 
 /*
@@ -452,20 +471,21 @@ copyinstr(void *uaddr, void *kaddr, int len)
 int
 copyoutstr(void *uaddr, void *kaddr, int len)
 {
-	return pcopyout(uaddr, kaddr, len);
+	return (pcopyout(uaddr, kaddr, len));
 }
 
-/* 
- * read 64,32,16,8 bits from user process
+/*
+ * read 64,32,16,8 bits from user process.
  */
 uint64_t
 dtrace_fuword64_nocheck(void *uaddr)
 {
 	uint64_t kaddr;
 	proc_t *p = curproc;
-	uread(p, &kaddr, sizeof(int64_t), uaddr);
 
-	return kaddr;
+	uread(p, &kaddr, sizeof (int64_t), uaddr);
+
+	return (kaddr);
 }
 
 uint32_t
@@ -473,9 +493,10 @@ dtrace_fuword32_nocheck(void *uaddr)
 {
 	uint32_t kaddr;
 	proc_t *p = curproc;
-	uread(p, &kaddr, sizeof(int32_t), uaddr);
 
-	return kaddr;
+	uread(p, &kaddr, sizeof (int32_t), uaddr);
+
+	return (kaddr);
 }
 
 uint16_t
@@ -483,9 +504,10 @@ dtrace_fuword16_nocheck(void *uaddr)
 {
 	uint16_t kaddr;
 	proc_t *p = curproc;
-	uread(p, &kaddr, sizeof(uint16_t), uaddr);
 
-	return kaddr;
+	uread(p, &kaddr, sizeof (uint16_t), uaddr);
+
+	return (kaddr);
 }
 
 uint8_t
@@ -493,9 +515,10 @@ dtrace_fuword8_nocheck(void *uaddr)
 {
 	uint8_t kaddr;
 	proc_t *p = curproc;
-	uread(p, &kaddr, sizeof(int8_t), uaddr);
 
-	return kaddr;
+	uread(p, &kaddr, sizeof (int8_t), uaddr);
+
+	return (kaddr);
 }
 
 /*
@@ -575,15 +598,16 @@ mutex_owned(kmutex_t *m)
 	DWORD r = WaitForSingleObject(*m, 0);
 	if (r == WAIT_OBJECT_0 || r == WAIT_ABANDONED) {
 		ReleaseMutex(*m);
-		return 1;
+		return (1);
 	}
-	return 0;
+
+	return (0);
 }
 
 int
 bcmp(const void *s1, const void *s2, size_t n)
 {
-	return memcmp(s1, s2, n);
+	return (memcmp(s1, s2, n));
 }
 
 void
@@ -611,8 +635,9 @@ vcmn_err(int ce, const char *fmt, va_list adx)
 	default:
 		panic("Dtrace: unknown severity level");
 	}
+
 	if (ce == CE_PANIC) {
-		vsnprintf(buf, sizeof(buf), fmt, adx);
+		vsnprintf(buf, sizeof (buf), fmt, adx);
 		panic("%s%s", prefix, buf);
 	}
 	if (ce != CE_IGNORE) {
@@ -640,7 +665,7 @@ _curproc()
 {
 	proc_t *p = dtrace_etw_curproc();
 
-	return p;
+	return (p);
 }
 
 /*
@@ -651,10 +676,10 @@ _curthread()
 {
 	thread_t *td = dtrace_etw_curthread();
 
-	return td;
+	return (td);
 }
 
-/* 
+/*
  * find process (pid), if it exits
  */
 proc_t *
@@ -663,19 +688,20 @@ fasttrap_pfind(pid_t id)
 	proc_t *p;
 	p = dtrace_etw_proc_find(id, ETW_PROC_FIND);
 
-	return p == NULL || p->dead ? NULL: p;
+	return (p == NULL || p->dead ? NULL: p);
 }
 
-/* 
- * find process (pid), if not found create new entry 
+/*
+ * find process (pid), if not found create new entry.
  */
 proc_t *
 pfind(pid_t id)
 {
 	proc_t *p = NULL;
+
 	p = dtrace_etw_proc_find(id, ETW_PROC_CREATE_LIVE);
 
-	return p;
+	return (p);
 
 }
 
@@ -691,17 +717,19 @@ uread(proc_t *p, void *kaddr, size_t len, uintptr_t uaddr)
 
 	if (p->handle == NULL) {
 		p->handle = OpenProcess(PROCESS_VM_OPERATION | PROCESS_VM_READ |
-		        PROCESS_VM_WRITE, FALSE, p->pid);
+		    PROCESS_VM_WRITE, FALSE, p->pid);
 		if (p->handle == NULL) {
-			dprintf("dtrace.sys: uread, OpenProcess() pid (%d)  error (%d)\n",
+			dprintf("uread, OpenProcess() pid (%d)  error (%d)\n",
 			    p->pid, (err = GetLastError()));
 			return (err);
 		}
 	}
 
-	if (ReadProcessMemory(p->handle, (PVOID) uaddr, kaddr, len, &ret) == FALSE) {
-		dprintf("dtrace.sys:, ReadProcessMemory() pid (%d) addr (%x)"
-		    " size (%d) error (%d)\n", p->pid, uaddr, len, (err = GetLastError()));
+	if (ReadProcessMemory(p->handle, (PVOID) uaddr, kaddr, len, &ret) ==
+	    FALSE) {
+		dprintf("uread, ReadProcessMemory() pid (%d) addr (%x)"
+		    " size (%d) error (%d)\n", p->pid, uaddr, len,
+		    (err = GetLastError()));
 	}
 
 	return (err);
@@ -715,7 +743,7 @@ uwrite(proc_t *p, void *kaddr, size_t len, uintptr_t uaddr)
 
 	if (p->handle == NULL) {
 		p->handle = OpenProcess(PROCESS_VM_OPERATION | PROCESS_VM_READ |
-		        PROCESS_VM_WRITE, FALSE, p->pid);
+		    PROCESS_VM_WRITE, FALSE, p->pid);
 		if (p->handle == NULL) {
 			dprintf("uwrite, OpenProcess() pid (%d) "
 			    "error (%d)\n", p->pid, (err = GetLastError()));
@@ -723,9 +751,11 @@ uwrite(proc_t *p, void *kaddr, size_t len, uintptr_t uaddr)
 		}
 	}
 
-	if (WriteProcessMemory(p->handle, (PVOID) uaddr, kaddr, len, &ret) == FALSE) {
+	if (WriteProcessMemory(p->handle, (PVOID) uaddr, kaddr, len, &ret) ==
+	    FALSE) {
 		dprintf("uwrite(), WriteProcessMemory() pid (%d) addr (%x) "
-		    "size (%d) error (%d)\n", p->pid, uaddr, len, (err = GetLastError()));
+		    "size (%d) error (%d)\n", p->pid, uaddr, len,
+		    (err = GetLastError()));
 	} else {
 		FlushInstructionCache(p->handle, (PVOID) uaddr, len);
 	}
@@ -733,11 +763,11 @@ uwrite(proc_t *p, void *kaddr, size_t len, uintptr_t uaddr)
 	return (err);
 }
 
-/* 
+/*
  * fasttrap thread local memory for instruction execution
  */
-#define FTT_PAGE_UNITS 64
-#define FTT_SCRATCH_SIZE 64
+#define	FTT_PAGE_UNITS 64
+#define	FTT_SCRATCH_SIZE 64
 
 typedef struct mem_page {
 	uintptr_t addr;
@@ -767,10 +797,12 @@ scr_alloc_mem(proc_t *p)
 		page = scr_mem;
 		do {
 			if (page->free_co) {
-				vm = page->addr + page->free_list[0]*page->bsize;
+				vm = page->addr +
+				    (page->free_list[0] * page->bsize);
 				page->free_co--;
-				for (i = 0; i < page->free_co; i++)
+				for (i = 0; i < page->free_co; i++) {
 					page->free_list[i] = page->free_list[i+1];
+				}
 				units = page->size/page->bsize;
 				break;
 			}
@@ -784,10 +816,10 @@ scr_alloc_mem(proc_t *p)
 			count += page->free_co;
 		while ((page = page->next) != NULL);
 
-		return (PVOID) vm;
+		return ((PVOID) vm);
 	}
 
-	return NULL;
+	return (NULL);
 
 }
 
@@ -805,33 +837,32 @@ scr_allocate(proc_t *p)
 
 	if (p->handle == NULL) {
 		p->handle = OpenProcess(PROCESS_VM_OPERATION | PROCESS_VM_READ |
-		        PROCESS_VM_WRITE, FALSE, p->pid);
+		    PROCESS_VM_WRITE, FALSE, p->pid);
 		if (p->handle == NULL) {
-			dprintf("scr_allocate: failed to open process pid (%d) err (%d)\n", 
+			dprintf("scr_allocate: OpenProcess (%d) err (%d)\n",
 				p->pid, GetLastError());
-			return NULL;
+			return (NULL);
 		}
 	}
-	
+
 	mem = VirtualAllocEx(p->handle, (PVOID) mem_base, mem_size,
-	        MEM_COMMIT, PAGE_EXECUTE_READWRITE);
-	if (mem == 0 ||
-	    VirtualProtectEx(p->handle, mem, mem_size,
-	        PAGE_EXECUTE_READWRITE, &oldprot) == 0) {
-		dprintf("dtrace.sys: scr_allocate() ZwAllocateVirtualMemory failed %x\n",
+	    MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+	if (mem == 0 || VirtualProtectEx(p->handle, mem, mem_size,
+	    PAGE_EXECUTE_READWRITE, &oldprot) == 0) {
+		dprintf("scr_allocate: VirtualProtectEx() failed (%x)\n",
 		    GetLastError());
 		goto end;
 	}
 
-	page = malloc(sizeof(mem_page_t)
-	        + (sizeof(int) * ((mem_size/FTT_SCRATCH_SIZE)-1)));
+	page = malloc(sizeof (mem_page_t) +
+	    (sizeof (int) * ((mem_size / FTT_SCRATCH_SIZE)-1)));
 	if (page == NULL) {
 		goto end;
 	}
 	vm = page->addr = (uintptr_t) mem;
 	page->size = mem_size;
 	page->bsize = FTT_SCRATCH_SIZE;
-	for (i = 0; i < (page->size / page->bsize) ; i++)
+	for (i = 0; i < (page->size / page->bsize); i++)
 		page->free_list[i] = i;
 
 	page->free_co = i;
@@ -843,9 +874,10 @@ scr_allocate(proc_t *p)
 		page->next = (mem_page_t *) p->scr_mem;
 		p->scr_mem = (uintptr_t) page;
 	}
-	end:
+end:
 	dprintf("scr_allocate: allocated mem (%p)\n", vm);
-	return (PVOID) vm;
+
+	return ((PVOID) vm);
 }
 
 void
@@ -877,11 +909,11 @@ scr_rel_page(proc_t *p)
 	if (p->scr_mem != 0) {
 		page = (mem_page_t *) p->scr_mem;
 		do {
-			st = VirtualFreeEx(p->handle, (PVOID ) page->addr,
-			        page->size, MEM_RELEASE);
+			st = VirtualFreeEx(p->handle, (PVOID) page->addr,
+			    page->size, MEM_RELEASE);
 			if (st == FALSE)
-				dprintf("scr_rel_page(): "
-				    "VirtualFreeEx failed %x\n", st);
+				dprintf("scr_rel_page(): VirtualFreeEx (%x)\n",
+				    GetLastError());
 			temp = page;
 			page = page->next;
 			free(temp);

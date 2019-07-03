@@ -6,7 +6,7 @@ ROOT=..\..
 !include $(ROOT)\default.vc
 !endif
 
-CFLAGS = $(CFLAGS) /Fo$(ODIR)\
+CFLAGS = $(CFLAGS) /Fo$(ODIR)\ 
 
 TESTS_CS = $(ODIR)\t_cs_dyndll.exe \
 		$(ODIR)\t_cs_dyndll0.dll \
@@ -33,6 +33,9 @@ TESTS_C = $(ODIR)\t_c_dyndll.exe \
 		$(ODIR)\t_c_sim.exe \
 		$(ODIR)\t_c_args.exe \
 		$(ODIR)\t_c_slowfast.exe \
+		$(ODIR)\t_c_userland.exe \
+		$(ODIR)\t_c_printtype.exe \
+		$(ODIR)\t_c_tprinttype.exe \
 		$(ODIR)\t_c_badstack.exe
 
 all: $(TESTS_CS) $(TESTS_C)
@@ -40,13 +43,13 @@ all: $(TESTS_CS) $(TESTS_C)
 $(ODIR)\t_c_dyndll.exe: t_c_dyndll.c
 	$(CC) -Zi $(CFLAGS) /DMAIN t_c_dyndll.c /link /out:$@
 $(ODIR)\t_c_dyndll0.dll: t_c_dyndll.c
-	$(CC) $(CFLAGS) /DLOOPSDLL0 /LD /Zi t_c_dyndll.c /link /out:$@
+	$(CC) $(CFLAGS) /DLOOPSDLL0 /LD /Zi t_c_dyndll.c /link /implib:$(ODIR)\dummy  /out:$@
 $(ODIR)\t_c_dyndll1.dll: t_c_dyndll.c
-	$(CC) $(CFLAGS) /DLOOPSDLL1 /LD /Zi t_c_dyndll.c /link /out:$@
+	$(CC) $(CFLAGS) /DLOOPSDLL1 /LD /Zi t_c_dyndll.c /link /implib:$(ODIR)\dummy /out:$@
 $(ODIR)\t_c_dyndll2.dll: t_c_dyndll.c
-	$(CC) $(CFLAGS) /DLOOPSDLL2 /LD /Zi t_c_dyndll.c /link /out:$@
+	$(CC) $(CFLAGS) /DLOOPSDLL2 /LD /Zi t_c_dyndll.c /link /implib:$(ODIR)\dummy /out:$@
 $(ODIR)\t_c_dyndll3.dll: t_c_dyndll.c
-	$(CC) $(CFLAGS) /DLOOPSDLL3 /LD /Zi t_c_dyndll.c /link /out:$@
+	$(CC) $(CFLAGS) /DLOOPSDLL3 /LD /Zi t_c_dyndll.c /link /implib:$(ODIR)\dummy /out:$@
 $(ODIR)\t_c_win.exe: t_c_win.c
 	$(CC) -Zi $(CFLAGS) /DMAIN t_c_win.c /link /out:$@ user32.lib gdi32.lib
 $(ODIR)\t_c_badstack.exe: t_c_fpidbadstack.c

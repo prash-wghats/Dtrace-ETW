@@ -1,4 +1,4 @@
-#!/usr/local/bin/perl
+#!/usr/perl5/bin/perl
 #
 # CDDL HEADER START
 #
@@ -25,6 +25,10 @@
 # Use is subject to license terms.
 #
 
+#
+# Copyright (c) 2011, Joyent, Inc. All rights reserved.
+# Copyright (c) 2012 by Delphix. All rights reserved.
+#
 require 5.8.4;
 
 use File::Find;
@@ -35,15 +39,15 @@ use Cwd 'abs_path';
 
 $PNAME = $0;
 $PNAME =~ s:.*/::;
-$OPTSTR = 'abd:fghi:jlnqsx:';
-$USAGE = "Usage: $PNAME [-abfghjlnqs] [-d dir] [-i isa] "
+$OPTSTR = 'abd:fFghi:jlnqsx:';
+$USAGE = "Usage: $PNAME [-abfFghjlnqs] [-d dir] [-i isa] "
     . "[-x opt[=arg]] [file | dir ...]\n";
 ($MACH = `uname -p`) =~ s/\W*\n//;
 ($PLATFORM = `uname -i`) =~ s/\W*\n//;
 
 @dtrace_argv = ();
 
-$ksh_path = '/usr/local/bin/ksh';
+$ksh_path = '/usr/bin/ksh';
 
 @files = ();
 %exceptions = ();
@@ -69,6 +73,20 @@ sub dirname {
 	return $i == -1 ? '.' : $i == 0 ? '/' : $s;
 }
 
+sub inpath
+{
+	my ($exec) = (@_);
+	my @path = File::Spec->path();
+
+	for my $dir (@path) {
+		if (-x $dir . "/" . $exec) {
+			return 1;
+		}
+	}
+
+	return 0;
+}
+
 sub usage
 {
 	print $USAGE;
@@ -77,6 +95,7 @@ sub usage
 	print "\t -d  specify directory for test results files and cores\n";
 	print "\t -g  enable libumem debugging when running tests\n";
 	print "\t -f  force bypassed tests to run\n";
+	print "\t -F  force tests to be run, even if missing dependencies\n";
 	print "\t -h  display verbose usage message\n";
 	print "\t -i  specify ISA to test instead of isaexec(3C) default\n";
 	print "\t -j  execute test suite using jdtrace (Java API) only\n";
@@ -240,8 +259,8 @@ sub run_tests {
 	my($failed) = $errs;
 	my($total) = 0;
 
-	die "$PNAME: $dtrace not found\n" unless (-x "$dtrace");
-	logmsg($dtrace . "\n");
+	die "$PNAME: $dtrace not found; aborting\n" unless (-x "$dtrace");
+	logmsg("executing tests using $dtrace ...\n");
 
 	load_exceptions($exceptions_path);
 
@@ -273,7 +292,7 @@ sub run_tests {
 		}
 
 		$fullname = "$dir/$name";
-		$exe = "./$base.exe";
+		$exe = "$dir/$base.exe";
 		$exe_pid = -1;
 
 		if ($opt_a && ($status != 0 || $tag != 0 || $droptag != 0 ||
@@ -546,12 +565,23 @@ $dt_bin = '/opt/SUNWdtrt/bin';
 $defdir = -d $dt_tst ? $dt_tst : '.';
 $bindir = -d $dt_bin ? $dt_bin : '.';
 
+if (!$opt_F) {
+	my @dependencies = ("gcc", "make", "java", "perl");
+	
+	for my $dep (@dependencies) {
+		if (!inpath($dep)) {
+			die "$PNAME: '$dep' not found (use -F to force run)\n";
+		}
+	}
+}
+
 find(\&wanted, "$defdir/common") if (scalar(@ARGV) == 0);
 find(\&wanted, "$defdir/$MACH") if (scalar(@ARGV) == 0);
 find(\&wanted, "$defdir/$PLATFORM") if (scalar(@ARGV) == 0);
+
 die $USAGE if (scalar(@files) == 0);
 
-$dtrace_path = '/usr/sbin/dtrace.exe';
+$dtrace_path = '/usr/sbin/dtrace';
 $jdtrace_path = "$bindir/jdtrace";
 
 %exception_lists = ("$jdtrace_path" => "$bindir/exception.lst");
@@ -562,7 +592,7 @@ if ($opt_j || $opt_n || $opt_i) {
 	push(@dtrace_cmds, $jdtrace_path) if ($opt_j);
 	push(@dtrace_cmds, "/usr/sbin/$opt_i/dtrace") if ($opt_i);
 } else {
-	@dtrace_cmds = ($dtrace_path, $jdtrace_path);
+	@dtrace_cmds = ($dtrace_path);
 }
 
 if ($opt_d) {
@@ -590,12 +620,6 @@ if ($opt_g) {
 	$ENV{'UMEM_LOGGING'} = 'fail,contents';
 	$ENV{'LD_PRELOAD'} = 'libumem.so';
 }
-
-#
-# Ensure that $PATH contains a cc(1) so that we can execute the
-# test programs that require compilation of C code.
-#
-#$ENV{'PATH'} = $ENV{'PATH'} . ':/ws/onnv-tools/SUNWspro/SS11/bin';
 
 if ($opt_b) {
 	logmsg("badioctl'ing ... ");

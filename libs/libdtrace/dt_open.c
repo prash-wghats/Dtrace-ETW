@@ -21,26 +21,26 @@
 
 /*
  * Copyright (c) 2003, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2013, Joyent, Inc. All rights reserved.
- * Copyright (c) 2012 by Delphix. All rights reserved.
+ * Copyright (c) 2018, Joyent, Inc.
+ * Copyright (c) 2012, 2016 by Delphix. All rights reserved.
  */
 
-#if defined(sun)
-#include <stdint.h>
+#include <sys/types.h>
+#if !defined(windows)
 #include <sys/modctl.h>
 #include <sys/systeminfo.h>
-#include <alloca.h>
 #include <sys/resource.h>
+
+#include <libelf.h>
 #include <strings.h>
+#include <alloca.h>
+#include <limits.h>
 #include <unistd.h>
 #else
 #include <dtrace_misc.h>
 #include <windows.h>
 #include <dbghelp.h>
 #endif
-
-#include <sys/types.h>
-#include <limits.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <fcntl.h>
@@ -57,7 +57,6 @@
 #include <dt_printf.h>
 #include <dt_string.h>
 #include <dt_provider.h>
-
 
 /*
  * Stability and versioning definitions.  These #defines are used in the tables
@@ -118,11 +117,13 @@
 #define	DT_VERS_1_8_1	DT_VERSION_NUMBER(1, 8, 1)
 #define	DT_VERS_1_9	DT_VERSION_NUMBER(1, 9, 0)
 #define	DT_VERS_1_9_1	DT_VERSION_NUMBER(1, 9, 1)
-#define DT_VERS_1_10    DT_VERSION_NUMBER(1, 10, 0)
-#define DT_VERS_1_11    DT_VERSION_NUMBER(1, 11, 0)
-#define DT_VERS_1_12    DT_VERSION_NUMBER(1, 12, 0)
-#define DT_VERS_LATEST  DT_VERS_1_12
-#define DT_VERS_STRING  "Sun D 1.12"
+#define	DT_VERS_1_10	DT_VERSION_NUMBER(1, 10, 0)
+#define	DT_VERS_1_11	DT_VERSION_NUMBER(1, 11, 0)
+#define	DT_VERS_1_12	DT_VERSION_NUMBER(1, 12, 0)
+#define	DT_VERS_1_12_1	DT_VERSION_NUMBER(1, 12, 1)
+#define	DT_VERS_1_13	DT_VERSION_NUMBER(1, 13, 0)
+#define	DT_VERS_LATEST	DT_VERS_1_13
+#define	DT_VERS_STRING	"Sun D 1.13"
 
 const dt_version_t _dtrace_versions[] = {
 	DT_VERS_1_0,	/* D API 1.0.0 (PSARC 2001/466) Solaris 10 FCS */
@@ -144,22 +145,13 @@ const dt_version_t _dtrace_versions[] = {
 	DT_VERS_1_8_1,	/* D API 1.8.1 */
 	DT_VERS_1_9,	/* D API 1.9 */
 	DT_VERS_1_9_1,	/* D API 1.9.1 */
-	DT_VERS_1_10,   /* D API 1.10 */
-	DT_VERS_1_11,   /* D API 1.11 */
-	DT_VERS_1_12,   /* D API 1.12 */
+	DT_VERS_1_10,	/* D API 1.10 */
+	DT_VERS_1_11,	/* D API 1.11 */
+	DT_VERS_1_12,	/* D API 1.12 */
+	DT_VERS_1_12_1,	/* D API 1.12.1 */
+	DT_VERS_1_13,	/* D API 1.13 */
 	0
 };
-
-/*
- * Global variables that are formatted on FreeBSD based on the kernel file name.
- */
-#if !defined(sun)
-static char	curthread_str[MAXPATHLEN];
-static char	intmtx_str[MAXPATHLEN];
-static char	threadmtx_str[MAXPATHLEN];
-static char	rwlock_str[MAXPATHLEN];
-static char	sxlock_str[MAXPATHLEN];
-#endif
 
 /*
  * Table of global identifiers.  This is used to populate the global identifier
@@ -175,500 +167,310 @@ static char	sxlock_str[MAXPATHLEN];
  * argument.
  */
 static const dt_ident_t _dtrace_globals[] = {
-	{
-		"alloca", DT_IDENT_FUNC, 0, DIF_SUBR_ALLOCA, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "void *(size_t)"
-	},
-	{
-		"arg0", DT_IDENT_SCALAR, 0, DIF_VAR_ARG0, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_type, "int64_t"
-	},
-	{
-		"arg1", DT_IDENT_SCALAR, 0, DIF_VAR_ARG1, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_type, "int64_t"
-	},
-	{
-		"arg2", DT_IDENT_SCALAR, 0, DIF_VAR_ARG2, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_type, "int64_t"
-	},
-	{
-		"arg3", DT_IDENT_SCALAR, 0, DIF_VAR_ARG3, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_type, "int64_t"
-	},
-	{
-		"arg4", DT_IDENT_SCALAR, 0, DIF_VAR_ARG4, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_type, "int64_t"
-	},
-	{
-		"arg5", DT_IDENT_SCALAR, 0, DIF_VAR_ARG5, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_type, "int64_t"
-	},
-	{
-		"arg6", DT_IDENT_SCALAR, 0, DIF_VAR_ARG6, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_type, "int64_t"
-	},
-	{
-		"arg7", DT_IDENT_SCALAR, 0, DIF_VAR_ARG7, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_type, "int64_t"
-	},
-	{
-		"arg8", DT_IDENT_SCALAR, 0, DIF_VAR_ARG8, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_type, "int64_t"
-	},
-	{
-		"arg9", DT_IDENT_SCALAR, 0, DIF_VAR_ARG9, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_type, "int64_t"
-	},
-	{
-		"args", DT_IDENT_ARRAY, 0, DIF_VAR_ARGS, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_args, NULL
-	},
-	{
-		"avg", DT_IDENT_AGGFUNC, 0, DTRACEAGG_AVG, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "void(@)"
-	},
-	{
-		"basename", DT_IDENT_FUNC, 0, DIF_SUBR_BASENAME, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "string(const char *)"
-	},
-	{
-		"bcopy", DT_IDENT_FUNC, 0, DIF_SUBR_BCOPY, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "void(void *, void *, size_t)"
-	},
-	{
-		"breakpoint", DT_IDENT_ACTFUNC, 0, DT_ACT_BREAKPOINT,
-		DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "void()"
-	},
-	{
-		"caller", DT_IDENT_SCALAR, 0, DIF_VAR_CALLER, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_type, "uintptr_t"
-	},
-	{
-		"chill", DT_IDENT_ACTFUNC, 0, DT_ACT_CHILL, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "void(int)"
-	},
-	{
-		"cleanpath", DT_IDENT_FUNC, 0, DIF_SUBR_CLEANPATH, DT_ATTR_STABCMN,
-		DT_VERS_1_0, &dt_idops_func, "string(const char *)"
-	},
-	{
-		"clear", DT_IDENT_ACTFUNC, 0, DT_ACT_CLEAR, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "void(...)"
-	},
-	{
-		"commit", DT_IDENT_ACTFUNC, 0, DT_ACT_COMMIT, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "void(int)"
-	},
-	{
-		"copyin", DT_IDENT_FUNC, 0, DIF_SUBR_COPYIN, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "void *(uintptr_t, size_t)"
-	},
-	{
-		"copyinstr", DT_IDENT_FUNC, 0, DIF_SUBR_COPYINSTR,
-		DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "string(uintptr_t, [size_t])"
-	},
-	{
-		"copyinto", DT_IDENT_FUNC, 0, DIF_SUBR_COPYINTO, DT_ATTR_STABCMN,
-		DT_VERS_1_0, &dt_idops_func, "void(uintptr_t, size_t, void *)"
-	},
-	{
-		"copyout", DT_IDENT_FUNC, 0, DIF_SUBR_COPYOUT, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "void(void *, uintptr_t, size_t)"
-	},
-	{
-		"copyoutstr", DT_IDENT_FUNC, 0, DIF_SUBR_COPYOUTSTR,
-		DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "void(char *, uintptr_t, size_t)"
-	},
-	{
-		"count", DT_IDENT_AGGFUNC, 0, DTRACEAGG_COUNT, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "void()"
-	},
-	{
-		"curthread", DT_IDENT_SCALAR, 0, DIF_VAR_CURTHREAD,
-		{
-			DTRACE_STABILITY_STABLE, DTRACE_STABILITY_PRIVATE,
-			DTRACE_CLASS_COMMON
-		}, DT_VERS_1_0,
-#if defined(sun)
-		&dt_idops_type, "genunix`kthread_t *"
-	},
+{ "alloca", DT_IDENT_FUNC, 0, DIF_SUBR_ALLOCA, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "void *(size_t)" },
+{ "arg0", DT_IDENT_SCALAR, 0, DIF_VAR_ARG0, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_type, "int64_t" },
+{ "arg1", DT_IDENT_SCALAR, 0, DIF_VAR_ARG1, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_type, "int64_t" },
+{ "arg2", DT_IDENT_SCALAR, 0, DIF_VAR_ARG2, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_type, "int64_t" },
+{ "arg3", DT_IDENT_SCALAR, 0, DIF_VAR_ARG3, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_type, "int64_t" },
+{ "arg4", DT_IDENT_SCALAR, 0, DIF_VAR_ARG4, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_type, "int64_t" },
+{ "arg5", DT_IDENT_SCALAR, 0, DIF_VAR_ARG5, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_type, "int64_t" },
+{ "arg6", DT_IDENT_SCALAR, 0, DIF_VAR_ARG6, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_type, "int64_t" },
+{ "arg7", DT_IDENT_SCALAR, 0, DIF_VAR_ARG7, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_type, "int64_t" },
+{ "arg8", DT_IDENT_SCALAR, 0, DIF_VAR_ARG8, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_type, "int64_t" },
+{ "arg9", DT_IDENT_SCALAR, 0, DIF_VAR_ARG9, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_type, "int64_t" },
+{ "args", DT_IDENT_ARRAY, 0, DIF_VAR_ARGS, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_args, NULL },
+{ "avg", DT_IDENT_AGGFUNC, 0, DTRACEAGG_AVG, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "void(@)" },
+{ "basename", DT_IDENT_FUNC, 0, DIF_SUBR_BASENAME, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "string(const char *)" },
+{ "bcopy", DT_IDENT_FUNC, 0, DIF_SUBR_BCOPY, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "void(void *, void *, size_t)" },
+{ "breakpoint", DT_IDENT_ACTFUNC, 0, DT_ACT_BREAKPOINT,
+	DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "void()" },
+{ "caller", DT_IDENT_SCALAR, 0, DIF_VAR_CALLER, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_type, "uintptr_t" },
+{ "chill", DT_IDENT_ACTFUNC, 0, DT_ACT_CHILL, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "void(int)" },
+{ "cleanpath", DT_IDENT_FUNC, 0, DIF_SUBR_CLEANPATH, DT_ATTR_STABCMN,
+	DT_VERS_1_0, &dt_idops_func, "string(const char *)" },
+{ "clear", DT_IDENT_ACTFUNC, 0, DT_ACT_CLEAR, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "void(...)" },
+{ "commit", DT_IDENT_ACTFUNC, 0, DT_ACT_COMMIT, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "void(int)" },
+{ "copyin", DT_IDENT_FUNC, 0, DIF_SUBR_COPYIN, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "void *(uintptr_t, size_t)" },
+{ "copyinstr", DT_IDENT_FUNC, 0, DIF_SUBR_COPYINSTR,
+	DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "string(uintptr_t, [size_t])" },
+{ "copyinto", DT_IDENT_FUNC, 0, DIF_SUBR_COPYINTO, DT_ATTR_STABCMN,
+	DT_VERS_1_0, &dt_idops_func, "void(uintptr_t, size_t, void *)" },
+{ "copyout", DT_IDENT_FUNC, 0, DIF_SUBR_COPYOUT, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "void(void *, uintptr_t, size_t)" },
+{ "copyoutstr", DT_IDENT_FUNC, 0, DIF_SUBR_COPYOUTSTR,
+	DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "void(char *, uintptr_t, size_t)" },
+{ "count", DT_IDENT_AGGFUNC, 0, DTRACEAGG_COUNT, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "void()" },
+{ "curthread", DT_IDENT_SCALAR, 0, DIF_VAR_CURTHREAD,
+	{ DTRACE_STABILITY_STABLE, DTRACE_STABILITY_PRIVATE,
+	DTRACE_CLASS_COMMON }, DT_VERS_1_0,
+#if !defined(windows)
+	&dt_idops_type, "genunix`kthread_t *" },
 #else
-		&dt_idops_type, "struct thread *"
-	},
+	&dt_idops_type, "struct thread *" },
 #endif
-	{
-		"ddi_pathname", DT_IDENT_FUNC, 0, DIF_SUBR_DDI_PATHNAME,
-		DT_ATTR_EVOLCMN, DT_VERS_1_0,
-		&dt_idops_func, "string(void *, int64_t)"
-	}, {
-		"denormalize", DT_IDENT_ACTFUNC, 0, DT_ACT_DENORMALIZE, DT_ATTR_STABCMN,
-		DT_VERS_1_0, &dt_idops_func, "void(...)"
-	}, {
-		"dirname", DT_IDENT_FUNC, 0, DIF_SUBR_DIRNAME, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "string(const char *)"
-	}, {
-		"discard", DT_IDENT_ACTFUNC, 0, DT_ACT_DISCARD, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "void(int)"
-	}, {
-		"epid", DT_IDENT_SCALAR, 0, DIF_VAR_EPID, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_type, "uint_t"
-	}, {
-		"errno", DT_IDENT_SCALAR, 0, DIF_VAR_ERRNO, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_type, "int"
-	}, {
-		"execargs", DT_IDENT_SCALAR, 0, DIF_VAR_EXECARGS,
-		DT_ATTR_STABCMN, DT_VERS_1_0, &dt_idops_type, "string"
-	}, {
-		"execname", DT_IDENT_SCALAR, 0, DIF_VAR_EXECNAME,
-		DT_ATTR_STABCMN, DT_VERS_1_0, &dt_idops_type, "string"
-	}, {
-		"exit", DT_IDENT_ACTFUNC, 0, DT_ACT_EXIT, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "void(int)"
-	}, {
-		"freopen", DT_IDENT_ACTFUNC, 0, DT_ACT_FREOPEN, DT_ATTR_STABCMN,
-		DT_VERS_1_1, &dt_idops_func, "void(@, ...)"
-	}, {
-		"ftruncate", DT_IDENT_ACTFUNC, 0, DT_ACT_FTRUNCATE, DT_ATTR_STABCMN,
-		DT_VERS_1_0, &dt_idops_func, "void()"
-	}, {
-		"func", DT_IDENT_ACTFUNC, 0, DT_ACT_SYM, DT_ATTR_STABCMN,
-		DT_VERS_1_2, &dt_idops_func, "_symaddr(uintptr_t)"
-	},
-#if defined(sun)
-	{
-		"getmajor", DT_IDENT_FUNC, 0, DIF_SUBR_GETMAJOR,
-		DT_ATTR_EVOLCMN, DT_VERS_1_0,
-		&dt_idops_func, "genunix`major_t(genunix`dev_t)"
-	}, {
-		"getminor", DT_IDENT_FUNC, 0, DIF_SUBR_GETMINOR,
-		DT_ATTR_EVOLCMN, DT_VERS_1_0,
-		&dt_idops_func, "genunix`minor_t(genunix`dev_t)"
-	},
+{ "ddi_pathname", DT_IDENT_FUNC, 0, DIF_SUBR_DDI_PATHNAME,
+	DT_ATTR_EVOLCMN, DT_VERS_1_0,
+	&dt_idops_func, "string(void *, int64_t)" },
+{ "denormalize", DT_IDENT_ACTFUNC, 0, DT_ACT_DENORMALIZE, DT_ATTR_STABCMN,
+	DT_VERS_1_0, &dt_idops_func, "void(...)" },
+{ "dirname", DT_IDENT_FUNC, 0, DIF_SUBR_DIRNAME, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "string(const char *)" },
+{ "discard", DT_IDENT_ACTFUNC, 0, DT_ACT_DISCARD, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "void(int)" },
+{ "epid", DT_IDENT_SCALAR, 0, DIF_VAR_EPID, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_type, "uint_t" },
+{ "errno", DT_IDENT_SCALAR, 0, DIF_VAR_ERRNO, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_type, "int" },
+{ "execname", DT_IDENT_SCALAR, 0, DIF_VAR_EXECNAME,
+	DT_ATTR_STABCMN, DT_VERS_1_0, &dt_idops_type, "string" },
+{ "exit", DT_IDENT_ACTFUNC, 0, DT_ACT_EXIT, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "void(int)" },
+{ "freopen", DT_IDENT_ACTFUNC, 0, DT_ACT_FREOPEN, DT_ATTR_STABCMN,
+	DT_VERS_1_1, &dt_idops_func, "void(@, ...)" },
+{ "ftruncate", DT_IDENT_ACTFUNC, 0, DT_ACT_FTRUNCATE, DT_ATTR_STABCMN,
+	DT_VERS_1_0, &dt_idops_func, "void()" },
+{ "func", DT_IDENT_ACTFUNC, 0, DT_ACT_SYM, DT_ATTR_STABCMN,
+	DT_VERS_1_2, &dt_idops_func, "_symaddr(uintptr_t)" },
+{ "getmajor", DT_IDENT_FUNC, 0, DIF_SUBR_GETMAJOR,
+	DT_ATTR_EVOLCMN, DT_VERS_1_0,
+	&dt_idops_func, "genunix`major_t(genunix`dev_t)" },
+{ "getminor", DT_IDENT_FUNC, 0, DIF_SUBR_GETMINOR,
+	DT_ATTR_EVOLCMN, DT_VERS_1_0,
+	&dt_idops_func, "genunix`minor_t(genunix`dev_t)" },
+{ "htonl", DT_IDENT_FUNC, 0, DIF_SUBR_HTONL, DT_ATTR_EVOLCMN, DT_VERS_1_3,
+	&dt_idops_func, "uint32_t(uint32_t)" },
+{ "htonll", DT_IDENT_FUNC, 0, DIF_SUBR_HTONLL, DT_ATTR_EVOLCMN, DT_VERS_1_3,
+	&dt_idops_func, "uint64_t(uint64_t)" },
+{ "htons", DT_IDENT_FUNC, 0, DIF_SUBR_HTONS, DT_ATTR_EVOLCMN, DT_VERS_1_3,
+	&dt_idops_func, "uint16_t(uint16_t)" },
+{ "getf", DT_IDENT_FUNC, 0, DIF_SUBR_GETF, DT_ATTR_STABCMN, DT_VERS_1_10,
+	&dt_idops_func, "file_t *(int)" },
+{ "gid", DT_IDENT_SCALAR, 0, DIF_VAR_GID, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_type, "gid_t" },
+{ "id", DT_IDENT_SCALAR, 0, DIF_VAR_ID, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_type, "uint_t" },
+{ "index", DT_IDENT_FUNC, 0, DIF_SUBR_INDEX, DT_ATTR_STABCMN, DT_VERS_1_1,
+	&dt_idops_func, "int(const char *, const char *, [int])" },
+{ "inet_ntoa", DT_IDENT_FUNC, 0, DIF_SUBR_INET_NTOA, DT_ATTR_STABCMN,
+	DT_VERS_1_5, &dt_idops_func, "string(ipaddr_t *)" },
+{ "inet_ntoa6", DT_IDENT_FUNC, 0, DIF_SUBR_INET_NTOA6, DT_ATTR_STABCMN,
+	DT_VERS_1_5, &dt_idops_func, "string(in6_addr_t *)" },
+{ "inet_ntop", DT_IDENT_FUNC, 0, DIF_SUBR_INET_NTOP, DT_ATTR_STABCMN,
+	DT_VERS_1_5, &dt_idops_func, "string(int, void *)" },
+{ "ipl", DT_IDENT_SCALAR, 0, DIF_VAR_IPL, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_type, "uint_t" },
+{ "json", DT_IDENT_FUNC, 0, DIF_SUBR_JSON, DT_ATTR_STABCMN, DT_VERS_1_11,
+	&dt_idops_func, "string(const char *, const char *)" },
+{ "jstack", DT_IDENT_ACTFUNC, 0, DT_ACT_JSTACK, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "stack(...)" },
+{ "lltostr", DT_IDENT_FUNC, 0, DIF_SUBR_LLTOSTR, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "string(int64_t, [int])" },
+{ "llquantize", DT_IDENT_AGGFUNC, 0, DTRACEAGG_LLQUANTIZE, DT_ATTR_STABCMN,
+	DT_VERS_1_7, &dt_idops_func,
+	"void(@, int32_t, int32_t, int32_t, int32_t, ...)" },
+{ "lquantize", DT_IDENT_AGGFUNC, 0, DTRACEAGG_LQUANTIZE,
+	DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "void(@, int32_t, int32_t, ...)" },
+{ "max", DT_IDENT_AGGFUNC, 0, DTRACEAGG_MAX, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "void(@)" },
+{ "min", DT_IDENT_AGGFUNC, 0, DTRACEAGG_MIN, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "void(@)" },
+{ "mod", DT_IDENT_ACTFUNC, 0, DT_ACT_MOD, DT_ATTR_STABCMN,
+	DT_VERS_1_2, &dt_idops_func, "_symaddr(uintptr_t)" },
+#if !defined(windows)
+{ "msgdsize", DT_IDENT_FUNC, 0, DIF_SUBR_MSGDSIZE,
+	DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "size_t(mblk_t *)" },
+{ "msgsize", DT_IDENT_FUNC, 0, DIF_SUBR_MSGSIZE,
+	DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "size_t(mblk_t *)" },
+{ "mutex_owned", DT_IDENT_FUNC, 0, DIF_SUBR_MUTEX_OWNED,
+	DT_ATTR_EVOLCMN, DT_VERS_1_0,
+	&dt_idops_func, "int(genunix`kmutex_t *)" },
+{ "mutex_owner", DT_IDENT_FUNC, 0, DIF_SUBR_MUTEX_OWNER,
+	DT_ATTR_EVOLCMN, DT_VERS_1_0,
+	&dt_idops_func, "genunix`kthread_t *(genunix`kmutex_t *)" },
+{ "mutex_type_adaptive", DT_IDENT_FUNC, 0, DIF_SUBR_MUTEX_TYPE_ADAPTIVE,
+	DT_ATTR_EVOLCMN, DT_VERS_1_0,
+	&dt_idops_func, "int(genunix`kmutex_t *)" },
+{ "mutex_type_spin", DT_IDENT_FUNC, 0, DIF_SUBR_MUTEX_TYPE_SPIN,
+	DT_ATTR_EVOLCMN, DT_VERS_1_0,
+	&dt_idops_func, "int(genunix`kmutex_t *)" },
 #endif
-	{
-		"htonl", DT_IDENT_FUNC, 0, DIF_SUBR_HTONL, DT_ATTR_EVOLCMN, DT_VERS_1_3,
-		&dt_idops_func, "uint32_t(uint32_t)"
-	}, {
-		"htonll", DT_IDENT_FUNC, 0, DIF_SUBR_HTONLL, DT_ATTR_EVOLCMN, DT_VERS_1_3,
-		&dt_idops_func, "uint64_t(uint64_t)"
-	}, {
-		"htons", DT_IDENT_FUNC, 0, DIF_SUBR_HTONS, DT_ATTR_EVOLCMN, DT_VERS_1_3,
-		&dt_idops_func, "uint16_t(uint16_t)"
-	}, {
-		"gid", DT_IDENT_SCALAR, 0, DIF_VAR_GID, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_type, "gid_t"
-	}, {
-		"id", DT_IDENT_SCALAR, 0, DIF_VAR_ID, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_type, "uint_t"
-	}, {
-		"index", DT_IDENT_FUNC, 0, DIF_SUBR_INDEX, DT_ATTR_STABCMN, DT_VERS_1_1,
-		&dt_idops_func, "int(const char *, const char *, [int])"
-	},
-
-	{
-		"inet_ntoa", DT_IDENT_FUNC, 0, DIF_SUBR_INET_NTOA, DT_ATTR_STABCMN,
-		DT_VERS_1_5, &dt_idops_func, "string(ipaddr_t *)"
-	}, {
-		"inet_ntoa6", DT_IDENT_FUNC, 0, DIF_SUBR_INET_NTOA6, DT_ATTR_STABCMN,
-		DT_VERS_1_5, &dt_idops_func, "string(in6_addr_t *)"
-	}, {
-		"inet_ntop", DT_IDENT_FUNC, 0, DIF_SUBR_INET_NTOP, DT_ATTR_STABCMN,
-		DT_VERS_1_5, &dt_idops_func, "string(int, void *)"
-	},
-
-	{
-		"ipl", DT_IDENT_SCALAR, 0, DIF_VAR_IPL, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_type, "uint_t"
-	}, {
-		"jstack", DT_IDENT_ACTFUNC, 0, DT_ACT_JSTACK, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "stack(...)"
-	}, {
-		"lltostr", DT_IDENT_FUNC, 0, DIF_SUBR_LLTOSTR, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "string(int64_t, [int])"
-	}, {
-		"llquantize", DT_IDENT_AGGFUNC, 0, DTRACEAGG_LLQUANTIZE, DT_ATTR_STABCMN,
-		DT_VERS_1_7, &dt_idops_func,
-		"void(@, int32_t, int32_t, int32_t, int32_t, ...)"
-	}, {
-		"lquantize", DT_IDENT_AGGFUNC, 0, DTRACEAGG_LQUANTIZE,
-		DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "void(@, int32_t, int32_t, ...)"
-	}, {
-		"max", DT_IDENT_AGGFUNC, 0, DTRACEAGG_MAX, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "void(@)"
-	}, {
-		"memref", DT_IDENT_FUNC, 0, DIF_SUBR_MEMREF, DT_ATTR_STABCMN, DT_VERS_1_1,
-		&dt_idops_func, "uintptr_t *(void *, size_t)"
-	}, {
-		"min", DT_IDENT_AGGFUNC, 0, DTRACEAGG_MIN, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "void(@)"
-	}, {
-		"mod", DT_IDENT_ACTFUNC, 0, DT_ACT_MOD, DT_ATTR_STABCMN,
-		DT_VERS_1_2, &dt_idops_func, "_symaddr(uintptr_t)"
-	},
-#if defined(sun)
-	{
-		"msgdsize", DT_IDENT_FUNC, 0, DIF_SUBR_MSGDSIZE,
-		DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "size_t(mblk_t *)"
-	}, {
-		"msgsize", DT_IDENT_FUNC, 0, DIF_SUBR_MSGSIZE,
-		DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "size_t(mblk_t *)"
-	}, {
-		"mutex_owned", DT_IDENT_FUNC, 0, DIF_SUBR_MUTEX_OWNED,
-		DT_ATTR_EVOLCMN, DT_VERS_1_0,
-		&dt_idops_func, "int(genunix`kmutex_t *)"
-	}, {
-		"mutex_owner", DT_IDENT_FUNC, 0, DIF_SUBR_MUTEX_OWNER,
-		DT_ATTR_EVOLCMN, DT_VERS_1_0,
-		&dt_idops_func, "genunix`kthread_t *(genunix`kmutex_t *)"
-	}, {
-		"mutex_type_adaptive", DT_IDENT_FUNC, 0, DIF_SUBR_MUTEX_TYPE_ADAPTIVE,
-		DT_ATTR_EVOLCMN, DT_VERS_1_0,
-		&dt_idops_func, "int(genunix`kmutex_t *)"
-	}, {
-		"mutex_type_spin", DT_IDENT_FUNC, 0, DIF_SUBR_MUTEX_TYPE_SPIN,
-		DT_ATTR_EVOLCMN, DT_VERS_1_0,
-		&dt_idops_func, "int(genunix`kmutex_t *)"
-	},
+{ "ntohl", DT_IDENT_FUNC, 0, DIF_SUBR_NTOHL, DT_ATTR_EVOLCMN, DT_VERS_1_3,
+	&dt_idops_func, "uint32_t(uint32_t)" },
+{ "ntohll", DT_IDENT_FUNC, 0, DIF_SUBR_NTOHLL, DT_ATTR_EVOLCMN, DT_VERS_1_3,
+	&dt_idops_func, "uint64_t(uint64_t)" },
+{ "ntohs", DT_IDENT_FUNC, 0, DIF_SUBR_NTOHS, DT_ATTR_EVOLCMN, DT_VERS_1_3,
+	&dt_idops_func, "uint16_t(uint16_t)" },
+{ "normalize", DT_IDENT_ACTFUNC, 0, DT_ACT_NORMALIZE, DT_ATTR_STABCMN,
+	DT_VERS_1_0, &dt_idops_func, "void(...)" },
+{ "panic", DT_IDENT_ACTFUNC, 0, DT_ACT_PANIC, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "void()" },
+{ "pid", DT_IDENT_SCALAR, 0, DIF_VAR_PID, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_type, "pid_t" },
+{ "ppid", DT_IDENT_SCALAR, 0, DIF_VAR_PPID, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_type, "pid_t" },
+{ "print", DT_IDENT_ACTFUNC, 0, DT_ACT_PRINT, DT_ATTR_STABCMN, DT_VERS_1_9,
+	&dt_idops_func, "void(@)" },
+{ "printa", DT_IDENT_ACTFUNC, 0, DT_ACT_PRINTA, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "void(@, ...)" },
+{ "printf", DT_IDENT_ACTFUNC, 0, DT_ACT_PRINTF, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "void(@, ...)" },
+{ "probefunc", DT_IDENT_SCALAR, 0, DIF_VAR_PROBEFUNC,
+	DT_ATTR_STABCMN, DT_VERS_1_0, &dt_idops_type, "string" },
+{ "probemod", DT_IDENT_SCALAR, 0, DIF_VAR_PROBEMOD,
+	DT_ATTR_STABCMN, DT_VERS_1_0, &dt_idops_type, "string" },
+{ "probename", DT_IDENT_SCALAR, 0, DIF_VAR_PROBENAME,
+	DT_ATTR_STABCMN, DT_VERS_1_0, &dt_idops_type, "string" },
+{ "probeprov", DT_IDENT_SCALAR, 0, DIF_VAR_PROBEPROV,
+	DT_ATTR_STABCMN, DT_VERS_1_0, &dt_idops_type, "string" },
+{ "progenyof", DT_IDENT_FUNC, 0, DIF_SUBR_PROGENYOF,
+	DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "int(pid_t)" },
+{ "quantize", DT_IDENT_AGGFUNC, 0, DTRACEAGG_QUANTIZE,
+	DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "void(@, ...)" },
+{ "raise", DT_IDENT_ACTFUNC, 0, DT_ACT_RAISE, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "void(int)" },
+{ "rand", DT_IDENT_FUNC, 0, DIF_SUBR_RAND, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "int()" },
+{ "rindex", DT_IDENT_FUNC, 0, DIF_SUBR_RINDEX, DT_ATTR_STABCMN, DT_VERS_1_1,
+	&dt_idops_func, "int(const char *, const char *, [int])" },
+#if !defined(windows)
+{ "rw_iswriter", DT_IDENT_FUNC, 0, DIF_SUBR_RW_ISWRITER,
+	DT_ATTR_EVOLCMN, DT_VERS_1_0,
+	&dt_idops_func, "int(genunix`krwlock_t *)" },
+{ "rw_read_held", DT_IDENT_FUNC, 0, DIF_SUBR_RW_READ_HELD,
+	DT_ATTR_EVOLCMN, DT_VERS_1_0,
+	&dt_idops_func, "int(genunix`krwlock_t *)" },
+{ "rw_write_held", DT_IDENT_FUNC, 0, DIF_SUBR_RW_WRITE_HELD,
+	DT_ATTR_EVOLCMN, DT_VERS_1_0,
+	&dt_idops_func, "int(genunix`krwlock_t *)" },
 #endif
-	{
-		"ntohl", DT_IDENT_FUNC, 0, DIF_SUBR_NTOHL, DT_ATTR_EVOLCMN, DT_VERS_1_3,
-		&dt_idops_func, "uint32_t(uint32_t)"
-	}, {
-		"ntohll", DT_IDENT_FUNC, 0, DIF_SUBR_NTOHLL, DT_ATTR_EVOLCMN, DT_VERS_1_3,
-		&dt_idops_func, "uint64_t(uint64_t)"
-	}, {
-		"ntohs", DT_IDENT_FUNC, 0, DIF_SUBR_NTOHS, DT_ATTR_EVOLCMN, DT_VERS_1_3,
-		&dt_idops_func, "uint16_t(uint16_t)"
-	}, {
-		"normalize", DT_IDENT_ACTFUNC, 0, DT_ACT_NORMALIZE, DT_ATTR_STABCMN,
-		DT_VERS_1_0, &dt_idops_func, "void(...)"
-	}, {
-		"panic", DT_IDENT_ACTFUNC, 0, DT_ACT_PANIC, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "void()"
-	}, {
-		"pid", DT_IDENT_SCALAR, 0, DIF_VAR_PID, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_type, "pid_t"
-	}, {
-		"ppid", DT_IDENT_SCALAR, 0, DIF_VAR_PPID, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_type, "pid_t"
-	}, {
-		"print", DT_IDENT_ACTFUNC, 0, DT_ACT_PRINT, DT_ATTR_STABCMN, DT_VERS_1_9,
-		&dt_idops_func, "void(@)"
-	}, {
-		"printa", DT_IDENT_ACTFUNC, 0, DT_ACT_PRINTA, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "void(@, ...)"
-	}, {
-		"printf", DT_IDENT_ACTFUNC, 0, DT_ACT_PRINTF, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "void(@, ...)"
-	}, {
-		"printm", DT_IDENT_ACTFUNC, 0, DT_ACT_PRINTM, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "void(size_t, uintptr_t *)"
-	}, {
-		"printt", DT_IDENT_ACTFUNC, 0, DT_ACT_PRINTT, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "void(size_t, uintptr_t *)"
-	}, {
-		"probefunc", DT_IDENT_SCALAR, 0, DIF_VAR_PROBEFUNC,
-		DT_ATTR_STABCMN, DT_VERS_1_0, &dt_idops_type, "string"
-	}, {
-		"probemod", DT_IDENT_SCALAR, 0, DIF_VAR_PROBEMOD,
-		DT_ATTR_STABCMN, DT_VERS_1_0, &dt_idops_type, "string"
-	}, {
-		"probename", DT_IDENT_SCALAR, 0, DIF_VAR_PROBENAME,
-		DT_ATTR_STABCMN, DT_VERS_1_0, &dt_idops_type, "string"
-	}, {
-		"probeprov", DT_IDENT_SCALAR, 0, DIF_VAR_PROBEPROV,
-		DT_ATTR_STABCMN, DT_VERS_1_0, &dt_idops_type, "string"
-	}, {
-		"progenyof", DT_IDENT_FUNC, 0, DIF_SUBR_PROGENYOF,
-		DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "int(pid_t)"
-	}, {
-		"quantize", DT_IDENT_AGGFUNC, 0, DTRACEAGG_QUANTIZE,
-		DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "void(@, ...)"
-	}, {
-		"raise", DT_IDENT_ACTFUNC, 0, DT_ACT_RAISE, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "void(int)"
-	}, {
-		"rand", DT_IDENT_FUNC, 0, DIF_SUBR_RAND, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "int()"
-	}, {
-		"rindex", DT_IDENT_FUNC, 0, DIF_SUBR_RINDEX, DT_ATTR_STABCMN, DT_VERS_1_1,
-		&dt_idops_func, "int(const char *, const char *, [int])"
-	},
-#if defined(sun)
-	{
-		"rw_iswriter", DT_IDENT_FUNC, 0, DIF_SUBR_RW_ISWRITER,
-		DT_ATTR_EVOLCMN, DT_VERS_1_0,
-		&dt_idops_func, "int(genunix`krwlock_t *)"
-	}, {
-		"rw_read_held", DT_IDENT_FUNC, 0, DIF_SUBR_RW_READ_HELD,
-		DT_ATTR_EVOLCMN, DT_VERS_1_0,
-		&dt_idops_func, "int(genunix`krwlock_t *)"
-	}, {
-		"rw_write_held", DT_IDENT_FUNC, 0, DIF_SUBR_RW_WRITE_HELD,
-		DT_ATTR_EVOLCMN, DT_VERS_1_0,
-		&dt_idops_func, "int(genunix`krwlock_t *)"
-	},
+{ "self", DT_IDENT_PTR, 0, 0, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_type, "void" },
+{ "setopt", DT_IDENT_ACTFUNC, 0, DT_ACT_SETOPT, DT_ATTR_STABCMN,
+	DT_VERS_1_2, &dt_idops_func, "void(const char *, [const char *])" },
+{ "speculate", DT_IDENT_ACTFUNC, 0, DT_ACT_SPECULATE,
+	DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "void(int)" },
+{ "speculation", DT_IDENT_FUNC, 0, DIF_SUBR_SPECULATION,
+	DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "int()" },
+{ "stack", DT_IDENT_ACTFUNC, 0, DT_ACT_STACK, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "stack(...)" },
+{ "stackdepth", DT_IDENT_SCALAR, 0, DIF_VAR_STACKDEPTH,
+	DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_type, "uint32_t" },
+{ "stddev", DT_IDENT_AGGFUNC, 0, DTRACEAGG_STDDEV, DT_ATTR_STABCMN,
+	DT_VERS_1_6, &dt_idops_func, "void(@)" },
+{ "stop", DT_IDENT_ACTFUNC, 0, DT_ACT_STOP, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "void()" },
+{ "strchr", DT_IDENT_FUNC, 0, DIF_SUBR_STRCHR, DT_ATTR_STABCMN, DT_VERS_1_1,
+	&dt_idops_func, "string(const char *, char)" },
+{ "strlen", DT_IDENT_FUNC, 0, DIF_SUBR_STRLEN, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "size_t(const char *)" },
+{ "strjoin", DT_IDENT_FUNC, 0, DIF_SUBR_STRJOIN, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "string(const char *, const char *)" },
+{ "strrchr", DT_IDENT_FUNC, 0, DIF_SUBR_STRRCHR, DT_ATTR_STABCMN, DT_VERS_1_1,
+	&dt_idops_func, "string(const char *, char)" },
+{ "strstr", DT_IDENT_FUNC, 0, DIF_SUBR_STRSTR, DT_ATTR_STABCMN, DT_VERS_1_1,
+	&dt_idops_func, "string(const char *, const char *)" },
+{ "strtok", DT_IDENT_FUNC, 0, DIF_SUBR_STRTOK, DT_ATTR_STABCMN, DT_VERS_1_1,
+	&dt_idops_func, "string(const char *, const char *)" },
+{ "strtoll", DT_IDENT_FUNC, 0, DIF_SUBR_STRTOLL, DT_ATTR_STABCMN, DT_VERS_1_11,
+	&dt_idops_func, "int64_t(const char *, [int])" },
+{ "substr", DT_IDENT_FUNC, 0, DIF_SUBR_SUBSTR, DT_ATTR_STABCMN, DT_VERS_1_1,
+	&dt_idops_func, "string(const char *, int, [int])" },
+{ "sum", DT_IDENT_AGGFUNC, 0, DTRACEAGG_SUM, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "void(@)" },
+{ "sym", DT_IDENT_ACTFUNC, 0, DT_ACT_SYM, DT_ATTR_STABCMN,
+	DT_VERS_1_2, &dt_idops_func, "_symaddr(uintptr_t)" },
+{ "system", DT_IDENT_ACTFUNC, 0, DT_ACT_SYSTEM, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "void(@, ...)" },
+{ "this", DT_IDENT_PTR, 0, 0, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_type, "void" },
+{ "threadname", DT_IDENT_SCALAR, 0, DIF_VAR_THREADNAME,
+	DT_ATTR_STABCMN, DT_VERS_1_13, &dt_idops_type, "string" },
+{ "tid", DT_IDENT_SCALAR, 0, DIF_VAR_TID, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_type, "id_t" },
+{ "timestamp", DT_IDENT_SCALAR, 0, DIF_VAR_TIMESTAMP,
+	DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_type, "uint64_t" },
+{ "tolower", DT_IDENT_FUNC, 0, DIF_SUBR_TOLOWER, DT_ATTR_STABCMN, DT_VERS_1_8,
+	&dt_idops_func, "string(const char *)" },
+{ "toupper", DT_IDENT_FUNC, 0, DIF_SUBR_TOUPPER, DT_ATTR_STABCMN, DT_VERS_1_8,
+	&dt_idops_func, "string(const char *)" },
+{ "trace", DT_IDENT_ACTFUNC, 0, DT_ACT_TRACE, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "void(@)" },
+{ "tracemem", DT_IDENT_ACTFUNC, 0, DT_ACT_TRACEMEM,
+	DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "void(@, size_t, ...)" },
+{ "trunc", DT_IDENT_ACTFUNC, 0, DT_ACT_TRUNC, DT_ATTR_STABCMN,
+	DT_VERS_1_0, &dt_idops_func, "void(...)" },
+{ "uaddr", DT_IDENT_ACTFUNC, 0, DT_ACT_UADDR, DT_ATTR_STABCMN,
+	DT_VERS_1_2, &dt_idops_func, "_usymaddr(uintptr_t)" },
+{ "ucaller", DT_IDENT_SCALAR, 0, DIF_VAR_UCALLER, DT_ATTR_STABCMN,
+	DT_VERS_1_2, &dt_idops_type, "uint64_t" },
+{ "ufunc", DT_IDENT_ACTFUNC, 0, DT_ACT_USYM, DT_ATTR_STABCMN,
+	DT_VERS_1_2, &dt_idops_func, "_usymaddr(uintptr_t)" },
+{ "uid", DT_IDENT_SCALAR, 0, DIF_VAR_UID, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_type, "uid_t" },
+{ "umod", DT_IDENT_ACTFUNC, 0, DT_ACT_UMOD, DT_ATTR_STABCMN,
+	DT_VERS_1_2, &dt_idops_func, "_usymaddr(uintptr_t)" },
+{ "uregs", DT_IDENT_ARRAY, DT_IDFLG_WRITE, DIF_VAR_UREGS, DT_ATTR_STABCMN,
+	DT_VERS_1_0, &dt_idops_regs, NULL },
+{ "ustack", DT_IDENT_ACTFUNC, 0, DT_ACT_USTACK, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "stack(...)" },
+{ "ustackdepth", DT_IDENT_SCALAR, 0, DIF_VAR_USTACKDEPTH,
+	DT_ATTR_STABCMN, DT_VERS_1_2,
+	&dt_idops_type, "uint32_t" },
+{ "usym", DT_IDENT_ACTFUNC, 0, DT_ACT_USYM, DT_ATTR_STABCMN,
+	DT_VERS_1_2, &dt_idops_func, "_usymaddr(uintptr_t)" },
+{ "vmregs", DT_IDENT_ARRAY, 0, DIF_VAR_VMREGS, DT_ATTR_STABCMN, DT_VERS_1_7,
+	&dt_idops_regs, NULL },
+{ "vtimestamp", DT_IDENT_SCALAR, 0, DIF_VAR_VTIMESTAMP,
+	DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_type, "uint64_t" },
+{ "walltimestamp", DT_IDENT_SCALAR, 0, DIF_VAR_WALLTIMESTAMP,
+	DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_type, "int64_t" },
+#if defined(windows)
+{ "wstrlen", DT_IDENT_FUNC, 0, DIF_SUBR_WSTRLEN, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "size_t(const wchar_t *)" },
+{ "wstringof", DT_IDENT_FUNC, 0, DIF_SUBR_WSTRINGOF, DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_func, "string(wchar_t *)" },
 #endif
-	{
-		"self", DT_IDENT_PTR, 0, 0, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_type, "void"
-	}, {
-		"setopt", DT_IDENT_ACTFUNC, 0, DT_ACT_SETOPT, DT_ATTR_STABCMN,
-		DT_VERS_1_2, &dt_idops_func, "void(const char *, [const char *])"
-	}, {
-		"speculate", DT_IDENT_ACTFUNC, 0, DT_ACT_SPECULATE,
-		DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "void(int)"
-	}, {
-		"speculation", DT_IDENT_FUNC, 0, DIF_SUBR_SPECULATION,
-		DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "int()"
-	}, {
-		"stack", DT_IDENT_ACTFUNC, 0, DT_ACT_STACK, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "stack(...)"
-	}, {
-		"stackdepth", DT_IDENT_SCALAR, 0, DIF_VAR_STACKDEPTH,
-		DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_type, "uint32_t"
-	}, {
-		"stddev", DT_IDENT_AGGFUNC, 0, DTRACEAGG_STDDEV, DT_ATTR_STABCMN,
-		DT_VERS_1_6, &dt_idops_func, "void(@)"
-	}, {
-		"stop", DT_IDENT_ACTFUNC, 0, DT_ACT_STOP, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "void()"
-	}, {
-		"strchr", DT_IDENT_FUNC, 0, DIF_SUBR_STRCHR, DT_ATTR_STABCMN, DT_VERS_1_1,
-		&dt_idops_func, "string(const char *, char)"
-	}, {
-		"strlen", DT_IDENT_FUNC, 0, DIF_SUBR_STRLEN, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "size_t(const char *)"
-	}, {
-		"strjoin", DT_IDENT_FUNC, 0, DIF_SUBR_STRJOIN, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "string(const char *, const char *)"
-	}, {
-		"strrchr", DT_IDENT_FUNC, 0, DIF_SUBR_STRRCHR, DT_ATTR_STABCMN, DT_VERS_1_1,
-		&dt_idops_func, "string(const char *, char)"
-	}, {
-		"strstr", DT_IDENT_FUNC, 0, DIF_SUBR_STRSTR, DT_ATTR_STABCMN, DT_VERS_1_1,
-		&dt_idops_func, "string(const char *, const char *)"
-	}, {
-		"strtok", DT_IDENT_FUNC, 0, DIF_SUBR_STRTOK, DT_ATTR_STABCMN, DT_VERS_1_1,
-		&dt_idops_func, "string(const char *, const char *)"
-	}, {
-		"substr", DT_IDENT_FUNC, 0, DIF_SUBR_SUBSTR, DT_ATTR_STABCMN, DT_VERS_1_1,
-		&dt_idops_func, "string(const char *, int, [int])"
-	}, {
-		"sum", DT_IDENT_AGGFUNC, 0, DTRACEAGG_SUM, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "void(@)"
-	}, {
-		"sym", DT_IDENT_ACTFUNC, 0, DT_ACT_SYM, DT_ATTR_STABCMN,
-		DT_VERS_1_2, &dt_idops_func, "_symaddr(uintptr_t)"
-	}, {
-		"system", DT_IDENT_ACTFUNC, 0, DT_ACT_SYSTEM, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "void(@, ...)"
-	}, {
-		"this", DT_IDENT_PTR, 0, 0, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_type, "void"
-	}, {
-		"tid", DT_IDENT_SCALAR, 0, DIF_VAR_TID, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_type, "id_t"
-	}, {
-		"timestamp", DT_IDENT_SCALAR, 0, DIF_VAR_TIMESTAMP,
-		DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_type, "uint64_t"
-	}, {
-		"tolower", DT_IDENT_FUNC, 0, DIF_SUBR_TOLOWER, DT_ATTR_STABCMN, DT_VERS_1_8,
-		&dt_idops_func, "string(const char *)"
-	}, {
-		"toupper", DT_IDENT_FUNC, 0, DIF_SUBR_TOUPPER, DT_ATTR_STABCMN, DT_VERS_1_8,
-		&dt_idops_func, "string(const char *)"
-	}, {
-		"trace", DT_IDENT_ACTFUNC, 0, DT_ACT_TRACE, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "void(@)"
-	}, {
-		"tracemem", DT_IDENT_ACTFUNC, 0, DT_ACT_TRACEMEM,
-		DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "void(@, size_t, ...)"
-	}, {
-		"trunc", DT_IDENT_ACTFUNC, 0, DT_ACT_TRUNC, DT_ATTR_STABCMN,
-		DT_VERS_1_0, &dt_idops_func, "void(...)"
-	}, {
-		"typeref", DT_IDENT_FUNC, 0, DIF_SUBR_TYPEREF, DT_ATTR_STABCMN, DT_VERS_1_1,
-		&dt_idops_func, "uintptr_t *(void *, size_t, string, size_t)"
-	},
-
-	{
-		"uaddr", DT_IDENT_ACTFUNC, 0, DT_ACT_UADDR, DT_ATTR_STABCMN,
-		DT_VERS_1_2, &dt_idops_func, "_usymaddr(uintptr_t)"
-	},
-
-	{
-		"ucaller", DT_IDENT_SCALAR, 0, DIF_VAR_UCALLER, DT_ATTR_STABCMN,
-		DT_VERS_1_2, &dt_idops_type, "uint64_t"
-	},
-
-	{
-		"ufunc", DT_IDENT_ACTFUNC, 0, DT_ACT_USYM, DT_ATTR_STABCMN,
-		DT_VERS_1_2, &dt_idops_func, "_usymaddr(uintptr_t)"
-	},
-
-	{
-		"uid", DT_IDENT_SCALAR, 0, DIF_VAR_UID, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_type, "uid_t"
-	},
-
-	{
-		"umod", DT_IDENT_ACTFUNC, 0, DT_ACT_UMOD, DT_ATTR_STABCMN,
-		DT_VERS_1_2, &dt_idops_func, "_usymaddr(uintptr_t)"
-	}, {
-		"uregs", DT_IDENT_ARRAY, 0, DIF_VAR_UREGS, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_regs, NULL
-	}, {
-		"ustack", DT_IDENT_ACTFUNC, 0, DT_ACT_USTACK, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "stack(...)"
-	}, {
-		"ustackdepth", DT_IDENT_SCALAR, 0, DIF_VAR_USTACKDEPTH,
-		DT_ATTR_STABCMN, DT_VERS_1_2,
-		&dt_idops_type, "uint32_t"
-	},
-
-	{
-		"usym", DT_IDENT_ACTFUNC, 0, DT_ACT_USYM, DT_ATTR_STABCMN,
-		DT_VERS_1_2, &dt_idops_func, "_usymaddr(uintptr_t)"
-	},
-
-	{
-		"vtimestamp", DT_IDENT_SCALAR, 0, DIF_VAR_VTIMESTAMP,
-		DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_type, "uint64_t"
-	}, {
-		"walltimestamp", DT_IDENT_SCALAR, 0, DIF_VAR_WALLTIMESTAMP,
-		DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_type, "int64_t"
-	}, {
-		"wstrlen", DT_IDENT_FUNC, 0, DIF_SUBR_WSTRLEN, DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "size_t(const wchar_t *)"
-	}, {
-		"wstringof", DT_IDENT_FUNC, 0, DIF_SUBR_WSTRINGOF,
-		DT_ATTR_STABCMN, DT_VERS_1_0,
-		&dt_idops_func, "string(wchar_t *)"
-	},
-#if defined(sun)
-	{
-		"zonename", DT_IDENT_SCALAR, 0, DIF_VAR_ZONENAME,
-		DT_ATTR_STABCMN, DT_VERS_1_0, &dt_idops_type, "string"
-	},
+#if !defined(windows)
+{ "zonename", DT_IDENT_SCALAR, 0, DIF_VAR_ZONENAME,
+	DT_ATTR_STABCMN, DT_VERS_1_0, &dt_idops_type, "string" },
 #endif
-
-	{ NULL, 0, 0, 0, { 0, 0, 0 }, 0, NULL, NULL }
+{ NULL, 0, 0, 0, { 0, 0, 0 }, 0, NULL, NULL }
 };
 
 /*
@@ -676,35 +478,35 @@ static const dt_ident_t _dtrace_globals[] = {
  * to populate the dynamic "C" CTF type container.
  */
 static const dt_intrinsic_t _dtrace_intrinsics_32[] = {
-	{ "void", { CTF_INT_SIGNED, 0, 0 }, CTF_K_INTEGER },
-	{ "signed", { CTF_INT_SIGNED, 0, 32 }, CTF_K_INTEGER },
-	{ "unsigned", { 0, 0, 32 }, CTF_K_INTEGER },
-	{ "char", { CTF_INT_SIGNED | CTF_INT_CHAR, 0, 8 }, CTF_K_INTEGER },
-	{ "short", { CTF_INT_SIGNED, 0, 16 }, CTF_K_INTEGER },
-	{ "int", { CTF_INT_SIGNED, 0, 32 }, CTF_K_INTEGER },
-	{ "long", { CTF_INT_SIGNED, 0, 32 }, CTF_K_INTEGER },
-	{ "long long", { CTF_INT_SIGNED, 0, 64 }, CTF_K_INTEGER },
-	{ "signed char", { CTF_INT_SIGNED | CTF_INT_CHAR, 0, 8 }, CTF_K_INTEGER },
-	{ "signed short", { CTF_INT_SIGNED, 0, 16 }, CTF_K_INTEGER },
-	{ "signed int", { CTF_INT_SIGNED, 0, 32 }, CTF_K_INTEGER },
-	{ "signed long", { CTF_INT_SIGNED, 0, 32 }, CTF_K_INTEGER },
-	{ "signed long long", { CTF_INT_SIGNED, 0, 64 }, CTF_K_INTEGER },
-	{ "unsigned char", { CTF_INT_CHAR, 0, 8 }, CTF_K_INTEGER },
-	{ "unsigned short", { 0, 0, 16 }, CTF_K_INTEGER },
-	{ "unsigned int", { 0, 0, 32 }, CTF_K_INTEGER },
-	{ "unsigned long", { 0, 0, 32 }, CTF_K_INTEGER },
-	{ "unsigned long long", { 0, 0, 64 }, CTF_K_INTEGER },
-	{ "_Bool", { CTF_INT_BOOL, 0, 8 }, CTF_K_INTEGER },
-	{ "float", { CTF_FP_SINGLE, 0, 32 }, CTF_K_FLOAT },
-	{ "double", { CTF_FP_DOUBLE, 0, 64 }, CTF_K_FLOAT },
-	{ "long double", { CTF_FP_LDOUBLE, 0, 128 }, CTF_K_FLOAT },
-	{ "float imaginary", { CTF_FP_IMAGRY, 0, 32 }, CTF_K_FLOAT },
-	{ "double imaginary", { CTF_FP_DIMAGRY, 0, 64 }, CTF_K_FLOAT },
-	{ "long double imaginary", { CTF_FP_LDIMAGRY, 0, 128 }, CTF_K_FLOAT },
-	{ "float complex", { CTF_FP_CPLX, 0, 64 }, CTF_K_FLOAT },
-	{ "double complex", { CTF_FP_DCPLX, 0, 128 }, CTF_K_FLOAT },
-	{ "long double complex", { CTF_FP_LDCPLX, 0, 256 }, CTF_K_FLOAT },
-	{ NULL, { 0, 0, 0 }, 0 }
+{ "void", { CTF_INT_SIGNED, 0, 0 }, CTF_K_INTEGER },
+{ "signed", { CTF_INT_SIGNED, 0, 32 }, CTF_K_INTEGER },
+{ "unsigned", { 0, 0, 32 }, CTF_K_INTEGER },
+{ "char", { CTF_INT_SIGNED | CTF_INT_CHAR, 0, 8 }, CTF_K_INTEGER },
+{ "short", { CTF_INT_SIGNED, 0, 16 }, CTF_K_INTEGER },
+{ "int", { CTF_INT_SIGNED, 0, 32 }, CTF_K_INTEGER },
+{ "long", { CTF_INT_SIGNED, 0, 32 }, CTF_K_INTEGER },
+{ "long long", { CTF_INT_SIGNED, 0, 64 }, CTF_K_INTEGER },
+{ "signed char", { CTF_INT_SIGNED | CTF_INT_CHAR, 0, 8 }, CTF_K_INTEGER },
+{ "signed short", { CTF_INT_SIGNED, 0, 16 }, CTF_K_INTEGER },
+{ "signed int", { CTF_INT_SIGNED, 0, 32 }, CTF_K_INTEGER },
+{ "signed long", { CTF_INT_SIGNED, 0, 32 }, CTF_K_INTEGER },
+{ "signed long long", { CTF_INT_SIGNED, 0, 64 }, CTF_K_INTEGER },
+{ "unsigned char", { CTF_INT_CHAR, 0, 8 }, CTF_K_INTEGER },
+{ "unsigned short", { 0, 0, 16 }, CTF_K_INTEGER },
+{ "unsigned int", { 0, 0, 32 }, CTF_K_INTEGER },
+{ "unsigned long", { 0, 0, 32 }, CTF_K_INTEGER },
+{ "unsigned long long", { 0, 0, 64 }, CTF_K_INTEGER },
+{ "_Bool", { CTF_INT_BOOL, 0, 8 }, CTF_K_INTEGER },
+{ "float", { CTF_FP_SINGLE, 0, 32 }, CTF_K_FLOAT },
+{ "double", { CTF_FP_DOUBLE, 0, 64 }, CTF_K_FLOAT },
+{ "long double", { CTF_FP_LDOUBLE, 0, 128 }, CTF_K_FLOAT },
+{ "float imaginary", { CTF_FP_IMAGRY, 0, 32 }, CTF_K_FLOAT },
+{ "double imaginary", { CTF_FP_DIMAGRY, 0, 64 }, CTF_K_FLOAT },
+{ "long double imaginary", { CTF_FP_LDIMAGRY, 0, 128 }, CTF_K_FLOAT },
+{ "float complex", { CTF_FP_CPLX, 0, 64 }, CTF_K_FLOAT },
+{ "double complex", { CTF_FP_DCPLX, 0, 128 }, CTF_K_FLOAT },
+{ "long double complex", { CTF_FP_LDCPLX, 0, 256 }, CTF_K_FLOAT },
+{ NULL, { 0, 0, 0 }, 0 }
 };
 
 /*
@@ -712,35 +514,35 @@ static const dt_intrinsic_t _dtrace_intrinsics_32[] = {
  * to populate the dynamic "C" CTF type container.
  */
 static const dt_intrinsic_t _dtrace_intrinsics_64[] = {
-	{ "void", { CTF_INT_SIGNED, 0, 0 }, CTF_K_INTEGER },
-	{ "signed", { CTF_INT_SIGNED, 0, 32 }, CTF_K_INTEGER },
-	{ "unsigned", { 0, 0, 32 }, CTF_K_INTEGER },
-	{ "char", { CTF_INT_SIGNED | CTF_INT_CHAR, 0, 8 }, CTF_K_INTEGER },
-	{ "short", { CTF_INT_SIGNED, 0, 16 }, CTF_K_INTEGER },
-	{ "int", { CTF_INT_SIGNED, 0, 32 }, CTF_K_INTEGER },
-	{ "long", { CTF_INT_SIGNED, 0, 64 }, CTF_K_INTEGER },
-	{ "long long", { CTF_INT_SIGNED, 0, 64 }, CTF_K_INTEGER },
-	{ "signed char", { CTF_INT_SIGNED | CTF_INT_CHAR, 0, 8 }, CTF_K_INTEGER },
-	{ "signed short", { CTF_INT_SIGNED, 0, 16 }, CTF_K_INTEGER },
-	{ "signed int", { CTF_INT_SIGNED, 0, 32 }, CTF_K_INTEGER },
-	{ "signed long", { CTF_INT_SIGNED, 0, 64 }, CTF_K_INTEGER },
-	{ "signed long long", { CTF_INT_SIGNED, 0, 64 }, CTF_K_INTEGER },
-	{ "unsigned char", { CTF_INT_CHAR, 0, 8 }, CTF_K_INTEGER },
-	{ "unsigned short", { 0, 0, 16 }, CTF_K_INTEGER },
-	{ "unsigned int", { 0, 0, 32 }, CTF_K_INTEGER },
-	{ "unsigned long", { 0, 0, 64 }, CTF_K_INTEGER },
-	{ "unsigned long long", { 0, 0, 64 }, CTF_K_INTEGER },
-	{ "_Bool", { CTF_INT_BOOL, 0, 8 }, CTF_K_INTEGER },
-	{ "float", { CTF_FP_SINGLE, 0, 32 }, CTF_K_FLOAT },
-	{ "double", { CTF_FP_DOUBLE, 0, 64 }, CTF_K_FLOAT },
-	{ "long double", { CTF_FP_LDOUBLE, 0, 128 }, CTF_K_FLOAT },
-	{ "float imaginary", { CTF_FP_IMAGRY, 0, 32 }, CTF_K_FLOAT },
-	{ "double imaginary", { CTF_FP_DIMAGRY, 0, 64 }, CTF_K_FLOAT },
-	{ "long double imaginary", { CTF_FP_LDIMAGRY, 0, 128 }, CTF_K_FLOAT },
-	{ "float complex", { CTF_FP_CPLX, 0, 64 }, CTF_K_FLOAT },
-	{ "double complex", { CTF_FP_DCPLX, 0, 128 }, CTF_K_FLOAT },
-	{ "long double complex", { CTF_FP_LDCPLX, 0, 256 }, CTF_K_FLOAT },
-	{ NULL, { 0, 0, 0 }, 0 }
+{ "void", { CTF_INT_SIGNED, 0, 0 }, CTF_K_INTEGER },
+{ "signed", { CTF_INT_SIGNED, 0, 32 }, CTF_K_INTEGER },
+{ "unsigned", { 0, 0, 32 }, CTF_K_INTEGER },
+{ "char", { CTF_INT_SIGNED | CTF_INT_CHAR, 0, 8 }, CTF_K_INTEGER },
+{ "short", { CTF_INT_SIGNED, 0, 16 }, CTF_K_INTEGER },
+{ "int", { CTF_INT_SIGNED, 0, 32 }, CTF_K_INTEGER },
+{ "long", { CTF_INT_SIGNED, 0, 64 }, CTF_K_INTEGER },
+{ "long long", { CTF_INT_SIGNED, 0, 64 }, CTF_K_INTEGER },
+{ "signed char", { CTF_INT_SIGNED | CTF_INT_CHAR, 0, 8 }, CTF_K_INTEGER },
+{ "signed short", { CTF_INT_SIGNED, 0, 16 }, CTF_K_INTEGER },
+{ "signed int", { CTF_INT_SIGNED, 0, 32 }, CTF_K_INTEGER },
+{ "signed long", { CTF_INT_SIGNED, 0, 64 }, CTF_K_INTEGER },
+{ "signed long long", { CTF_INT_SIGNED, 0, 64 }, CTF_K_INTEGER },
+{ "unsigned char", { CTF_INT_CHAR, 0, 8 }, CTF_K_INTEGER },
+{ "unsigned short", { 0, 0, 16 }, CTF_K_INTEGER },
+{ "unsigned int", { 0, 0, 32 }, CTF_K_INTEGER },
+{ "unsigned long", { 0, 0, 64 }, CTF_K_INTEGER },
+{ "unsigned long long", { 0, 0, 64 }, CTF_K_INTEGER },
+{ "_Bool", { CTF_INT_BOOL, 0, 8 }, CTF_K_INTEGER },
+{ "float", { CTF_FP_SINGLE, 0, 32 }, CTF_K_FLOAT },
+{ "double", { CTF_FP_DOUBLE, 0, 64 }, CTF_K_FLOAT },
+{ "long double", { CTF_FP_LDOUBLE, 0, 128 }, CTF_K_FLOAT },
+{ "float imaginary", { CTF_FP_IMAGRY, 0, 32 }, CTF_K_FLOAT },
+{ "double imaginary", { CTF_FP_DIMAGRY, 0, 64 }, CTF_K_FLOAT },
+{ "long double imaginary", { CTF_FP_LDIMAGRY, 0, 128 }, CTF_K_FLOAT },
+{ "float complex", { CTF_FP_CPLX, 0, 64 }, CTF_K_FLOAT },
+{ "double complex", { CTF_FP_DCPLX, 0, 128 }, CTF_K_FLOAT },
+{ "long double complex", { CTF_FP_LDCPLX, 0, 256 }, CTF_K_FLOAT },
+{ NULL, { 0, 0, 0 }, 0 }
 };
 
 /*
@@ -748,27 +550,27 @@ static const dt_intrinsic_t _dtrace_intrinsics_64[] = {
  * These aliases ensure that D definitions can use typical <sys/types.h> names.
  */
 static const dt_typedef_t _dtrace_typedefs_32[] = {
-	{ "char", "int8_t" },
-	{ "short", "int16_t" },
-	{ "int", "int32_t" },
-	{ "long long", "int64_t" },
-	{ "int", "intptr_t" },
-	{ "int", "ssize_t" },
-	{ "unsigned char", "uint8_t" },
-	{ "unsigned short", "uint16_t" },
-	{ "unsigned", "uint32_t" },
-	{ "unsigned long long", "uint64_t" },
-	{ "unsigned char", "uchar_t" },
-	{ "unsigned short", "ushort_t" },
-	{ "unsigned", "uint_t" },
-	{ "unsigned long", "ulong_t" },
-	{ "unsigned long long", "u_longlong_t" },
-	{ "int", "ptrdiff_t" },
-	{ "unsigned", "uintptr_t" },
-	{ "unsigned", "size_t" },
-	{ "long", "id_t" },
-	{ "long", "pid_t" },
-	{ NULL, NULL }
+{ "char", "int8_t" },
+{ "short", "int16_t" },
+{ "int", "int32_t" },
+{ "long long", "int64_t" },
+{ "int", "intptr_t" },
+{ "int", "ssize_t" },
+{ "unsigned char", "uint8_t" },
+{ "unsigned short", "uint16_t" },
+{ "unsigned", "uint32_t" },
+{ "unsigned long long", "uint64_t" },
+{ "unsigned char", "uchar_t" },
+{ "unsigned short", "ushort_t" },
+{ "unsigned", "uint_t" },
+{ "unsigned long", "ulong_t" },
+{ "unsigned long long", "u_longlong_t" },
+{ "int", "ptrdiff_t" },
+{ "unsigned", "uintptr_t" },
+{ "unsigned", "size_t" },
+{ "long", "id_t" },
+{ "long", "pid_t" },
+{ NULL, NULL }
 };
 
 /*
@@ -776,27 +578,27 @@ static const dt_typedef_t _dtrace_typedefs_32[] = {
  * These aliases ensure that D definitions can use typical <sys/types.h> names.
  */
 static const dt_typedef_t _dtrace_typedefs_64[] = {
-	{ "char", "int8_t" },
-	{ "short", "int16_t" },
-	{ "int", "int32_t" },
-	{ "long", "int64_t" },
-	{ "long", "intptr_t" },
-	{ "long", "ssize_t" },
-	{ "unsigned char", "uint8_t" },
-	{ "unsigned short", "uint16_t" },
-	{ "unsigned", "uint32_t" },
-	{ "unsigned long", "uint64_t" },
-	{ "unsigned char", "uchar_t" },
-	{ "unsigned short", "ushort_t" },
-	{ "unsigned", "uint_t" },
-	{ "unsigned long", "ulong_t" },
-	{ "unsigned long long", "u_longlong_t" },
-	{ "long", "ptrdiff_t" },
-	{ "unsigned long", "uintptr_t" },
-	{ "unsigned long", "size_t" },
-	{ "int", "id_t" },
-	{ "int", "pid_t" },
-	{ NULL, NULL }
+{ "char", "int8_t" },
+{ "short", "int16_t" },
+{ "int", "int32_t" },
+{ "long", "int64_t" },
+{ "long", "intptr_t" },
+{ "long", "ssize_t" },
+{ "unsigned char", "uint8_t" },
+{ "unsigned short", "uint16_t" },
+{ "unsigned", "uint32_t" },
+{ "unsigned long", "uint64_t" },
+{ "unsigned char", "uchar_t" },
+{ "unsigned short", "ushort_t" },
+{ "unsigned", "uint_t" },
+{ "unsigned long", "ulong_t" },
+{ "unsigned long long", "u_longlong_t" },
+{ "long", "ptrdiff_t" },
+{ "unsigned long", "uintptr_t" },
+{ "unsigned long", "size_t" },
+{ "int", "id_t" },
+{ "int", "pid_t" },
+{ NULL, NULL }
 };
 
 /*
@@ -804,12 +606,12 @@ static const dt_typedef_t _dtrace_typedefs_64[] = {
  * cache when a new dtrace client open occurs.  Values are set by dtrace_open().
  */
 static const dt_intdesc_t _dtrace_ints_32[] = {
-	{ "int", NULL, CTF_ERR, 0x7fffffffULL },
-	{ "unsigned int", NULL, CTF_ERR, 0xffffffffULL },
-	{ "long", NULL, CTF_ERR, 0x7fffffffULL },
-	{ "unsigned long", NULL, CTF_ERR, 0xffffffffULL },
-	{ "long long", NULL, CTF_ERR, 0x7fffffffffffffffULL },
-	{ "unsigned long long", NULL, CTF_ERR, 0xffffffffffffffffULL }
+{ "int", NULL, CTF_ERR, 0x7fffffffULL },
+{ "unsigned int", NULL, CTF_ERR, 0xffffffffULL },
+{ "long", NULL, CTF_ERR, 0x7fffffffULL },
+{ "unsigned long", NULL, CTF_ERR, 0xffffffffULL },
+{ "long long", NULL, CTF_ERR, 0x7fffffffffffffffULL },
+{ "unsigned long long", NULL, CTF_ERR, 0xffffffffffffffffULL }
 };
 
 /*
@@ -817,12 +619,12 @@ static const dt_intdesc_t _dtrace_ints_32[] = {
  * cache when a new dtrace client open occurs.  Values are set by dtrace_open().
  */
 static const dt_intdesc_t _dtrace_ints_64[] = {
-	{ "int", NULL, CTF_ERR, 0x7fffffffULL },
-	{ "unsigned int", NULL, CTF_ERR, 0xffffffffULL },
-	{ "long", NULL, CTF_ERR, 0x7fffffffffffffffULL },
-	{ "unsigned long", NULL, CTF_ERR, 0xffffffffffffffffULL },
-	{ "long long", NULL, CTF_ERR, 0x7fffffffffffffffULL },
-	{ "unsigned long long", NULL, CTF_ERR, 0xffffffffffffffffULL }
+{ "int", NULL, CTF_ERR, 0x7fffffffULL },
+{ "unsigned int", NULL, CTF_ERR, 0xffffffffULL },
+{ "long", NULL, CTF_ERR, 0x7fffffffffffffffULL },
+{ "unsigned long", NULL, CTF_ERR, 0xffffffffffffffffULL },
+{ "long long", NULL, CTF_ERR, 0x7fffffffffffffffULL },
+{ "unsigned long long", NULL, CTF_ERR, 0xffffffffffffffffULL }
 };
 
 /*
@@ -830,18 +632,18 @@ static const dt_intdesc_t _dtrace_ints_64[] = {
  * when a new dtrace client open occurs.  Values are set by dtrace_update().
  */
 static const dt_ident_t _dtrace_macros[] = {
-	{ "egid", DT_IDENT_SCALAR, 0, 0, DT_ATTR_STABCMN, DT_VERS_1_0 },
-	{ "euid", DT_IDENT_SCALAR, 0, 0, DT_ATTR_STABCMN, DT_VERS_1_0 },
-	{ "gid", DT_IDENT_SCALAR, 0, 0, DT_ATTR_STABCMN, DT_VERS_1_0 },
-	{ "pid", DT_IDENT_SCALAR, 0, 0, DT_ATTR_STABCMN, DT_VERS_1_0 },
-	{ "pgid", DT_IDENT_SCALAR, 0, 0, DT_ATTR_STABCMN, DT_VERS_1_0 },
-	{ "ppid", DT_IDENT_SCALAR, 0, 0, DT_ATTR_STABCMN, DT_VERS_1_0 },
-	{ "projid", DT_IDENT_SCALAR, 0, 0, DT_ATTR_STABCMN, DT_VERS_1_0 },
-	{ "sid", DT_IDENT_SCALAR, 0, 0, DT_ATTR_STABCMN, DT_VERS_1_0 },
-	{ "taskid", DT_IDENT_SCALAR, 0, 0, DT_ATTR_STABCMN, DT_VERS_1_0 },
-	{ "target", DT_IDENT_SCALAR, 0, 0, DT_ATTR_STABCMN, DT_VERS_1_0 },
-	{ "uid", DT_IDENT_SCALAR, 0, 0, DT_ATTR_STABCMN, DT_VERS_1_0 },
-	{ NULL, 0, 0, 0, { 0, 0, 0 }, 0 }
+{ "egid", DT_IDENT_SCALAR, 0, 0, DT_ATTR_STABCMN, DT_VERS_1_0 },
+{ "euid", DT_IDENT_SCALAR, 0, 0, DT_ATTR_STABCMN, DT_VERS_1_0 },
+{ "gid", DT_IDENT_SCALAR, 0, 0, DT_ATTR_STABCMN, DT_VERS_1_0 },
+{ "pid", DT_IDENT_SCALAR, 0, 0, DT_ATTR_STABCMN, DT_VERS_1_0 },
+{ "pgid", DT_IDENT_SCALAR, 0, 0, DT_ATTR_STABCMN, DT_VERS_1_0 },
+{ "ppid", DT_IDENT_SCALAR, 0, 0, DT_ATTR_STABCMN, DT_VERS_1_0 },
+{ "projid", DT_IDENT_SCALAR, 0, 0, DT_ATTR_STABCMN, DT_VERS_1_0 },
+{ "sid", DT_IDENT_SCALAR, 0, 0, DT_ATTR_STABCMN, DT_VERS_1_0 },
+{ "taskid", DT_IDENT_SCALAR, 0, 0, DT_ATTR_STABCMN, DT_VERS_1_0 },
+{ "target", DT_IDENT_SCALAR, 0, 0, DT_ATTR_STABCMN, DT_VERS_1_0 },
+{ "uid", DT_IDENT_SCALAR, 0, 0, DT_ATTR_STABCMN, DT_VERS_1_0 },
+{ NULL, 0, 0, 0, { 0, 0, 0 }, 0 }
 };
 
 /*
@@ -900,28 +702,23 @@ const dtrace_attribute_t _dtrace_prvattr = {
 };
 
 const dtrace_pattr_t _dtrace_prvdesc = {
-	{ DTRACE_STABILITY_UNSTABLE, DTRACE_STABILITY_UNSTABLE, DTRACE_CLASS_COMMON },
-	{ DTRACE_STABILITY_UNSTABLE, DTRACE_STABILITY_UNSTABLE, DTRACE_CLASS_COMMON },
-	{ DTRACE_STABILITY_UNSTABLE, DTRACE_STABILITY_UNSTABLE, DTRACE_CLASS_COMMON },
-	{ DTRACE_STABILITY_UNSTABLE, DTRACE_STABILITY_UNSTABLE, DTRACE_CLASS_COMMON },
-	{ DTRACE_STABILITY_UNSTABLE, DTRACE_STABILITY_UNSTABLE, DTRACE_CLASS_COMMON },
+{ DTRACE_STABILITY_UNSTABLE, DTRACE_STABILITY_UNSTABLE, DTRACE_CLASS_COMMON },
+{ DTRACE_STABILITY_UNSTABLE, DTRACE_STABILITY_UNSTABLE, DTRACE_CLASS_COMMON },
+{ DTRACE_STABILITY_UNSTABLE, DTRACE_STABILITY_UNSTABLE, DTRACE_CLASS_COMMON },
+{ DTRACE_STABILITY_UNSTABLE, DTRACE_STABILITY_UNSTABLE, DTRACE_CLASS_COMMON },
+{ DTRACE_STABILITY_UNSTABLE, DTRACE_STABILITY_UNSTABLE, DTRACE_CLASS_COMMON },
 };
-
-#if defined(sun)
+#if !defined(windows)
 const char *_dtrace_defcpp = "/usr/ccs/lib/cpp"; /* default cpp(1) to invoke */
 const char *_dtrace_defld = "/usr/ccs/bin/ld";   /* default ld(1) to invoke */
+
+const char *_dtrace_libdir = "/usr/lib/dtrace"; /* default library directory */
+const char *_dtrace_provdir = "/dev/dtrace/provider"; /* provider directory */
 #else
 const char *_dtrace_defcpp = "cpp.exe"; /* default cpp(1) to invoke */
 const char *_dtrace_defld = "ld.exe";   /* default ld(1) to invoke */
-#endif
-#if defined(sun)
-const char *_dtrace_libdir = "/usr/lib/dtrace"; /* default library directory */
-#else
+
 const char *_dtrace_libdir = "c:/dtrace/lib"; /* default library directory */
-#endif
-#if defined(sun)
-const char *_dtrace_provdir = "/dev/dtrace/provider"; /* provider directory */
-#else
 const char *_dtrace_provdir = "/dev/dtrace"; /* provider directory */
 #endif
 
@@ -934,25 +731,27 @@ uint_t _dtrace_pidlrulim = 8;	/* default number of pid handles to cache */
 size_t _dtrace_bufsize = 512;	/* default dt_buf_create() size */
 int _dtrace_argmax = 32;	/* default maximum number of probe arguments */
 
-int _dtrace_debug = 1;		/* debug messages enabled (off) */
+int _dtrace_debug = 0;		/* debug messages enabled (off) */
 const char *const _dtrace_version = DT_VERS_STRING; /* API version string */
 int _dtrace_rdvers = RD_VERSION; /* rtld_db feature version */
 
 typedef struct dt_fdlist {
-#if defined(windows)
-	HANDLE *df_fds;
-#else
+#if !defined(windows)
 	int *df_fds;		/* array of provider driver file descriptors */
+#else
+	HANDLE *df_fds;		/* array of provider driver file descriptors */
 #endif
 	uint_t df_ents;		/* number of valid elements in df_fds[] */
 	uint_t df_size;		/* size of df_fds[] */
 } dt_fdlist_t;
 
-#if defined(sun)
+#if !defined(windows)
 #pragma init(_dtrace_init)
+void
+_dtrace_init(void)
 #else
-#if _MSC_VER
 
+#if _MSC_VER
 #pragma section(".CRT$XCU",read)
 void __cdecl _dtrace_init(void);
 __declspec(allocate(".CRT$XCU")) void (__cdecl*_dtrace_init_)(void) = _dtrace_init;
@@ -961,16 +760,17 @@ void __cdecl _dtrace_init(void)
 void _dtrace_init(void) __attribute__ ((constructor));
 void _dtrace_init(void)
 #endif
+
+#endif
 {
 	_dtrace_debug = getenv("DTRACE_DEBUG") != NULL;
-#if defined(sun)
+#if !defined(windows)
 	for (; _dtrace_rdvers > 0; _dtrace_rdvers--) {
 		if (rd_init(_dtrace_rdvers) == RD_OK)
 			break;
 	}
 #endif
 }
-#endif
 
 static dtrace_hdl_t *
 set_open_errno(dtrace_hdl_t *dtp, int *errp, int err)
@@ -982,6 +782,8 @@ set_open_errno(dtrace_hdl_t *dtp, int *errp, int err)
 	return (NULL);
 }
 
+#if defined(windows)
+#define MAX_PROVIDER	2
 #if defined(STATIC)
 extern int profile_attach();
 extern int sdt_attach();
@@ -990,21 +792,22 @@ struct prov_tab {
 	char name[256];
 	int (*attach)();
 #if defined(STATIC)
-} providers[] = { {"profile.dll", profile_attach},
-	{"sdt.dll", sdt_attach}};
+} providers[] = { 
+	{"profile.dll", profile_attach},
+	{"sdt.dll", sdt_attach}
+};
 #else
-} providers[] = { {"profile.dll", NULL},
-	{"sdt.dll", NULL}};
+} providers[] = { 
+	{"profile.dll", NULL},
+	{"sdt.dll", NULL}
+};
 #endif
-//char *providers[] = {"profile.dll", "sdt.dll"};
-#define MAX_PROVIDER	2
 
 static void
 dt_provmod_open(dt_provmod_t **provmod, dt_fdlist_t *dfp)
 {
 	dt_provmod_t *prov;
 	char path[PATH_MAX];
-	//int fd;
 	HANDLE fd;
 	int i;
 	struct dirent *dp, *ep;
@@ -1037,6 +840,61 @@ dt_provmod_open(dt_provmod_t **provmod, dt_fdlist_t *dfp)
 		dfp->df_fds[dfp->df_ents++] = fd;
 	}
 }
+#else
+static void
+dt_provmod_open(dt_provmod_t **provmod, dt_fdlist_t *dfp)
+{
+	dt_provmod_t *prov;
+	char path[PATH_MAX];
+	struct dirent *dp, *ep;
+	DIR *dirp;
+	int fd;
+
+	if ((dirp = opendir(_dtrace_provdir)) == NULL)
+		return; /* failed to open directory; just skip it */
+
+	ep = alloca(sizeof (struct dirent) + PATH_MAX + 1);
+	bzero(ep, sizeof (struct dirent) + PATH_MAX + 1);
+
+	while (readdir_r(dirp, ep, &dp) == 0 && dp != NULL) {
+		if (dp->d_name[0] == '.')
+			continue; /* skip "." and ".." */
+
+		if (dfp->df_ents == dfp->df_size) {
+			uint_t size = dfp->df_size ? dfp->df_size * 2 : 16;
+			int *fds = realloc(dfp->df_fds, size * sizeof (int));
+
+			if (fds == NULL)
+				break; /* skip the rest of this directory */
+
+			dfp->df_fds = fds;
+			dfp->df_size = size;
+		}
+
+		(void) snprintf(path, sizeof (path), "%s/%s",
+		    _dtrace_provdir, dp->d_name);
+
+		if ((fd = open(path, O_RDONLY)) == -1)
+			continue; /* failed to open driver; just skip it */
+
+		if (((prov = malloc(sizeof (dt_provmod_t))) == NULL) ||
+		    (prov->dp_name = malloc(strlen(dp->d_name) + 1)) == NULL) {
+			free(prov);
+			(void) close(fd);
+			break;
+		}
+
+		(void) strcpy(prov->dp_name, dp->d_name);
+		prov->dp_next = *provmod;
+		*provmod = prov;
+
+		dt_dprintf("opened provider %s\n", dp->d_name);
+		dfp->df_fds[dfp->df_ents++] = fd;
+	}
+
+	(void) closedir(dirp);
+}
+#endif
 
 static void
 dt_provmod_destroy(dt_provmod_t **provmod)
@@ -1052,7 +910,7 @@ dt_provmod_destroy(dt_provmod_t **provmod)
 	*provmod = NULL;
 }
 
-#if defined(sun)
+#if !defined(windows)
 static const char *
 dt_get_sysinfo(int cmd, char *buf, size_t len)
 {
@@ -1074,9 +932,8 @@ dt_vopen(int version, int flags, int *errp,
     const dtrace_vector_t *vector, void *arg)
 {
 	dtrace_hdl_t *dtp = NULL;
-#if defined(sun)
+#if !defined(windows)
 	int dtfd = -1, ftfd = -1, fterr = 0;
-	struct rlimit rl;
 #else
 	HANDLE dtfd = NULL, ftfd = NULL, token_hdl = NULL;
 	int fterr = 0;
@@ -1086,9 +943,14 @@ dt_vopen(int version, int flags, int *errp,
 	dt_module_t *dmp;
 	dt_provmod_t *provmod = NULL;
 	int i, err;
+#if !defined(windows)
+	struct rlimit rl;
+#endif
+
 	const dt_intrinsic_t *dinp;
 	const dt_typedef_t *dtyp;
 	const dt_ident_t *idp;
+
 	dtrace_typeinfo_t dtt;
 	ctf_funcinfo_t ctc;
 	ctf_arinfo_t ctr;
@@ -1125,24 +987,28 @@ dt_vopen(int version, int flags, int *errp,
 	if ((flags & DTRACE_O_LP64) && (flags & DTRACE_O_ILP32))
 		return (set_open_errno(dtp, errp, EINVAL));
 
+#ifndef windows
 	if (vector == NULL && arg != NULL)
 		return (set_open_errno(dtp, errp, EINVAL));
 
-#if defined(sun)
 	if (elf_version(EV_CURRENT) == EV_NONE)
 		return (set_open_errno(dtp, errp, EDT_ELFVERSION));
-#endif
-#if defined(sun)
+
 	if (vector != NULL || (flags & DTRACE_O_NODEV))
+		goto alloc; /* do not attempt to open dtrace device */
 #else
 	if ((libd = setlibdir()) != NULL)
 		_dtrace_libdir = libd;
 	
-	if ((flags & DTRACE_O_NODEV))
-#endif
-		goto alloc; /* do not attempt to open dtrace device */
+	if (vector == NULL && !(flags & DTRACE_O_FETW) && arg != NULL)
+		return (set_open_errno(dtp, errp, EINVAL));
 
-#if defined(sun)
+	if (vector != NULL || (flags & DTRACE_O_NODEV))
+		goto alloc; /* do not attempt to open dtrace device */
+#endif
+		
+		
+#if !defined(windows)
 	/*
 	 * Before we get going, crank our limit on file descriptors up to the
 	 * hard limit.  This is to allow for the fact that libproc keeps file
@@ -1156,13 +1022,6 @@ dt_vopen(int version, int flags, int *errp,
 		(void) setrlimit(RLIMIT_NOFILE, &rl);
 	}
 #endif
-	/*
-	 * Get the device path of each of the providers.  We hold them open
-	 * in the df.df_fds list until we open the DTrace driver itself,
-	 * allowing us to see all of the probes provided on this system.  Once
-	 * we have the DTrace driver open, we can safely close all the providers
-	 * now that they have registered with the framework.
-	 */
 #if defined(windows)
 	if (OpenProcessToken (GetCurrentProcess (), TOKEN_QUERY | TOKEN_ADJUST_PRIVILEGES, &token_hdl)) {
 		if (SetPrivilege(token_hdl,SE_DEBUG_NAME, TRUE) == FALSE)
@@ -1174,45 +1033,39 @@ dt_vopen(int version, int flags, int *errp,
 		return (set_open_errno(dtp, errp, EINVAL));
 	}
 #endif
-	dt_provmod_open(&provmod, &df);
-#if defined(sun)
-	dtfd = open("/dev/dtrace/dtrace", O_RDWR);
-#else
-	dtfd = DtraceOpen();
-#endif
-	err = errno; /* save errno from opening dtfd */
-#if defined(__FreeBSD__)
 	/*
-	 * Automatically load the 'dtraceall' module if we couldn't open the
-	 * char device.
+	 * Get the device path of each of the providers.  We hold them open
+	 * in the df.df_fds list until we open the DTrace driver itself,
+	 * allowing us to see all of the probes provided on this system.  Once
+	 * we have the DTrace driver open, we can safely close all the providers
+	 * now that they have registered with the framework.
 	 */
-	if (err == ENOENT && modfind("dtraceall") < 0) {
-		kldload("dtraceall"); /* ignore the error */
-		dtfd = open("/dev/dtrace/dtrace", O_RDWR);
-		err = errno;
-	}
-#endif
-#if defined(sun)
+	dt_provmod_open(&provmod, &df);
+
+#if !defined(windows)
+	dtfd = open("/dev/dtrace/dtrace", O_RDWR);
+	err = errno; /* save errno from opening dtfd */
+
 	ftfd = open("/dev/dtrace/provider/fasttrap", O_RDWR);
 	fterr = ftfd == -1 ? errno : 0; /* save errno from open ftfd */
+
+	while (df.df_ents-- != 0)
+		(void) close(df.df_fds[df.df_ents]);
+
+	free(df.df_fds);
 #else
+	dtfd = DtraceOpen();
+	err = errno; /* save errno from opening dtfd */
+	
 	ftfd = FasttrapOpen();
 	fterr = ftfd == NULL ? errno : 0; /* save errno from open ftfd */
 #endif
-#if defined(sun)
-	while (df.df_ents-- != 0)
-		(void) close(df.df_fds[df.df_ents]);
-	//CloseHandle(df.df_fds[df.df_ents]);
-
-	free(df.df_fds);
-#endif
-
 	/*
 	 * If we failed to open the dtrace device, fail dtrace_open().
 	 * We convert some kernel errnos to custom libdtrace errnos to
 	 * improve the resulting message from the usual strerror().
 	 */
-	if (dtfd == NULL) {
+	if (dtfd == -1) {
 		dt_provmod_destroy(&provmod);
 		switch (err) {
 		case ENOENT:
@@ -1227,23 +1080,25 @@ dt_vopen(int version, int flags, int *errp,
 		}
 		return (set_open_errno(dtp, errp, err));
 	}
-#if defined(sun)
+	
+#if !defined(windows)
 	(void) fcntl(dtfd, F_SETFD, FD_CLOEXEC);
 	(void) fcntl(ftfd, F_SETFD, FD_CLOEXEC);
 #else
-	SymSetOptions(SymGetOptions() |SYMOPT_DEFERRED_LOADS|SYMOPT_DEBUG); //
+	SymSetOptions(SymGetOptions() | SYMOPT_DEFERRED_LOADS | SYMOPT_DEBUG); 
 	if  (SymInitialize(GetCurrentProcess(), NULL, FALSE) == 0) {
 		dt_dprintf("failed to intialize dbghelp : SymInitialize()\n");
 		set_open_errno(dtp, errp, EDT_CTF);
 	}
 #endif
-	alloc:
+
+alloc:
 	if ((dtp = malloc(sizeof (dtrace_hdl_t))) == NULL)
 		return (set_open_errno(dtp, errp, EDT_NOMEM));
 
 	bzero(dtp, sizeof (dtrace_hdl_t));
 	dtp->dt_oflags = flags;
-#if defined(sun)
+#ifdef illumos
 	dtp->dt_prcmode = DT_PROC_STOP_PREINIT;
 #else
 	dtp->dt_prcmode = DT_PROC_STOP_MAIN;
@@ -1252,13 +1107,14 @@ dt_vopen(int version, int flags, int *errp,
 	dtp->dt_linktype = DT_LTYP_ELF;
 	dtp->dt_xlatemode = DT_XL_STATIC;
 	dtp->dt_stdcmode = DT_STDC_XA;
+	dtp->dt_encoding = DT_ENCODING_UNSET;
 	dtp->dt_version = version;
 	dtp->dt_fd = dtfd;
 	dtp->dt_ftfd = ftfd;
 	dtp->dt_fterr = fterr;
 	dtp->dt_cdefs_fd = -1;
 	dtp->dt_ddefs_fd = -1;
-#if defined(sun)
+#ifdef illumos
 	dtp->dt_stdout_fd = -1;
 #else
 	dtp->dt_freopen_fp = NULL;
@@ -1267,7 +1123,7 @@ dt_vopen(int version, int flags, int *errp,
 	dtp->dt_mods = calloc(dtp->dt_modbuckets, sizeof (dt_module_t *));
 	dtp->dt_provbuckets = _dtrace_strbuckets;
 	dtp->dt_provs = calloc(dtp->dt_provbuckets, sizeof (dt_provider_t *));
-	dt_proc_hash_create(dtp);
+	dt_proc_init(dtp);
 	dtp->dt_vmax = DT_VERS_LATEST;
 	dtp->dt_cpp_path = strdup(_dtrace_defcpp);
 	dtp->dt_cpp_argv = malloc(sizeof (char *));
@@ -1278,21 +1134,22 @@ dt_vopen(int version, int flags, int *errp,
 	dtp->dt_vector = vector;
 	dtp->dt_varg = arg;
 	dt_dof_init(dtp);
-#if defined(sun)
+#if !defined(windows)
 	(void) uname(&dtp->dt_uts);
 #endif
 
 	if (dtp->dt_mods == NULL || dtp->dt_provs == NULL ||
-	    dtp->dt_procs == NULL || dtp->dt_ld_path == NULL ||
-	    dtp->dt_cpp_path == NULL || dtp->dt_cpp_argv == NULL)
+	    dtp->dt_procs == NULL || dtp->dt_proc_env == NULL ||
+	    dtp->dt_ld_path == NULL || dtp->dt_cpp_path == NULL ||
+	    dtp->dt_cpp_argv == NULL)
 		return (set_open_errno(dtp, errp, EDT_NOMEM));
 
 	for (i = 0; i < DTRACEOPT_MAX; i++)
 		dtp->dt_options[i] = DTRACEOPT_UNSET;
 
 	dtp->dt_cpp_argv[0] = (char *)strbasename(dtp->dt_cpp_path);
-
-#if defined(sun)
+	
+#if !defined(windows)
 	(void) snprintf(isadef, sizeof (isadef), "-D__SUNW_D_%u",
 	    (uint_t)(sizeof (void *) * NBBY));
 
@@ -1332,7 +1189,6 @@ dt_vopen(int version, int flags, int *errp,
 		return (set_open_errno(dtp, errp, EDT_NOMEM));
 #endif
 
-#if defined(sun)
 #ifdef __x86
 	/*
 	 * On x86 systems, __i386 is defined for <sys/isa_defs.h> for 32-bit
@@ -1347,8 +1203,8 @@ dt_vopen(int version, int flags, int *errp,
 			return (set_open_errno(dtp, errp, EDT_NOMEM));
 	}
 #endif
-#else
-#if defined(__amd64__) || defined(__i386__)
+
+#if defined(windows) && (defined(__amd64__) || defined(__i386__))
 	if (dtp->dt_conf.dtc_ctfmodel == CTF_MODEL_LP64) {
 		if (dt_cpp_add_arg(dtp, "-m64") == NULL)
 			return (set_open_errno(dtp, errp, EDT_NOMEM));
@@ -1356,7 +1212,6 @@ dt_vopen(int version, int flags, int *errp,
 		if (dt_cpp_add_arg(dtp, "-m32") == NULL)
 			return (set_open_errno(dtp, errp, EDT_NOMEM));
 	}
-#endif
 #endif
 
 	if (dtp->dt_conf.dtc_difversion < DIF_VERSION)
@@ -1367,16 +1222,15 @@ dt_vopen(int version, int flags, int *errp,
 	else
 		bcopy(_dtrace_ints_64, dtp->dt_ints, sizeof (_dtrace_ints_64));
 
-
 	dtp->dt_macros = dt_idhash_create("macro", NULL, 0, UINT_MAX);
 	dtp->dt_aggs = dt_idhash_create("aggregation", NULL,
-	        DTRACE_AGGVARIDNONE + 1, UINT_MAX);
+	    DTRACE_AGGVARIDNONE + 1, UINT_MAX);
 
 	dtp->dt_globals = dt_idhash_create("global", _dtrace_globals,
-	        DIF_VAR_OTHER_UBASE, DIF_VAR_OTHER_MAX);
+	    DIF_VAR_OTHER_UBASE, DIF_VAR_OTHER_MAX);
 
 	dtp->dt_tls = dt_idhash_create("thread local", NULL,
-	        DIF_VAR_OTHER_UBASE, DIF_VAR_OTHER_MAX);
+	    DIF_VAR_OTHER_UBASE, DIF_VAR_OTHER_MAX);
 
 	if (dtp->dt_macros == NULL || dtp->dt_aggs == NULL ||
 	    dtp->dt_globals == NULL || dtp->dt_tls == NULL)
@@ -1389,9 +1243,9 @@ dt_vopen(int version, int flags, int *errp,
 	 */
 	for (idp = _dtrace_macros; idp->di_name != NULL; idp++) {
 		if (dt_idhash_insert(dtp->dt_macros, idp->di_name,
-		        idp->di_kind, idp->di_flags, idp->di_id, idp->di_attr,
-		        idp->di_vers, idp->di_ops ? idp->di_ops : &dt_idops_thaw,
-		        idp->di_iarg, 0) == NULL)
+		    idp->di_kind, idp->di_flags, idp->di_id, idp->di_attr,
+		    idp->di_vers, idp->di_ops ? idp->di_ops : &dt_idops_thaw,
+		    idp->di_iarg, 0) == NULL)
 			return (set_open_errno(dtp, errp, EDT_NOMEM));
 	}
 
@@ -1439,16 +1293,16 @@ dt_vopen(int version, int flags, int *errp,
 	for (; dinp->din_name != NULL; dinp++) {
 		if (dinp->din_kind == CTF_K_INTEGER) {
 			err = ctf_add_integer(dmp->dm_ctfp, CTF_ADD_ROOT,
-			        dinp->din_name, &dinp->din_data);
+			    dinp->din_name, &dinp->din_data);
 		} else {
 			err = ctf_add_float(dmp->dm_ctfp, CTF_ADD_ROOT,
-			        dinp->din_name, &dinp->din_data);
+			    dinp->din_name, &dinp->din_data);
 		}
 
 		if (err == CTF_ERR) {
 			dt_dprintf("failed to add %s to C container: %s\n",
 			    dinp->din_name, ctf_errmsg(
-			        ctf_errno(dmp->dm_ctfp)));
+			    ctf_errno(dmp->dm_ctfp)));
 			return (set_open_errno(dtp, errp, EDT_CTF));
 		}
 	}
@@ -1511,8 +1365,8 @@ dt_vopen(int version, int flags, int *errp,
 	 */
 	for (; dtyp->dty_src != NULL; dtyp++) {
 		if (ctf_add_typedef(dmp->dm_ctfp, CTF_ADD_ROOT,
-		        dtyp->dty_dst, ctf_lookup_by_name(dmp->dm_ctfp,
-		            dtyp->dty_src)) == CTF_ERR) {
+		    dtyp->dty_dst, ctf_lookup_by_name(dmp->dm_ctfp,
+		    dtyp->dty_src)) == CTF_ERR) {
 			dt_dprintf("failed to add typedef %s %s to D "
 			    "container: %s", dtyp->dty_src, dtyp->dty_dst,
 			    ctf_errmsg(ctf_errno(dmp->dm_ctfp)));
@@ -1530,10 +1384,10 @@ dt_vopen(int version, int flags, int *errp,
 	ctc.ctc_flags = 0;
 
 	dtp->dt_type_func = ctf_add_function(dmp->dm_ctfp,
-	        CTF_ADD_ROOT, &ctc, NULL);
+	    CTF_ADD_ROOT, &ctc, NULL);
 
 	dtp->dt_type_fptr = ctf_add_pointer(dmp->dm_ctfp,
-	        CTF_ADD_ROOT, dtp->dt_type_func);
+	    CTF_ADD_ROOT, dtp->dt_type_func);
 
 	/*
 	 * We also insert CTF definitions for the special D intrinsic types
@@ -1546,19 +1400,19 @@ dt_vopen(int version, int flags, int *errp,
 	ctr.ctr_nelems = _dtrace_strsize;
 
 	dtp->dt_type_str = ctf_add_typedef(dmp->dm_ctfp, CTF_ADD_ROOT,
-	        "string", ctf_add_array(dmp->dm_ctfp, CTF_ADD_ROOT, &ctr));
+	    "string", ctf_add_array(dmp->dm_ctfp, CTF_ADD_ROOT, &ctr));
 
 	dtp->dt_type_dyn = ctf_add_typedef(dmp->dm_ctfp, CTF_ADD_ROOT,
-	        "<DYN>", ctf_lookup_by_name(dmp->dm_ctfp, "void"));
+	    "<DYN>", ctf_lookup_by_name(dmp->dm_ctfp, "void"));
 
 	dtp->dt_type_stack = ctf_add_typedef(dmp->dm_ctfp, CTF_ADD_ROOT,
-	        "stack", ctf_lookup_by_name(dmp->dm_ctfp, "void"));
+	    "stack", ctf_lookup_by_name(dmp->dm_ctfp, "void"));
 
 	dtp->dt_type_symaddr = ctf_add_typedef(dmp->dm_ctfp, CTF_ADD_ROOT,
-	        "_symaddr", ctf_lookup_by_name(dmp->dm_ctfp, "void"));
+	    "_symaddr", ctf_lookup_by_name(dmp->dm_ctfp, "void"));
 
 	dtp->dt_type_usymaddr = ctf_add_typedef(dmp->dm_ctfp, CTF_ADD_ROOT,
-	        "_usymaddr", ctf_lookup_by_name(dmp->dm_ctfp, "void"));
+	    "_usymaddr", ctf_lookup_by_name(dmp->dm_ctfp, "void"));
 
 	if (dtp->dt_type_func == CTF_ERR || dtp->dt_type_fptr == CTF_ERR ||
 	    dtp->dt_type_str == CTF_ERR || dtp->dt_type_dyn == CTF_ERR ||
@@ -1581,12 +1435,12 @@ dt_vopen(int version, int flags, int *errp,
 	 * dt_node_int() for a complete description of how this table is used.
 	 */
 	for (i = 0; i < sizeof (dtp->dt_ints) / sizeof (dtp->dt_ints[0]); i++) {
-#if defined(sun)
+#if !defined(windows)
 		if (dtrace_lookup_by_type(dtp, DTRACE_OBJ_EVERY,
 #else
 		if (dtrace_lookup_by_type(dtp, DTRACE_OBJ_CDEFS,
 #endif
-		        dtp->dt_ints[i].did_name, &dtt) != 0) {
+		    dtp->dt_ints[i].did_name, &dtt) != 0) {
 			dt_dprintf("failed to lookup integer type %s: %s\n",
 			    dtp->dt_ints[i].did_name,
 			    dtrace_errmsg(dtp, dtrace_errno(dtp)));
@@ -1623,7 +1477,7 @@ dt_vopen(int version, int flags, int *errp,
 	 * compiler on the raw definition string defined above.
 	 */
 	if ((pgp = dtrace_program_strcompile(dtp, _dtrace_hardwire,
-	                DTRACE_PROBESPEC_NONE, DTRACE_C_EMPTY, 0, NULL)) == NULL) {
+	    DTRACE_PROBESPEC_NONE, DTRACE_C_EMPTY, 0, NULL)) == NULL) {
 		dt_dprintf("failed to load hard-wired definitions: %s\n",
 		    dtrace_errmsg(dtp, dtrace_errno(dtp)));
 		return (set_open_errno(dtp, errp, EDT_HARDWIRE));
@@ -1640,6 +1494,7 @@ dt_vopen(int version, int flags, int *errp,
 	 */
 	if (dtrace_setopt(dtp, "libdir", _dtrace_libdir) != 0)
 		return (set_open_errno(dtp, errp, dtp->dt_errno));
+
 	return (dtp);
 }
 
@@ -1668,7 +1523,7 @@ dtrace_close(dtrace_hdl_t *dtp)
 	int i;
 
 	if (dtp->dt_procs != NULL)
-		dt_proc_hash_destroy(dtp);
+		dt_proc_fini(dtp);
 
 	while ((pgp = dt_list_next(&dtp->dt_programs)) != NULL)
 		dt_program_destroy(dtp, pgp);
@@ -1697,31 +1552,23 @@ dtrace_close(dtrace_hdl_t *dtp)
 
 	while ((pvp = dt_list_next(&dtp->dt_provlist)) != NULL)
 		dt_provider_destroy(dtp, pvp);
-#if defined(sun)
-	while (dtp->df_ents-- != 0)
-		//(void) close(df.df_fds[df.df_ents]);
-		CloseHandle(dtp->df_fds[dtp->df_ents]);
-
-	free(dtp->df_fds);
-
+		
+#if !defined(windows)
 	if (dtp->dt_fd != -1)
 		(void) close(dtp->dt_fd);
 	if (dtp->dt_ftfd != -1)
 		(void) close(dtp->dt_ftfd);
 #else
-
-	if (dtp->dt_fd != NULL)
-		//CloseHandle(dtp->dt_fd);
+	if (dtp->dt_fd != -1)
 		DtraceClose(dtp->dt_fd);
-	if (dtp->dt_ftfd != NULL)
-		(void) CloseHandle(dtp->dt_ftfd);
-
+	if (dtp->dt_ftfd != -1)
+		FasttrapClose(dtp->dt_ftfd);
 #endif
 	if (dtp->dt_cdefs_fd != -1)
 		(void) close(dtp->dt_cdefs_fd);
 	if (dtp->dt_ddefs_fd != -1)
 		(void) close(dtp->dt_ddefs_fd);
-#if defined(sun)
+#ifdef illumos
 	if (dtp->dt_stdout_fd != -1)
 		(void) close(dtp->dt_stdout_fd);
 #else
@@ -1770,7 +1617,8 @@ dtrace_provider_modules(dtrace_hdl_t *dtp, const char **mods, int nmods)
 
 	return (i);
 }
-#if defined(sun)
+
+#if !defined(windows)
 int
 #else
 HANDLE

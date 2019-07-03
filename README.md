@@ -1,17 +1,26 @@
-# Dtrace front end to ETW
+# Dtrace for Windows - Frontend to ETW
 
-The [DTrace](https://www.freebsd.org/cgi/man.cgi?query=dtrace) port acts as a frontend to ETW. Additionaly there is support for ```pid provider``` for native and .net applications. Since the pid provider uses the debugger interface, it will slow down the application being traced to unusable level, when tracing for large number of probes. An additional provider called as ```fpid``` (based on [ntrace](https://github.com/jpassing/ntrace) and [Orbitprofiler](https://github.com/pierricgimmig/orbitprofiler)) is provided, which uses function hooking [minihook](https://github.com/TsudaKageyu/minhook) to implement the trace, to get function count and stacktrace. With ``fpid provider```, dtrace wont be able to trace the memory of user process.
+The [DTrace](https://www.freebsd.org/cgi/man.cgi?query=dtrace) port acts as a frontend to ETW. Additionaly there is support for ```pid provider``` for native and .net applications. Since the pid provider uses the debugger interface, it will slow down the application being traced to unusable level, when tracing for large number of probes. An additional provider called as ```fpid``` (based on [ntrace](https://github.com/jpassing/ntrace) and [Orbitprofiler](https://github.com/pierricgimmig/orbitprofiler)) is provided, which uses function hooking <minihook>(https://github.com/TsudaKageyu/minhook) to implement the trace, to get function count and stacktrace. With **fpid provider**, dtrace wont be able to trace the memory of user process.
 
-When run for the first time, **dtrace.exe** will get a list of all registered etw providers and saves it in a file ```dt_provlist.dat``, in the folder dtrace executable is found.The translator scripts are also read from the dtrace executable folder.
+When run for the first time, **dtrace.exe** will get a list of all registered **etw** providers and saves it in a file ```dt_provlist.dat```, in the folder dtrace executable is found.The translator scripts are also read from the dtrace executable folder.
 
-There is an option ```-E``` to read the ETW trace data etl trace file, such as from xperf or perfview. Perfview (unzipped with merged data) usually consist of three files; <filename>.etl, <filename>.kernel.etl, <filename>.clrrundown.etl. Given a etl filename, dtrace will try to read from all three files. ex:
-```
-dtrace.exe -s randomascii.d -D "2015-09-25_20-56-25 VS F8 short hang.etl"
-dtrace.exe -s sched.d -E PerfViewData.etl (also read in PerfViewData.kernel.etl & PerfViewData.clrRundown.etl)
-```
+There is an option ```-E``` to read the ETW trace data from a etl trace file, such as from xperf or perfview. Perfview (unzipped with merged data) usually consist of three files; <filename>.etl, <filename>.kernel.etl, <filename>.clrrundown.etl. Given a etl filename, dtrace will try to read from all three files. ex:  
+**dtrace.exe -s dscripts\demo\randomascii.d -E "[2015-09-25_20-56-25 VS F8 short hang.etl](https://github.com/randomascii/bigfiles/blob/master/ETWTraces/2015-09-25_20-56-25%20VS%20F8%20short%20hang.zip)"**  
+**dtrace.exe -s dscripts\bin\sched.d -E PerfViewData.etl (also reads in PerfViewData.kernel.etl & PerfViewData.clrRundown.etl if it is available)**  
+**dtrace.exe -s dscripts\bin\sched.d**  
+**dtrace.exe -n "pid$target:a.out::entry {@[probefunc] = count();}" -c debug/amd64/obj/t_c_sim.exe**  
+**dtrace.exe -n "pid$target:ntdll::entry {@[probefunc] = count();}" -c debug/amd64/obj/t_c_sim.exe**  
+**dtrace.exe -n "pid$target:System::entry {@[probefunc] = count();}" -c debug/amd64/obj/t_cs_str.exe**   
+To stop tracing, press **CTRL C**.  
+Presently only one instance of the program can be running at a time. The latest run will stop any previous sessions.
+Program names are converted to lower case, so any comparision to execname, should have the program name in lowercase
+```/execname == "lowercase.exe"/```.
+**scripts\demo** folder contains example scripts.**scripts\demo\dtracecmds[x64|x32].bat** shows example usage of this scripts.
+**tests\dtrace** contains the dtrace testsuite. 
+
 ## Providers
-The list of providers found by dtrace can be displayed using
-```dtrace -l```. The keywords and associated events and their meaning can be found? using
+The list ETW of providers found by dtrace can be displayed using
+```dtrace -l```. The keywords and associated events and their meaning can be found using
 ```powershell```. The following command will display all the events for ```Microsoft-Windows-DNS-Client provider```.
 ```
 (Get-WinEvent -ListProvider *DNS-Client).events
@@ -25,10 +34,10 @@ This will enable the ```Microsoft-Windows-Win32k``` provider, with keyword ```wi
 
 Probes | Description
 ------ | -----------
-events | this enable all the events for the provider. *args0* = event code, *arg1* = opcode, args2 = payload of the event, args4 = size of the payload.
+events | this enable all the events for the provider. *args0* = event code, *arg1* = opcode, args2 = payload of the event, args3 = size of the payload.
 keywords | this will enable the events for the keyword. arguments same as above.
 
-For an example see **dscripts\randomascii.d**, **dscripts\dns.d**.
+For an example see **dscripts\demo\randomascii.d**, **dscripts\demo\dns.d**.
 
 ## io
 The io provider makes available probes related to disk input and output. 
@@ -38,7 +47,7 @@ Probes | Description
 ------ | -----------
 start  | Initialize disk io. The bufinfo_t corresponding to the I/O request is pointed to by *args[0]*. The devinfo_t of the device to which the I/O is being issued is pointed to by *args[1]*. The fileinfo_t of the file that corresponds to the I/O request is pointed to by *args[2]*. The start event doesnt contain any useful information, other than the args[0]->b_addr, which is unique irp addr for this io transaction.
 done | Probe that fires after an I/O request has been fulfilled. arguments same as above.
-example. **dscripts\iosnoop** (requires bash).
+example. **dscripts\bin\iosnoop** (requires bash).
 
 ## sched
 The sched provider makes available probes related to CPU scheduling. 
@@ -57,9 +66,9 @@ ETW flags ==> EVENT_TRACE_FLAG_PROCESS | EVENT_TRACE_FLAG_THREAD.
 Probes | Description
 ------ | -----------
 start  | Start process event. The psinfo_t corresponding to the new process is pointed to by args[0].
-exit   | End process event. args[0] corresponds to the exit code.
-lwp-start | Start thread event.
-lwp-exit  | End Thread event.
+exit   | End process event. args[0] corresponds to the exit code. exiting process - curpsinfo
+lwp-start | Start thread event. args[0] lwpsinfo_t, arg[1] psinfo_t.
+lwp-exit  | End Thread event. exiting thread - curlwpsinfo
 
 ## fsinfo
 The fsinfo provider makes available probes related to file input and output.
@@ -152,23 +161,35 @@ fail | Fail event. args[0] uint16_t (protocol), args[1] uint16_t (failure code)
 
 Provider | ETW flag | Probe | Description
 -------- | -------- | ----- | -----------
- **profile** | EVENT_TRACE_FLAG_PROFILE | profile-n | [profile provider](http://dtrace.org/guide/chp-profile.html)
- -|-| tick-n |  
- -|-| sample-n | triggers for every sample. 
-dpc | EVENT_TRACE_FLAG_DPC | thread | ThreadDPC event records when a threaded DPC executes. arg0-1: entry time (u64), routine address (void * )
- -|-| dpc | when a DPC is entered. 
- -|-| timer | The TimerDPC event records when a DPC fires as a result of a timer expiration. 
+ profile | EVENT_TRACE_FLAG_PROFILE | profile-n | [profile provider](http://dtrace.org/guide/chp-profile.html)
+ - | - | tick-n | 
+ - | - | sample-n | triggers for every sample.
+dpc | EVENT_TRACE_FLAG_DPC | thread | ThreadDPC event records when a threaded DPC executes. arg0-1: entry time (u64), routine address (void *)
+ - | - | dpc | when a DPC is entered.
+ - | - | timer | The TimerDPC event records when a DPC fires as a result of a timer expiration.
  isr | EVENT_TRACE_FLAG_INTERRUPT | isr | interrupt service routine. args0-3: entry time (u64), routine address, return val (u8), vector number (u8)
  syscall | EVENT_TRACE_FLAG_SYSTEMCALL | entry | arg0: Address of the NT function call that is being entered
-  -|-| return | arg0: Status code returned by the NT system call. 
+  - | - | return | arg0: Status code returned by the NT system call.
 
 ## [pid provider](http://dtrace.org/guide/chp-pid.html)
 The pid provider allows for tracing of the entry and return of a function in a user process (native & .net) as well as any instruction as specified by an absolute address or function offset. For .net, function name is Namespace.Class.Function ex. 
 ```
 pid$target:t_cs_str:Strings.Program.Function1:entry
 ```  
+If you require stacktrace, or function usage count use the **fpid provider**. stacktrace slows the pid provider.
+If have to modify or read from the traced process memory, use the **pid provider**.
 ## fpid provider
-
+```probefuncmodustack.d ```
+```
+fpid$target:t_cs_str::entry,
+fpid$target:t_cs_str::return,
+fpid$target:System.Drawing::entry,
+fpid$target:System.Drawing::return
+{
+	@[probefunc, probemod, ustack()] = count();
+}
+```  
+``` debug\amd64\bin\dtrace.exe -s probefuncmodustack.d -c debug\amd64\obj\t_cs_str.exe ```
 ## provider arguments ..
 **Note. All the parameters are not used...**
 ```

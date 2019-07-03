@@ -20,34 +20,33 @@
  */
 
 /*
- * Copyright 2007 Sun Microsystems, Inc.  All rights reserved.
- * Use is subject to license terms.
+ * Copyright (c) 2003, 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2013 by Delphix. All rights reserved.
+ * Copyright (c) 2013 Joyent, Inc. All rights reserved.
  */
-
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
-
-#if defined(sun)
-#include <stdint.h>
-#include <strings.h>
-#include <alloca.h>
+#if !defined(windows)
 #include <sys/sysmacros.h>
+#include <strings.h>
+#include <stdlib.h>
+#include <alloca.h>
+#include <assert.h>
+#include <errno.h>
+#include <ctype.h>
 #include <sys/procfs_isa.h>
+#include <limits.h>
 #else
 #include <dtrace_misc.h>
-#endif
-
 #include <stdlib.h>
 #include <assert.h>
 #include <errno.h>
 #include <ctype.h>
 #include <limits.h>
-
-#include <dt_impl.h>
+#endif
 #include <dt_ident.h>
 #include <dt_parser.h>
 #include <dt_provider.h>
 #include <dt_strtab.h>
-
+#include <dt_impl.h>
 
 /*
  * Common code for cooking an identifier that uses a typed signature list (we
@@ -105,7 +104,7 @@ dt_idcook_sign(dt_node_t *dnp, dt_ident_t *idp,
 		}
 	}
 
-	dt_node_type_assign(dnp, idp->di_ctfp, idp->di_type);
+	dt_node_type_assign(dnp, idp->di_ctfp, idp->di_type, B_FALSE);
 }
 
 /*
@@ -164,7 +163,7 @@ dt_idcook_assc(dt_node_t *dnp, dt_ident_t *idp, int argc, dt_node_t *args)
 		if (argc != 0)
 			isp->dis_args[argc - 1].dn_list = NULL;
 
-		dt_node_type_assign(dnp, idp->di_ctfp, idp->di_type);
+		dt_node_type_assign(dnp, idp->di_ctfp, idp->di_type, B_FALSE);
 
 	} else {
 		dt_idcook_sign(dnp, idp, argc, args,
@@ -188,9 +187,12 @@ dt_idcook_func(dt_node_t *dnp, dt_ident_t *idp, int argc, dt_node_t *args)
 		int i = 0;
 
 		assert(idp->di_iarg != NULL);
+#ifdef illumos
+		s = strdupa(idp->di_iarg);
+#else
 		s = alloca(strlen(idp->di_iarg) + 1);
 		(void) strcpy(s, idp->di_iarg);
-
+#endif
 		if ((p2 = strrchr(s, ')')) != NULL)
 			*p2 = '\0'; /* mark end of parameter list string */
 
@@ -305,7 +307,7 @@ dt_idcook_func(dt_node_t *dnp, dt_ident_t *idp, int argc, dt_node_t *args)
 			}
 
 			dt_node_type_assign(&isp->dis_args[i],
-			    dtt.dtt_ctfp, dtt.dtt_type);
+			    dtt.dtt_ctfp, dtt.dtt_type, B_FALSE);
 		}
 	}
 
@@ -392,7 +394,9 @@ dt_idcook_args(dt_node_t *dnp, dt_ident_t *idp, int argc, dt_node_t *ap)
 
 		dt_node_type_assign(dnp,
 		    prp->pr_argv[ap->dn_value].dtt_ctfp,
-		    prp->pr_argv[ap->dn_value].dtt_type);
+		    prp->pr_argv[ap->dn_value].dtt_type,
+		    prp->pr_argv[ap->dn_value].dtt_flags & DTT_FL_USER ?
+		    B_TRUE : B_FALSE);
 
 	} else if ((dxp = dt_xlator_lookup(dtp,
 	    nnp, xnp, DT_XLATE_FUZZY)) != NULL || (
@@ -420,7 +424,8 @@ dt_idcook_args(dt_node_t *dnp, dt_ident_t *idp, int argc, dt_node_t *ap)
 		dnp->dn_ident->di_ctfp = xidp->di_ctfp;
 		dnp->dn_ident->di_type = xidp->di_type;
 
-		dt_node_type_assign(dnp, DT_DYN_CTFP(dtp), DT_DYN_TYPE(dtp));
+		dt_node_type_assign(dnp, DT_DYN_CTFP(dtp), DT_DYN_TYPE(dtp),
+		    B_FALSE);
 
 	} else {
 		xyerror(D_ARGS_XLATOR, "translator for %s[%lld] from %s to %s "
@@ -466,7 +471,7 @@ dt_idcook_regs(dt_node_t *dnp, dt_ident_t *idp, int argc, dt_node_t *ap)
 	idp->di_ctfp = dtt.dtt_ctfp;
 	idp->di_type = dtt.dtt_type;
 
-	dt_node_type_assign(dnp, idp->di_ctfp, idp->di_type);
+	dt_node_type_assign(dnp, idp->di_ctfp, idp->di_type, B_FALSE);
 }
 
 /*ARGSUSED*/
@@ -488,7 +493,7 @@ dt_idcook_type(dt_node_t *dnp, dt_ident_t *idp, int argc, dt_node_t *args)
 		idp->di_type = dtt.dtt_type;
 	}
 
-	dt_node_type_assign(dnp, idp->di_ctfp, idp->di_type);
+	dt_node_type_assign(dnp, idp->di_ctfp, idp->di_type, B_FALSE);
 }
 
 /*ARGSUSED*/
@@ -496,7 +501,7 @@ static void
 dt_idcook_thaw(dt_node_t *dnp, dt_ident_t *idp, int argc, dt_node_t *args)
 {
 	if (idp->di_ctfp != NULL && idp->di_type != CTF_ERR)
-		dt_node_type_assign(dnp, idp->di_ctfp, idp->di_type);
+		dt_node_type_assign(dnp, idp->di_ctfp, idp->di_type, B_FALSE);
 }
 
 static void

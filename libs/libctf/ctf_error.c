@@ -26,7 +26,8 @@
 /*
  * Copyright (c) 2012, Joyent, Inc.
  */
-#if !defined(sun)
+
+#ifdef windows
 #include <dtrace_misc.h>
 #endif
 #include <ctf_impl.h>

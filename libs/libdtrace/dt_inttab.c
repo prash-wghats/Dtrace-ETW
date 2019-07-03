@@ -26,16 +26,10 @@
 
 #pragma ident	"%Z%%M%	%I%	%E% SMI"
 
-#if defined(sun)
-#include <stdint.h>
-#else
-#include <dtrace_misc.h>
-#endif
 #include <assert.h>
 
-#include <dt_impl.h>
 #include <dt_inttab.h>
-#include <libctf.h>
+#include <dt_impl.h>
 
 dt_inttab_t *
 dt_inttab_create(dtrace_hdl_t *dtp)

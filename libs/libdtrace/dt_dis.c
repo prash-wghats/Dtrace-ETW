@@ -26,18 +26,15 @@
  */
 
 /*
- * Copyright (c) 2012 by Delphix. All rights reserved.
+ * Copyright (c) 2013 by Delphix. All rights reserved.
+ * Copyright (c) 2017 Joyent, Inc.
  */
-
-#if defined(sun)
-#include <stdint.h>
+#if !defined(windows)
 #include <strings.h>
 #else
 #include <dtrace_misc.h>
 #endif
-
 #include <stdio.h>
-
 #include <dt_impl.h>
 #include <dt_ident.h>
 
@@ -52,7 +49,7 @@ dt_dis_log(const dtrace_difo_t *dp, const char *name, dif_instr_t in, FILE *fp)
 /*ARGSUSED*/
 static void
 dt_dis_branch(const dtrace_difo_t *dp, const char *name,
-	dif_instr_t in, FILE *fp)
+    dif_instr_t in, FILE *fp)
 {
 	(void) fprintf(fp, "%-4s %u", name, DIF_INSTR_LABEL(in));
 }
@@ -68,7 +65,7 @@ dt_dis_load(const dtrace_difo_t *dp, const char *name, dif_instr_t in, FILE *fp)
 /*ARGSUSED*/
 static void
 dt_dis_store(const dtrace_difo_t *dp, const char *name,
-	dif_instr_t in, FILE *fp)
+    dif_instr_t in, FILE *fp)
 {
 	(void) fprintf(fp, "%-4s %%r%u, [%%r%u]", name,
 	    DIF_INSTR_R1(in), DIF_INSTR_RD(in));
@@ -166,6 +163,19 @@ dt_dis_stv(const dtrace_difo_t *dp, const char *name, dif_instr_t in, FILE *fp)
 
 	(void) fprintf(fp, "%-4s %%r%u, DT_VAR(%u)",
 	    name, DIF_INSTR_RS(in), var);
+
+	if ((vname = dt_dis_varname(dp, var, dt_dis_scope(name))) != NULL)
+		(void) fprintf(fp, "\t\t! DT_VAR(%u) = \"%s\"", var, vname);
+}
+
+static void
+dt_dis_sta(const dtrace_difo_t *dp, const char *name, dif_instr_t in, FILE *fp)
+{
+	uint_t var = DIF_INSTR_VAR(in);
+	const char *vname;
+
+	(void) fprintf(fp, "%-4s DT_VAR(%u), %%r%u, %%r%u",
+	    name, var, DIF_INSTR_R2(in), DIF_INSTR_RD(in));
 
 	if ((vname = dt_dis_varname(dp, var, dt_dis_scope(name))) != NULL)
 		(void) fprintf(fp, "\t\t! DT_VAR(%u) = \"%s\"", var, vname);
@@ -318,9 +328,10 @@ dt_dis_typestr(const dtrace_diftype_t *t, char *buf, size_t len)
 		(void) snprintf(ckind, sizeof (ckind), "0x%x", t->dtdt_ckind);
 	}
 
-	if (t->dtdt_flags & DIF_TF_BYREF) {
-		(void) snprintf(buf, len, "%s (%s) by ref (size %lu)",
-		    kind, ckind, (ulong_t)t->dtdt_size);
+	if (t->dtdt_flags & (DIF_TF_BYREF | DIF_TF_BYUREF)) {
+		(void) snprintf(buf, len, "%s (%s) by %sref (size %lu)",
+		    kind, ckind, (t->dtdt_flags & DIF_TF_BYUREF) ? "user " : "",
+		    (ulong_t)t->dtdt_size);
 	} else {
 		(void) snprintf(buf, len, "%s (%s) (size %lu)",
 		    kind, ckind, (ulong_t)t->dtdt_size);
@@ -432,6 +443,7 @@ dt_dis(const dtrace_difo_t *dp, FILE *fp)
 		{ "rldx", dt_dis_load },	/* DIF_OP_RLDX */
 		{ "xlate", dt_dis_xlate },	/* DIF_OP_XLATE */
 		{ "xlarg", dt_dis_xlate },	/* DIF_OP_XLARG */
+		{ "stga", dt_dis_sta },		/* DIF_OP_XLARG */
 	};
 
 	const struct opent *op;

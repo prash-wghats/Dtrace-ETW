@@ -1,5 +1,7 @@
 
+/*
 #pragma D depends_on provider tcpip
+*/
 
 inline int AF_INET = 2;
 #pragma D binding "1.0" AF_INET
@@ -106,3 +108,4 @@ translator udpinfo_t < struct udpip_msg *U > {
 	udp_daddr = (U->ui_ver == AF_INET) ? inet_ntoa(&U->ui_addr.ip4.daddr):
 		inet_ntoa6(&U->ui_addr.ip6.saddr);
 };
+

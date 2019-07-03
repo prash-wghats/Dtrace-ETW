@@ -72,7 +72,7 @@ extern "C" {
 
 typedef struct etw_dprobe {
 	dtrace_id_t id;
-	uintptr_t args[5];
+	uetwptr_t args[5];
 	hrtime_t ts;
 	proc_t *proc;
 	thread_t *td;

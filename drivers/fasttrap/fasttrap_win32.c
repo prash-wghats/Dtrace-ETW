@@ -33,7 +33,7 @@ int fasttrap_open();
 int fasttrap_load();
 int fasttrap_unload();
 static void FasttrapUnload();
-#define STATUS_SUCCESS 0
+#define	STATUS_SUCCESS 0
 
 #if !defined(STATIC)
 BOOL APIENTRY
@@ -46,10 +46,9 @@ DllMain(HMODULE hmodule, DWORD  reason, LPVOID notused)
 	case DLL_THREAD_DETACH:
 		break;
 	case DLL_PROCESS_DETACH:
-		//FasttrapUnload();
 		break;
 	}
-	return TRUE;
+	return (TRUE);
 }
 #endif
 
@@ -57,7 +56,8 @@ NTSTATUS
 FasttrapClose()
 {
 	fasttrap_close();
-	return STATUS_SUCCESS;
+
+	return (STATUS_SUCCESS);
 }
 
 NTSTATUS
@@ -65,17 +65,14 @@ FasttrapOpen()
 {
 	fasttrap_load();
 	fasttrap_open();
-	return STATUS_SUCCESS;
+
+	return (STATUS_SUCCESS);
 }
 
 static void
 FasttrapUnload()
 {
-	LARGE_INTEGER tm;
-
-	//while (fasttrap_unload() != 0) {
-	//	;
-	//}
+	fasttrap_unload();
 }
 
 int
@@ -99,14 +96,18 @@ FasttrapIoctl(HANDLE DevObj, int cmd, void *addr)
 			st = 0x0000000 | t;
 	}
 
-	return st;
+	return (st);
 }
 
+/* return 0 on success */
 int
 fasttrap_copyout(void * kaddr, void * uaddr, int len)
 {
 	proc_t *p = curproc;
-	return uwrite(p, kaddr, len, uaddr);
+	int err = 0;
+
+	err = uwrite(p, kaddr, len, uaddr);
+	return (err);
 }
 
 /* Fetches 32 bits of data from the user-space address base */
@@ -115,9 +116,10 @@ fuword32(const void *base)
 {
 	proc_t *p = curproc;
 	uint32_t kaddr;
-	uread(p, &kaddr, sizeof(int32_t), base);
+	int err = 0;
 
-	return kaddr;
+	err = uread(p, &kaddr, sizeof (int32_t), base);
+	return (err == 0 ? kaddr : -1);
 }
 
 /* Fetches 64 bits of data from the user-space address base */
@@ -126,10 +128,10 @@ fuword64(const void *base)
 {
 	proc_t *p = curproc;
 	uint64_t kaddr;
+	int err = 0;
 
-	uread(p, &kaddr, sizeof(int64_t), base);
-
-	return kaddr;
+	err = uread(p, &kaddr, sizeof (int64_t), base);
+	return (err == 0 ? kaddr : -1);
 }
 
 /* Stores 32 bits of data to the user-space address base */
@@ -137,8 +139,10 @@ int
 suword32(void *base, int32_t word)
 {
 	proc_t *p = curproc;
+	int err;
 
-	return uwrite(p, &word, sizeof(int32_t), base);
+	err = uwrite(p, &word, sizeof (int32_t), base);
+	return (err ? -1 : 0);
 }
 
 /* Stores 64 bits of data to the user-space address base */
@@ -146,9 +150,12 @@ int
 suword64(void *base, int64_t word)
 {
 	proc_t *p = curproc;
+	int err;
 
-	return uwrite(p, &word, sizeof(int64_t), base);
+	err = uwrite(p, &word, sizeof (int64_t), base);
+	return (err ? -1 : 0);
 }
+
 
 /* timeout functions */
 
@@ -165,8 +172,10 @@ timeout(void (*func)(void *), void* unused, hrtime_t nano)
 	HANDLE t;
 	DWORD time = nano / 1000000;
 
-	CreateTimerQueueTimer(&t, NULL, TimerProc, func, time,0, WT_EXECUTEINTIMERTHREAD);
-	return (timeout_id_t) t;
+	CreateTimerQueueTimer(&t, NULL, TimerProc, func,
+	    time, 0, WT_EXECUTEINTIMERTHREAD);
+
+	return ((timeout_id_t) t);
 }
 
 void
@@ -178,7 +187,7 @@ untimeout(timeout_id_t id)
 void
 fasttrap_winsig(pid_t pid, uintptr_t addr)
 {
-	//terminate process
+	/* terminate process */
 }
 
 #ifdef __i386__
@@ -200,9 +209,11 @@ dtrace_user_probe(struct reg *rp)
 		uintptr_t npc = td->t_dtrace_npc;
 
 		if (td->t_dtrace_ast) {
-			//aston(curthread);
-			//curthread->t_sig_check = 1;
-			dprintf("fasttrap.sys: dtrace_user_mode() t_dtrace_ast = %d\n",
+#ifdef illumos
+			aston(curthread);
+			curthread->t_sig_check = 1;
+#endif
+			dprintf("dtrace_user_mode() t_dtrace_ast = %d\n",
 			    td->t_dtrace_ast);
 		}
 
@@ -217,8 +228,11 @@ dtrace_user_probe(struct reg *rp)
 		 * trap instruction.
 		 */
 		if (step == 0) {
-			//tsignal(curthread, SIGILL);
-			dprintf("fasttrap.sys: dtrace_user_mode() Not expecting a return probe\n");
+#ifdef illumos
+			tsignal(curthread, SIGILL);
+#endif
+			dprintf("dtrace_user_mode():"
+			    "Not expecting a return probe\n");
 			return (1);
 		}
 
@@ -245,7 +259,7 @@ dtrace_user_probe(struct reg *rp)
 	} else if (rp->r_trapno == T_DTRACE_PROBE) {
 		;
 	} else if (rp->r_trapno == T_BPTFLT) {
-		//uint8_t instr;
+		uint8_t instr;
 
 		/*
 		 * The DTrace fasttrap provider uses the breakpoint trap
@@ -257,22 +271,25 @@ dtrace_user_probe(struct reg *rp)
 		td->tf = rp;
 		ret = fasttrap_pid_probe(rp);
 		td->tf = NULL;
+#ifdef illumos
 		/*
 		 * If the instruction that caused the breakpoint trap doesn't
 		 * look like an int 3 anymore, it may be that this tracepoint
 		 * was removed just after the user thread executed it. In
 		 * that case, return to user land to retry the instuction.
 		 */
-		/*if (fuword8((void *)(rp->r_pc - 1), &instr) == 0 &&
+		if (fuword8((void *)(rp->r_pc - 1), &instr) == 0 &&
 		    instr != FASTTRAP_INSTR) {
 			rp->r_pc--;
 			return;
 		}
 
-		trap(rp, addr, cpuid);*/
-
+		trap(rp, addr, cpuid);
+#endif
 	} else {
-		;//trap(rp, addr, cpuid);
+#ifdef illumos
+		trap(rp, addr, cpuid);
+#endif
 	}
 	return (ret);
 }
@@ -287,8 +304,8 @@ ft_setreg(struct reg *rp, CONTEXT *ct)
 	rp->r_rdx = ct->Rdx;
 	rp->r_rsi = ct->Rsi;
 	rp->r_rdi = ct->Rdi;
-	rp->r_r8  =  ct->R8;
-	rp->r_r9  =  ct->R9;
+	rp->r_r8 =  ct->R8;
+	rp->r_r9 =  ct->R9;
 	rp->r_r10 = ct->R10;
 	rp->r_r11 = ct->R11;
 	rp->r_r12 = ct->R12;
@@ -327,8 +344,8 @@ ft_setcontext(CONTEXT *ct, struct reg *rp)
 	ct->Rdx = rp->r_rdx;
 	ct->Rsi = rp->r_rsi;
 	ct->Rdi = rp->r_rdi;
-	ct->R8 = rp->r_r8 ;
-	ct->R9 = rp->r_r9 ;
+	ct->R8 = rp->r_r8;
+	ct->R9 = rp->r_r9;
 	ct->R10 = rp->r_r10;
 	ct->R11 = rp->r_r11;
 	ct->R12 = rp->r_r12;
@@ -363,7 +380,7 @@ fasttrap_fpid_msg(proc_t *p, int msgid, uetwptr_t faddr,
 	dt_pmsg_t *msg;
 	dt_msg_func_t *mfunc = msg->data;
 
-	size = offsetof(dt_pmsg_t, data)+sizeof(dt_msg_func_t);
+	size = offsetof(dt_pmsg_t, data) + sizeof (dt_msg_func_t);
 	msg = malloc(size);
 	msg->id = msgid;
 	msg->size = size;
@@ -377,7 +394,7 @@ fasttrap_fpid_msg(proc_t *p, int msgid, uetwptr_t faddr,
 
 	free(msg);
 
-	return (e && e->id == PIPE_DONE) ? 0: -1;
+	return ((e && e->id == PIPE_DONE) ? 0: -1);
 }
 
 static int
@@ -405,7 +422,7 @@ ft_etw_process(pid_t pid, pid_t tid, uetwptr_t pc, uetwptr_t *stack, int ssz,
 	 * fasttrap_ioctl), or somehow we have mislaid this tracepoint.
 	 */
 	if (tp == NULL) {
-		dprintf("fasttrap.sys: FastTrapCB: missed pid %d tid %d pc %p\n",
+		dprintf("FastTrapCB: missed pid %d tid %d pc %p\n",
 		    pid, tid, pc);
 		return (-1);
 	}
@@ -415,10 +432,9 @@ ft_etw_process(pid_t pid, pid_t tid, uetwptr_t pc, uetwptr_t *stack, int ssz,
 	for (id = tp->ftt_ids; id != NULL; id = id->fti_next) {
 		if (id->fti_ptype == DTFTP_ENTRY) {
 			HANDLE *lock = dtrace_etw_set_cur(pid, tid,
-			        ts,
-			        cpuno);
-			dtrace_etw_probe(id->fti_probe->ftp_id, args[0], args[1],
-			    args[2], args[3], args[4], 1);
+			    ts, cpuno);
+			dtrace_etw_probe(id->fti_probe->ftp_id, args[0],
+			    args[1], args[2], args[3], args[4], 1);
 			dtrace_etw_reset_cur(lock);
 		} else {
 			ASSERT(0);
@@ -428,7 +444,8 @@ ft_etw_process(pid_t pid, pid_t tid, uetwptr_t pc, uetwptr_t *stack, int ssz,
 	if (tp->ftt_retids != NULL) {
 		for (id = tp->ftt_retids; id != NULL; id = id->fti_next) {
 			if (id->fti_ptype == DTFTP_RETURN) {
-				dtrace_etw_probe(id->fti_probe->ftp_id, pc - id->fti_probe->ftp_faddr,
+				dtrace_etw_probe(id->fti_probe->ftp_id,
+				    pc - id->fti_probe->ftp_faddr,
 				    rax, 0, 0, 0, 1);
 			} else {
 				ASSERT(0);
@@ -451,7 +468,7 @@ FasttrapInterrupt(pid_t pid, pid_t tid, int mode, void *arg)
 		rp = &regs;
 		td->context = ct;
 		ft_setreg(rp, ct);
-		lock = dtrace_etw_set_cur(pid,tid, 0, -1);
+		lock = dtrace_etw_set_cur(pid, tid, 0, -1);
 		r = dtrace_user_probe(rp);
 		dtrace_etw_reset_cur(lock);
 		ft_setcontext(ct, rp);
@@ -468,10 +485,10 @@ FasttrapInterrupt(pid_t pid, pid_t tid, int mode, void *arg)
 			return (-1);
 
 		fasttrap_fpid_msg(p, PIPE_QUEUE_CLEAR, 0, 0, 0);
-		dprintf("FasttrapInterrupt functions init %d hooked %d\n", 
-			p->mini, p->mque);
+		dprintf("FasttrapInterrupt functions init %d hooked %d\n",
+		    p->mini, p->mque);
 		p->mini = p->mque = 0;
-	}  else if (mode == PSYS_FPID_TID) {
+	} else if (mode == PSYS_FPID_TID) {
 		/* return agent thread id */
 		proc_t *p = dtrace_etw_proc_find(pid, ETW_PROC_FIND);
 		dt_pmsg_t *msg;
@@ -479,18 +496,21 @@ FasttrapInterrupt(pid_t pid, pid_t tid, int mode, void *arg)
 
 		if (p == NULL || p->pipe == NULL)
 			return (-1);
-		
+
 		size = offsetof(dt_pmsg_t, data);
 		msg = malloc(size);
 		msg->id = PIPE_WAIT_TID;
 		msg->size = size;
 		e = dt_pipe_sndrcv(p->pipe, msg);
-		dprintf(stderr, "FasttrapInterrupt: agent thread id %d\n", e->id);
+		dprintf("FasttrapInterrupt: agent thread id %d\n", e->id);
 		free(msg);
+
 		return (e->id);
 	} else if (mode == PSYS_RELEASE_PROC) {
-		/* unload agent dll from injected process,
-		and close the pipe */
+		/*
+		 * unload agent dll from injected process,
+		 * and close the pipe.
+		 */
 		proc_t *p = dtrace_etw_proc_find(pid, ETW_PROC_FIND);
 		if (p->pipe == NULL)
 			return (-1);
@@ -504,7 +524,7 @@ FasttrapInterrupt(pid_t pid, pid_t tid, int mode, void *arg)
 			p->dead = 1;
 	}
 
-	return r;
+	return (r);
 }
 
 int
@@ -519,40 +539,42 @@ FastTrapCB(PEVENT_RECORD ev, void *data)
 		struct etwft *ft = (struct etwft *) ev->UserData;
 
 		ASSERT(ft->addr > 0);
+
 		pc = ft->addr;
-		ft_etw_process(pid, tid, pc, ft->stack, ft->stacksz/sizeof(uintptr_t),
-		    &ft->arg0, ft->ax, ev->EventHeader.TimeStamp.QuadPart,
+		ft_etw_process(pid, tid, pc, ft->stack,
+		    (ft->stacksz / sizeof (uintptr_t)), &ft->arg0,
+		    ft->ax, ev->EventHeader.TimeStamp.QuadPart,
 		    ev->BufferContext.ProcessorNumber);
-	} else if  (ev->EventHeader.EventDescriptor.Id == 3) {
+	} else if (ev->EventHeader.EventDescriptor.Id == 3) {
 		struct etwft0 *ft = (struct etwft0 *) ev->UserData;
-		ASSERT(ev->UserDataLength >= ft->count);
-		int j=0;
 		etw_event_t *tmp = &ft->arr[0], *tmpr;
+		int samp = ft->count, j = 0, co = 0;
 
-		int samp = ft->count, co=0;// / sizeof(uintptr_t);
-		while (samp >= (int) sizeof(etw_event_t)) {
+		ASSERT(ev->UserDataLength >= ft->count);
 
-			// sanity check the packet
-			//
-			//
-			ft_etw_process(pid, tid, tmp->addr, tmp->stack, tmp->stacksz,
-			    &tmp->arg0, tmp->ax, tmp->time, tmp->cpuno);
-
+		while (samp >= (int) sizeof (etw_event_t)) {
+			/*
+			 * TODO: sanity check the packet
+			 */
+			ft_etw_process(pid, tid, tmp->addr, tmp->stack,
+			    tmp->stacksz, &tmp->arg0, tmp->ax,
+			    tmp->time, tmp->cpuno);
 			tmpr = tmp;
-
 			tmp = &(tmp->stack[tmp->stacksz+1]);
-			samp -= ((char*) tmp- (char*) tmpr);
+			samp -= ((char *)tmp - (char *)tmpr);
 			co++;
 		}
-
-	} else if  (ev->EventHeader.EventDescriptor.Id == 4) {
+	} else if (ev->EventHeader.EventDescriptor.Id == 4) {
 		;
 	}
 
-	return 0;
+	return (0);
 }
 
-/* inject the tracing module, and initialize ETW */
+/*
+ * inject the tracing module, and initialize ETW
+ * return 0 on failure.
+ */
 int
 fasttrap_inject_fpid(proc_t *p)
 {
@@ -567,7 +589,7 @@ fasttrap_inject_fpid(proc_t *p)
 
 	if (len == 0) {
 		e = GetLastError();
-		return 0;
+		return (0);
 	}
 
 	len = GetFullPathNameW(buf0, MAX_PATH, buf1, NULL);
@@ -587,12 +609,13 @@ fasttrap_inject_fpid(proc_t *p)
 	wcscpy(last+1, sagent);
 
 	if ((dum = _wfopen(buf1, "r")) == NULL) {
-		//dprintf("%ws not found\n", sagent);
+		fprintf(stderr, "fasttrap_inject_fpid: agent not found (%ws) \n",
+		    sagent);
 		return (0);
 	} else {
 		fclose(dum);
 	}
-	
+
 	pipe = dt_create_pipe(p->pid, 1024, NULL);
 	if (pipe == NULL)
 		return (0);
@@ -604,7 +627,8 @@ fasttrap_inject_fpid(proc_t *p)
 		fasttrap_fpid_msg(p, PIPE_WITH_STACKS, 0, 0, 0);
 	}
 	dtrace_etw_enable_ft(&FastTrapGuid, 0, 0);
-	dtrace_etw_hook_event(&FastTrapGuid, FastTrapCB, NULL, ETW_EVENTCB_ORDER_ANY);
+	dtrace_etw_hook_event(&FastTrapGuid, FastTrapCB, NULL,
+	    ETW_EVENTCB_ORDER_ANY);
 
 	return (1);
 }
@@ -614,11 +638,12 @@ int
 fasttrap_tracepoint_init_fpid(proc_t *p, fasttrap_probe_t *probe,
     fasttrap_tracepoint_t *tp, uintptr_t pc, fasttrap_probe_type_t type)
 {
-	int rc = fasttrap_tracepoint_init(p, tp, pc, type);
-	if (rc != 0)
-		return rc;
+	int err = 0, rc = fasttrap_tracepoint_init(p, tp, pc, type);
 
-	p->mini++; //diagnostics
+	if (rc != 0)
+		return (rc);
+
+	p->mini++;		/* diagnostics */
 
 	if (p->agent_loaded == 0) {
 		p->agent_loaded = fasttrap_inject_fpid(p);
@@ -626,17 +651,23 @@ fasttrap_tracepoint_init_fpid(proc_t *p, fasttrap_probe_t *probe,
 			return (-1);
 		}
 	}
+	err = fasttrap_fpid_msg(p, PIPE_HOOK_FUNC,
+	    probe->ftp_faddr, tp->ftt_pc,
+	    type == DTFTP_ENTRY ? PIPE_FUNC_ENTER: PIPE_FUNC_RETURN);
 
-	return fasttrap_fpid_msg(p, PIPE_HOOK_FUNC, probe->ftp_faddr, tp->ftt_pc,
-	        type == DTFTP_ENTRY ? PIPE_FUNC_ENTER: PIPE_FUNC_RETURN);
+	return (err);
 }
 
 int
 fasttrap_tracepoint_install_fpid(proc_t *p, fasttrap_probe_t *probe,
     fasttrap_tracepoint_t *tp)
 {
-	p->mque++; //diagnostics
-	return fasttrap_fpid_msg(p, PIPE_FUNC_ENABLE, probe->ftp_faddr, tp->ftt_pc, 0);
+	int err = 0;
+
+	p->mque++;		/* diagnostics */
+	err = fasttrap_fpid_msg(p, PIPE_FUNC_ENABLE,
+	    probe->ftp_faddr, tp->ftt_pc, 0);
+	return (err);
 }
 
 int
@@ -645,12 +676,12 @@ fasttrap_tracepoint_remove_fpid(proc_t *p, fasttrap_probe_t *probe,
 {
 	int err;
 
-	err = fasttrap_fpid_msg(p, PIPE_FUNC_DISABLE, probe->ftp_faddr, tp->ftt_pc, 0);
+	err = fasttrap_fpid_msg(p, PIPE_FUNC_DISABLE,
+	    probe->ftp_faddr, tp->ftt_pc, 0);
 	if (p->p_dtrace_count == 1) {
 		fasttrap_fpid_msg(p, PIPE_QUEUE_CLEAR, 0, 0, 0);
 		fasttrap_fpid_msg(p, PIPE_CLOSE, 0, 0, 0);
 	}
 
-	return err;
+	return (err);
 }
-

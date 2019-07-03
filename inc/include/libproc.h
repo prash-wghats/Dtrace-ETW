@@ -57,6 +57,7 @@ struct modinfo;
 #define PS_UNDEAD       4       /* process is terminated (zombie) */
 #define PS_DEAD         5       /* process is terminated (core file) */
 #define PS_IDLE         6       /* process has not been run */
+#define PS_TODETACH     7       /* detach from debugger */
 
 /* Flags accepted by Pgrab() */
 #define PGRAB_RETAIN    0x01    /* Retain tracing flags, else clear flags */
@@ -65,7 +66,7 @@ struct modinfo;
 #define PGRAB_NOSTOP    0x08    /* Open the process but do not stop it */
 #define PGRAB_ETW    	0x10 
 
-/* Error codes from Pcreate() */
+/* Error codes from Pxcreate() */
 #define C_STRANGE       -1      /* Unanticipated error, errno is meaningful */
 #define C_FORK          1       /* Unable to fork */
 #define C_PERM          2       /* No permission (file set-id or unreadable) */
@@ -84,7 +85,7 @@ struct modinfo;
  * Function prototypes for routines in the process control package.
  */
 
-extern struct ps_prochandle *Pcreate(const char *, char *const *, int *, char *, size_t);
+extern struct ps_prochandle *Pxcreate(const char *, char *const *, int *, char *, size_t);
 extern const char *Pcreate_error(int);
 
 extern struct ps_prochandle *Pgrab(pid_t, int, int *);
@@ -155,8 +156,12 @@ int Psymbol_iter_by_addr(struct ps_prochandle *P, const char *object_name, int w
 size_t Pread(struct ps_prochandle *P, void *buf, size_t size, size_t addr);
 prmap_t *Pname_to_map(struct ps_prochandle *p, const char *name);
 int Pfthelper(struct ps_prochandle *P, int (func)(pid_t, pid_t, int, void *));
-int
-Pnormobjname(struct ps_prochandle *P, const char *cname, char *buffer, size_t bufsize);
+int Pnormobjname(struct ps_prochandle *P, const char *cname, 
+	char *buffer, size_t bufsize);
+
+int Plmid(struct ps_prochandle *P, uintptr_t addr, Lmid_t *lmidp);
+int Pobject_iter_resolved(struct ps_prochandle *P, proc_map_f *func, void *cd);
+ctf_file_t *Pname_to_ctf(struct ps_prochandle *P, const char *name);
 
 /* Values for ELF sections */
 #define	PR_SYMTAB	1
@@ -179,6 +184,20 @@ Pnormobjname(struct ps_prochandle *P, const char *cname, char *buffer, size_t bu
 
 #define PS_ALL_MODS	10
 #define PS_LOADED_MOD	11
+#define PR_LMID_EVERY 0
+
+#define	P_STATUS	1
+
+long sysconf(int name);
+int p_online(void *d, processorid_t cpu);
+int etw_lookupkernel_by_addr(void *d, GElf_Addr addr, GElf_Sym *symp,
+    dtrace_syminfo_t *sip);
+
+typedef struct prsyminfo {
+	u_int prs_lmid;       /* Map id. */
+	u_int prs_id;         /* Symbol id. */
+	u_int64 prs_base;  
+} prsyminfo_t;
 
 struct ps_module_info {
 	uintptr_t imgbase;
@@ -189,7 +208,11 @@ struct ps_module_info {
 int Ploadedmod(struct ps_prochandle *P, struct ps_module_info *mod);
 int Pmodinfo(struct ps_prochandle *P, struct ps_module_info *mod, int *count);
 int Psetprov(struct ps_prochandle *P, int isfpid);
-
+void Pupdate_maps(struct ps_prochandle *P);
+int pr_ctf_func_info(ctf_file_t *fp, ulong_t symidx, ctf_funcinfo_t *fip);
+int pr_ctf_func_args(ctf_file_t *fp, ulong_t symidx,
+    uint_t argc, ctf_id_t *argv);
+ctf_id_t pr_ctf_lookup_by_name(ctf_file_t *fp, const char *name);
 #endif		 
 
 #ifdef  __cplusplus

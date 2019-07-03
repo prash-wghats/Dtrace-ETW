@@ -20,27 +20,25 @@
  */
 
 /*
- * Copyright 2010 Sun Microsystems, Inc.  All rights reserved.
+ * Copyright (c) 2003, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2012 by Delphix. All rights reserved.
- * Use is subject to license terms.
  */
 
-#if defined(sun)
-#include <stdint.h>
+#if !defined(windows)
+#include <sys/sysmacros.h>
 #include <strings.h>
 #include <unistd.h>
-#include <sys/sysmacros.h>
-#include <sys/isa_defs.h>
+#include <stdarg.h>
+#include <stddef.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <errno.h>
+#include <ctype.h>
 #include <alloca.h>
+#include <assert.h>
 #include <libgen.h>
+#include <limits.h>
 #else
-#include <dtrace_misc.h>
-#include <dtrace.h>
-#include <libproc.h>
-#include <sys/bitmap.h>
-#include <windows.h>
-#endif
-
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -49,7 +47,10 @@
 #include <ctype.h>
 #include <assert.h>
 #include <limits.h>
-
+#include <sys/bitmap.h>
+#include <dtrace_misc.h>
+#include <libproc.h>
+#endif
 #include <dt_impl.h>
 
 static const struct {
@@ -199,7 +200,7 @@ dtrace_attr2str(dtrace_attribute_t attr, char *buf, size_t len)
 	const char *class = dtrace_class_name(attr.dtat_class);
 
 	if (name == NULL || data == NULL || class == NULL)
-			return (NULL); /* one or more invalid attributes */
+		return (NULL); /* one or more invalid attributes */
 
 	(void) snprintf(buf, len, "%s/%s/%s", name, data, class);
 	return (buf);
@@ -233,8 +234,12 @@ dtrace_str2attr(const char *str, dtrace_attribute_t *attr)
 		return (-1); /* invalid function arguments */
 
 	*attr = _dtrace_maxattr;
+#if defined(illumos)
+	p = strdupa(str);
+#else
 	p = alloca(strlen(str) + 1);
 	(void) strcpy(p, str);
+#endif
 
 	if ((p = dt_getstrattr(p, &q)) == NULL)
 		return (0);
@@ -282,24 +287,15 @@ const char *
 dtrace_stability_name(dtrace_stability_t s)
 {
 	switch (s) {
-	case DTRACE_STABILITY_INTERNAL:
-		return ("Internal");
-	case DTRACE_STABILITY_PRIVATE:
-		return ("Private");
-	case DTRACE_STABILITY_OBSOLETE:
-		return ("Obsolete");
-	case DTRACE_STABILITY_EXTERNAL:
-		return ("External");
-	case DTRACE_STABILITY_UNSTABLE:
-		return ("Unstable");
-	case DTRACE_STABILITY_EVOLVING:
-		return ("Evolving");
-	case DTRACE_STABILITY_STABLE:
-		return ("Stable");
-	case DTRACE_STABILITY_STANDARD:
-		return ("Standard");
-	default:
-		return (NULL);
+	case DTRACE_STABILITY_INTERNAL:	return ("Internal");
+	case DTRACE_STABILITY_PRIVATE:	return ("Private");
+	case DTRACE_STABILITY_OBSOLETE:	return ("Obsolete");
+	case DTRACE_STABILITY_EXTERNAL:	return ("External");
+	case DTRACE_STABILITY_UNSTABLE:	return ("Unstable");
+	case DTRACE_STABILITY_EVOLVING:	return ("Evolving");
+	case DTRACE_STABILITY_STABLE:	return ("Stable");
+	case DTRACE_STABILITY_STANDARD:	return ("Standard");
+	default:			return (NULL);
 	}
 }
 
@@ -307,22 +303,14 @@ const char *
 dtrace_class_name(dtrace_class_t c)
 {
 	switch (c) {
-	case DTRACE_CLASS_UNKNOWN:
-		return ("Unknown");
-	case DTRACE_CLASS_CPU:
-		return ("CPU");
-	case DTRACE_CLASS_PLATFORM:
-		return ("Platform");
-	case DTRACE_CLASS_GROUP:
-		return ("Group");
-	case DTRACE_CLASS_ISA:
-		return ("ISA");
-	case DTRACE_CLASS_ETW:
-		return ("ETW");
-	case DTRACE_CLASS_COMMON:
-		return ("Common");
-	default:
-		return (NULL);
+	case DTRACE_CLASS_UNKNOWN:	return ("Unknown");
+	case DTRACE_CLASS_CPU:		return ("CPU");
+	case DTRACE_CLASS_PLATFORM:	return ("Platform");
+	case DTRACE_CLASS_GROUP:	return ("Group");
+	case DTRACE_CLASS_ISA:		return ("ISA");
+	case DTRACE_CLASS_ETW:		return ("ETW");
+	case DTRACE_CLASS_COMMON:	return ("Common");
+	default:			return (NULL);
 	}
 }
 
@@ -367,8 +355,8 @@ int
 dt_attr_cmp(dtrace_attribute_t a1, dtrace_attribute_t a2)
 {
 	return (((int)a1.dtat_name - a2.dtat_name) |
-	        ((int)a1.dtat_data - a2.dtat_data) |
-	        ((int)a1.dtat_class - a2.dtat_class));
+	    ((int)a1.dtat_data - a2.dtat_data) |
+	    ((int)a1.dtat_class - a2.dtat_class));
 }
 
 char *
@@ -496,25 +484,24 @@ dt_dprintf(const char *format, ...)
 }
 
 int
-
 dt_ioctl(dtrace_hdl_t *dtp, int val, void *arg)
 {
 	const dtrace_vector_t *v = dtp->dt_vector;
-
-
+#if defined(windows)
 	if (v != NULL && v->dtv_ioctl != NULL)
 		return (v->dtv_ioctl(dtp->dt_varg, val, arg));
-#if defined(sun)
-	if (dtp->dt_fd >= 0)
-		return (ioctl(dtp->dt_fd, val, arg));
-#else
 	if (dtp->dt_fd != NULL) {
 		int err = DtraceIoctl(dtp->dt_fd, val, arg);
 
 		errno = err;
 		return err ? -1: 0;
-		// /update_errno();
 	}
+#else
+	if (v != NULL)
+		return (v->dtv_ioctl(dtp->dt_varg, val, arg));
+
+	if (dtp->dt_fd >= 0)
+		return (ioctl(dtp->dt_fd, val, arg));
 #endif
 	errno = EBADF;
 	return (-1);
@@ -524,26 +511,10 @@ int
 dt_status(dtrace_hdl_t *dtp, processorid_t cpu)
 {
 	const dtrace_vector_t *v = dtp->dt_vector;
-
-	if (v == NULL) {
-#if defined(sun)
+	
+	if (v == NULL)
 		return (p_online(cpu, P_STATUS));
-
-		int maxid = 0;
-		size_t len = sizeof(maxid);
-		if (sysctlbyname("kern.smp.maxid", &maxid, &len, NULL, 0) != 0)
-			return (cpu == 0 ? 1 : -1);
-		else
-#else
-		int maxid = 0;
-		SYSTEM_INFO info;
-
-		GetSystemInfo(&info);
-		maxid = info.dwNumberOfProcessors;
-		return (cpu < maxid ? 1 : -1);
-#endif
-		}
-
+		
 	return (v->dtv_status(dtp->dt_varg, cpu));
 }
 
@@ -552,23 +523,9 @@ dt_sysconf(dtrace_hdl_t *dtp, int name)
 {
 	const dtrace_vector_t *v = dtp->dt_vector;
 
-	if (v == NULL) {
-#if defined(sun)
+	if (v == NULL)
 		return (sysconf(name));
-	}
-#else
-		switch(name) {
-		case _SC_CPUID_MAX:
-		case _SC_NPROCESSORS_MAX: {
-			SYSTEM_INFO info;
-			GetSystemInfo(&info);
-			return info.dwNumberOfProcessors;
-		}
-		default:
-			return 1;
-		}
-	}
-#endif
+
 	return (v->dtv_sysconf(dtp->dt_varg, name));
 }
 
@@ -623,7 +580,7 @@ dt_printf(dtrace_hdl_t *dtp, FILE *fp, const char *format, ...)
 	va_list ap;
 	int n;
 
-#if !defined(sun)
+#ifndef illumos
 	/*
 	 * On FreeBSD, check if output is currently being re-directed
 	 * to another file. If so, output to that file instead of the
@@ -632,7 +589,6 @@ dt_printf(dtrace_hdl_t *dtp, FILE *fp, const char *format, ...)
 	if (dtp->dt_freopen_fp != NULL)
 		fp = dtp->dt_freopen_fp;
 #endif
-
 	va_start(ap, format);
 
 	if (dtp->dt_sprintf_buflen != 0) {
@@ -701,7 +657,7 @@ dt_printf(dtrace_hdl_t *dtp, FILE *fp, const char *format, ...)
 				break;
 
 			if ((newbuf = realloc(dtp->dt_buffered_buf,
-			                dtp->dt_buffered_size << 1)) == NULL) {
+			    dtp->dt_buffered_size << 1)) == NULL) {
 				va_end(ap);
 				return (dt_set_errno(dtp, EDT_NOMEM));
 			}
@@ -711,7 +667,7 @@ dt_printf(dtrace_hdl_t *dtp, FILE *fp, const char *format, ...)
 		}
 
 		if (vsnprintf(&dtp->dt_buffered_buf[dtp->dt_buffered_offs],
-		        avail, format, ap) < 0) {
+		    avail, format, ap) < 0) {
 			rval = dt_set_errno(dtp, errno);
 			va_end(ap);
 			return (rval);
@@ -719,12 +675,10 @@ dt_printf(dtrace_hdl_t *dtp, FILE *fp, const char *format, ...)
 
 		dtp->dt_buffered_offs += needed;
 		assert(dtp->dt_buffered_buf[dtp->dt_buffered_offs] == '\0');
-		va_end(ap);
 		return (0);
 	}
 
 	n = vfprintf(fp, format, ap);
-	fflush(fp);
 	va_end(ap);
 
 	if (n < 0) {
@@ -774,12 +728,6 @@ dt_zalloc(dtrace_hdl_t *dtp, size_t size)
 {
 	void *data;
 
-	/*if (size > 16 * 1024 * 1024) {
-
-		(void) dt_set_errno(dtp, EDT_NOMEM);
-		return (NULL);
-	}*/
-
 	if ((data = malloc(size)) == NULL)
 		(void) dt_set_errno(dtp, EDT_NOMEM);
 	else
@@ -792,12 +740,6 @@ void *
 dt_alloc(dtrace_hdl_t *dtp, size_t size)
 {
 	void *data;
-
-	/*if (size > 16 * 1024 * 1024) {
-
-		(void) dt_set_errno(dtp, EDT_NOMEM);
-		return (NULL);
-	}*/
 
 	if ((data = malloc(size)) == NULL)
 		(void) dt_set_errno(dtp, EDT_NOMEM);
@@ -857,14 +799,15 @@ dt_basename(char *str)
 ulong_t
 dt_popc(ulong_t x)
 {
-#if defined(_ILP32)
+#ifdef _ILP32
 	x = x - ((x >> 1) & 0x55555555UL);
 	x = (x & 0x33333333UL) + ((x >> 2) & 0x33333333UL);
 	x = (x + (x >> 4)) & 0x0F0F0F0FUL;
 	x = x + (x >> 8);
 	x = x + (x >> 16);
 	return (x & 0x3F);
-#elif defined(_LP64)
+#endif
+#ifdef _LP64
 	x = x - ((x >> 1) & 0x5555555555555555ULL);
 	x = (x & 0x3333333333333333ULL) + ((x >> 2) & 0x3333333333333333ULL);
 	x = (x + (x >> 4)) & 0x0F0F0F0F0F0F0F0FULL;
@@ -872,8 +815,6 @@ dt_popc(ulong_t x)
 	x = x + (x >> 16);
 	x = x + (x >> 32);
 	return (x & 0x7F);
-#else
-	/* This should be a #warning but for now ignore error. Err: "need td_popc() implementation" */
 #endif
 }
 
@@ -895,36 +836,6 @@ dt_popcb(const ulong_t *bp, ulong_t n)
 		popc += dt_popc(bp[w]);
 
 	return (popc + dt_popc(bp[maxw] & ((1UL << maxb) - 1)));
-}
-
-#if defined(sun)
-struct _rwlock;
-struct _lwp_mutex;
-
-int
-dt_rw_read_held(pthread_rwlock_t *lock)
-{
-	extern int _rw_read_held(struct _rwlock *);
-	return (_rw_read_held((struct _rwlock *)lock));
-}
-
-int
-dt_rw_write_held(pthread_rwlock_t *lock)
-{
-	extern int _rw_write_held(struct _rwlock *);
-	return (_rw_write_held((struct _rwlock *)lock));
-}
-#endif
-
-int
-dt_mutex_held(pthread_mutex_t *lock)
-{
-#if defined(sun)
-	extern int _mutex_held(struct _lwp_mutex *);
-	return (_mutex_held((struct _lwp_mutex *)lock));
-#else
-	return (1);
-#endif
 }
 
 static int
@@ -1005,11 +916,7 @@ dtrace_uaddr2str(dtrace_hdl_t *dtp, pid_t pid,
 		P = dt_proc_grab(dtp, pid, PGRAB_RDONLY | PGRAB_FORCE, 0);
 
 	if (P == NULL) {
-#if defined(sun)
-		(void) snprintf(c, sizeof (c), "0x%jx", (uintmax_t)addr);
-#else
-		(void) snprintf(c, sizeof (c), "0x%x", (uintmax_t)addr);
-#endif
+		(void) snprintf(c, sizeof (c), "0x%llx", addr);
 		return (dt_string2str(c, str, nbytes));
 	}
 
@@ -1026,23 +933,21 @@ dtrace_uaddr2str(dtrace_hdl_t *dtp, pid_t pid,
 		} else {
 			(void) snprintf(c, sizeof (c), "%s`%s", obj, name);
 		}
-	} else if (Pobjname(P, addr, objname, sizeof (objname)) != 0) {
-#if defined(sun)
-		(void) snprintf(c, sizeof (c), "%s`0x%jx",
-#else
-		(void) snprintf(c, sizeof (c), "%s`0x%x",
-#endif
-		    dt_basename(objname), (uintmax_t)addr);
+	} else if (Pobjname(P, addr, objname, sizeof (objname)) != NULL) {
+		(void) snprintf(c, sizeof (c), "%s`0x%llx",
+		    dt_basename(objname), addr);
 	} else {
-#if defined(sun)
-		(void) snprintf(c, sizeof (c), "0x%jx", (uintmax_t)addr);
-#else
-		(void) snprintf(c, sizeof (c), "0x%x", (uintmax_t)addr);
-#endif
+		(void) snprintf(c, sizeof (c), "0x%llx", addr);
 	}
 
 	dt_proc_unlock(dtp, P);
 	dt_proc_release(dtp, P);
 
 	return (dt_string2str(c, str, nbytes));
+}
+
+int
+dt_mutex_held(pthread_mutex_t *lock)
+{
+	return (1);
 }

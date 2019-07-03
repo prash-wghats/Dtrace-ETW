@@ -26,9 +26,8 @@
 /*
  * Copyright (c) 2012, Joyent, Inc. All rights reserved.
  */
-
- #pragma D depends_on library types.d
-/*#pragma D depends_on module ntkernel
+/*
+#pragma D depends_on library types.d
 #pragma D depends_on provider io
 */
 
@@ -292,3 +291,4 @@ inline int FILE_ATTRIBUTE_NOT_CONTENT_INDEXED = 0x00002000;
 #pragma D binding "1.0" FILE_ATTRIBUTE_NOT_CONTENT_INDEXED
 inline int FILE_ATTRIBUTE_ENCRYPTED = 0x00004000;
 #pragma D binding "1.0" FILE_ATTRIBUTE_ENCRYPTED
+

@@ -1,26 +1,17 @@
 /*
- * CDDL HEADER START
+ * Permission to use, copy, modify, and/or distribute this software for
+ * any purpose with or without fee is hereby granted.
  *
- * The contents of this file are subject to the terms of the
- * Common Development and Distribution License (the "License").
- * You may not use this file except in compliance with the License.
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE
+ * FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY
+ * DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER
+ * IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING
+ * OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *
- * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
- * See the License for the specific language governing permissions
- * and limitations under the License.
- *
- * When distributing Covered Code, include this CDDL HEADER in each
- * file and include the License file at usr/src/OPENSOLARIS.LICENSE.
- * If applicable, add the following below this CDDL HEADER, with the
- * fields enclosed by brackets "[]" replaced with your own identifying
- * information: Portions Copyright [yyyy] [name of copyright owner]
- *
- * CDDL HEADER END
- *
- * Copyright (C) 2015  Prashanth K.
+ * Copyright (C) 2019, PK.
  */
-
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <windows.h>
@@ -40,6 +31,7 @@
 #include <dtrace_misc.h>
 #include <dtrace.h>
 #include <libpe.h>
+#include <libctf.h>
 #include <libproc.h>
 #include "etw.h"
 #include "libproc_win.h"
@@ -65,19 +57,21 @@ static int isnetmodule(const char *s, int *arch);
 static char *pathfrompid(uint32_t pid);
 static int dtnetarch(int arch);
 
-#define CREATE_FAILED -1
-#define CREATE_SUCCEDED 1
-#define BREAKPOINT_INSTR	0xcc	/* int 0x3 */
+#define	CREATE_FAILED -1
+#define	CREATE_SUCCEDED 1
+#define	BREAKPOINT_INSTR	0xcc	/* int 0x3 */
 #define	BREAKPOINT_INSTR_SZ	1
 
-struct ps_prochandle *Pcreate(const char * exe, char *const *args,
+struct ps_prochandle *
+Pxcreate(const char * exe, char *const *args,
     int *err, char *path, size_t size)
 {
 	struct ps_prochandle *ps;
 	struct proc_uc data;
 	int arch = 0;
 
-	if ((ps = (struct ps_prochandle *) malloc(sizeof(struct ps_prochandle))) == NULL) {
+	if ((ps = (struct ps_prochandle *)
+	            malloc(sizeof(struct ps_prochandle))) == NULL) {
 			return NULL;
 		}
 
@@ -88,9 +82,9 @@ struct ps_prochandle *Pcreate(const char * exe, char *const *args,
 	data.args = args;
 
 	pthread_mutex_init(&ps->mutex, NULL);
-	pthread_cond_init (&ps->cond, NULL);
+	pthread_cond_init(&ps->cond, NULL);
 
-	// .net or native
+	/*.net or native */
 	if (isnetmodule(exe, &arch) > 0) {
 		if (dtnetarch(arch) == 0) {
 			fprintf(stderr, "dtrace: can't trace %s .net process with %s version\n",
@@ -137,6 +131,7 @@ common_loop(struct ps_prochandle *P)
 	DEBUG_EVENT  dbg;
 	int excep_count = 0, busy = 0;
 	char *s;
+	BOOL r;
 
 	while (1) {
 		if (WaitForDebugEvent(&dbg, INFINITE) == 0) {
@@ -149,7 +144,7 @@ common_loop(struct ps_prochandle *P)
 			 * for initial busyloop, thread event (CreateRemoteThread) and
 			 * load library event (agentxx.dll) will be caught
 			 */
-			//ASSERT(dbg.dwDebugEventCode != EXCEPTION_DEBUG_EVENT);
+			/* ASSERT(dbg.dwDebugEventCode != EXCEPTION_DEBUG_EVENT); */
 			if (dbg.dwDebugEventCode == EXIT_PROCESS_DEBUG_EVENT) {
 				P->exitcode = dbg.u.ExitProcess.dwExitCode;
 				P->exited = 1;
@@ -245,18 +240,18 @@ common_loop(struct ps_prochandle *P)
 			/*
 			 * fpid provider: dynamic library loading
 			 * If the agentxx.dll is already injected into the traced process,
-			 * i.e some probes already been found, then we will suspend the thread
+			 * i.e some probes already been found, then we will suspend the thread,
 			 * inducing the library load and continue from the debug event.
-			 * If no probe has been found, then we cant suspend the thread, cause if any
-			 * probes are found, we will inject the tracing dll, which will
+			 * If no probe has been found, then we cant suspend the thread, since if any
+			 * probes are found, we will inject the tracing dll causing a load event, which will
 			 * cause a hang, since we are already in a suspened library load event.
-			 * so will continue the event without suspending the thread. If the thread
+			 * so we will continue the event without suspending the thread. If the thread
 			 * loading the dll, exits immediatly than most likely we will not able to
 			 * trace any probes in the dll. There is also the possibility that the
 			 * traced process may exit, while we try to inject.
 			 */
 			if ((P->fpid == 1) && ((P->attached == 0 && excep_count > 1) ||
-			        (P->attached && excep_count > 0))) {
+			    (P->attached && excep_count > 0))) {
 				P->threads[0] = dbg.dwThreadId;
 				P->nthr = 1;
 				/*
@@ -280,7 +275,6 @@ common_loop(struct ps_prochandle *P)
 				HANDLE td = CreateThread(NULL, 0, busyloop_thread, P, 0, NULL);
 				ContinueDebugEvent(dbg.dwProcessId, dbg.dwThreadId, dbgstatus);
 				continue;
-
 			}
 			P->status = PS_STOP;
 			P->msg.type = RD_DLACTIVITY;
@@ -291,7 +285,8 @@ common_loop(struct ps_prochandle *P)
 			 * take place.
 			 */
 			if (SymUnloadModule64(P->phandle, (ULONG_PTR) dbg.u.UnloadDll.lpBaseOfDll) ==  FALSE) {
-				dprintf("SymUnloadModule64 failed-Imagebase %p:%d\n", dbg.u.UnloadDll.lpBaseOfDll, GetLastError());
+				dprintf("SymUnloadModule64 failed-Imagebase %p:%d\n",
+				    dbg.u.UnloadDll.lpBaseOfDll, GetLastError());
 				break;
 			}
 			delmodule(P, (ULONG64) dbg.u.UnloadDll.lpBaseOfDll);
@@ -302,14 +297,13 @@ common_loop(struct ps_prochandle *P)
 			if (P->fthelper) {
 				P->fthelper(P->pid, -1, PSYS_PROC_DEAD, NULL);
 			} else {
-				// Not FT provider. wait for ETW to catch up
+				/* wait for ETW to catch up */
 				Sleep(2000);
 			}
 			P->exitcode = dbg.u.ExitProcess.dwExitCode;
 			P->exited = 1;
 			P->status = PS_UNDEAD;
 			P->msg.type = RD_NONE;
-
 			break;
 		case EXIT_THREAD_DEBUG_EVENT:
 			P->status = PS_RUN;
@@ -336,7 +330,8 @@ common_loop(struct ps_prochandle *P)
 					}
 
 					if (setbkpt(P, (uintptr_t) sym.st_value) != 0) {
-						dprintf("failed to set breakpoint for %s at address %p\n", "main", sym.st_value);
+						dprintf("failed to set breakpoint for %s at address %p\n",
+						    "main", sym.st_value);
 						break;
 					}
 
@@ -367,26 +362,16 @@ common_loop(struct ps_prochandle *P)
 						    GetLastError());
 						break;
 					}
-					/*
-					 * put the thread in a busy loop.
-					 * This is required for fpid provider, since the process has to
-					 * active to inject the agent thread. At this point, we dont known
-					 * whether this is for a pid provider or fpid provider, so we set
-					 * to a busy loop, which works for both providers.
-					 */
-					//busy = insbusyloop(P, wow);
+
 					P->main = 1;
 					excep_count = 2;
 					P->status = PS_STOP;
 					P->msg.type = RD_MAININIT;
 				} else if (P->attached && excep_count++ == 0) {
-					//P->addr = (uintptr_t) dbg.u.Exception.ExceptionRecord.ExceptionAddress;
-					//busy = insbusyloop(P, wow);
 					P->main = 1;
 					pthread_cond_signal(&P->cond);
 					P->status = PS_STOP;
 					P->msg.type = RD_NONE;
-
 				} else if (P->fthelper != NULL) {
 					exception_cb(P, &dbg);
 					P->status = PS_RUN;
@@ -433,9 +418,26 @@ common_loop(struct ps_prochandle *P)
 
 		if (P->status != PS_RUN)
 			SetEvent(P->event);
-		while (P->status == PS_STOP)
+		while (P->status == PS_STOP) {
 			pthread_cond_wait(&P->cond, &P->mutex);
+			if (P->detach) {
+				pthread_mutex_unlock(&P->mutex);
+				ContinueDebugEvent(dbg.dwProcessId, dbg.dwThreadId, dbgstatus);
+				r = DebugActiveProcessStop(P->pid);
+				P->status = PS_STOP;
+				pthread_cond_signal(&P->cond);
+				return;
+			}
+		}
 		pthread_mutex_unlock(&P->mutex);
+
+		/*
+		 * Probes were found, and this is a fpid provider.
+		 * To inject the agent dll, we have to be running. We get
+		 * here from Psetprov, to which we will jump back, once the
+		 * agent is loaded. busyloop is setup and we continue from
+		 * the debug event.
+		 */
 		if ((P->fpid == 1) &&
 		    ((P->attached == 0 && excep_count == 2) ||
 		        (P->attached && excep_count == 1))) {
@@ -444,12 +446,17 @@ common_loop(struct ps_prochandle *P)
 			P->skip = 1;
 			insbusyloop(P, wow);
 			P->status = PS_STOP;
-			//pthread_mutex_unlock(&P->mutex);
 			pthread_cond_signal(&P->cond);
 			HANDLE td = CreateThread(NULL, 0, busyloop_thread, P, 0, NULL);
 			ContinueDebugEvent(dbg.dwProcessId, dbg.dwThreadId, dbgstatus);
 			continue;
 		}
+
+		/*
+		 * pid provider (not fpid provider).
+		 * send the dbghelp handle to the fasttrap
+		 * module to get stacktrace.
+		 */
 		if ((P->fpid != 1)  &&
 		    ((P->attached == 0 && excep_count == 2) ||
 		        (P->attached && excep_count == 1))) {
@@ -459,8 +466,8 @@ common_loop(struct ps_prochandle *P)
 		}
 		ContinueDebugEvent(dbg.dwProcessId, dbg.dwThreadId, dbgstatus);
 	}
-
 }
+
 static void *
 Ploopcreate(LPVOID args)
 {
@@ -535,7 +542,8 @@ struct ps_prochandle *Pgrab(pid_t pid, int flags, int *perr)
 		return NULL;
 	}
 
-	if ((ps = (struct ps_prochandle *) malloc(sizeof(struct ps_prochandle))) == NULL) {
+	if ((ps = (struct ps_prochandle *)
+	            malloc(sizeof(struct ps_prochandle))) == NULL) {
 			return NULL;
 		}
 
@@ -558,21 +566,25 @@ struct ps_prochandle *Pgrab(pid_t pid, int flags, int *perr)
 	if (flags & PGRAB_RDONLY) {
 		DWORD Options = SymGetOptions();
 		HANDLE hprocess = NULL;
-		//XXXX
-		//hprocess = OpenProcess( PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid );
-
+	
 		if (hprocess == NULL) {
 			dprintf("failed to open process %d: %d\n", pid, GetLastError());
 			etw_proc_module_t *hprocess = dtrace_etw_pid_symhandle(pid);
-			if (hprocess == NULL) {
-				free(ps);
-				return NULL;
-			}
+			if (hprocess != NULL) {
+				
 			ps->etwmods = hprocess;
 			ps->isetw = 1;
 			return ps;
+			}
 		}
-
+			if (flags & PGRAB_FORCE) {
+			hprocess =  OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
+			        FALSE, pid);
+		}
+		if (hprocess == NULL) {
+			free(ps);
+			return NULL;
+		}
 		SymSetOptions(Options|SYMOPT_INCLUDE_32BIT_MODULES|SYMOPT_DEFERRED_LOADS|SYMOPT_DEBUG);
 
 		if (init_symbols(hprocess, TRUE, NULL) == NULL)
@@ -637,7 +649,7 @@ Ploopgrab(LPVOID args)
 	int busy = 0;
 
 	if (DebugActiveProcess(P->pid) == 0) {
-		dprintf( "failed to debug process (%d): %d\n", P->pid, GetLastError() );
+		printf( "failed to debug process (%d): %d\n", P->pid, GetLastError() );
 		pthread_mutex_lock(&P->mutex);
 		P->status = PS_STOP;
 		P->flags = CREATE_FAILED;
@@ -668,6 +680,8 @@ Pstopstatus(struct ps_prochandle *P)
 		 * ctrl C is not caught by traced exe when grabbed.????
 		 * So will not known when to quit */
 		ret = WaitForSingleObject(P->event, ms);
+		
+			
 		if (ret == WAIT_OBJECT_0) {
 			return 0;
 		} else {
@@ -818,6 +832,7 @@ Punsetflags(struct ps_prochandle *P, long flags)
 void
 Prelease(struct ps_prochandle *P, int flags)
 {
+	BOOL r;
 	if (flags & PRELEASE_KILL) {
 		if (!P->exited) {
 			TerminateProcess(P->phandle, 1);
@@ -840,10 +855,21 @@ Prelease(struct ps_prochandle *P, int flags)
 		if (P->isnet) {
 			net_detach(P, 1);
 		} else {
-			DebugActiveProcessStop(P->pid);
+			if (P->status == PS_STOP) {
+				P->detach = 1;
+				Psetrun(P, 0, 0);
+				pthread_mutex_lock(&P->mutex);
+				while (P->status != PS_STOP)
+					pthread_cond_wait(&P->cond, &P->mutex);
+				pthread_mutex_unlock(&P->mutex);
+			}
+			//SymCleanup(P->phandle);
+			//r = CloseHandle(P->phandle);
+			//r = CloseHandle(P->thandle);
+
 		}
 	}
-	SymCleanup(P->phandle);
+	// /SymCleanup(P->phandle);
 	freemodules(P);
 	//pthread_mutex_destroy(&P->mutex);
 	//pthread_cond_destroy(&P->cond);
@@ -915,13 +941,14 @@ cmpmodname(const char *oname, const char *mname, int isexemname)
 			return (1);
 		}
 	}
-	olen = strlen(oname); mlen = strlen(mname);
+	olen = strlen(oname);
+	mlen = strlen(mname);
 	if (olen > mlen) {
 		return 0;
 	}
 	memcpy(otmp, oname, olen);
 	memcpy(mtmp, mname, mlen);
-	
+
 	so = _strlwr(otmp);
 	sm = _strlwr(mtmp);
 
@@ -980,6 +1007,7 @@ MyEnumerateModulesProc1(PCTSTR ModuleName, DWORD64 BaseOfDll, PVOID UserContext)
 	prmap_t map;
 	const char *name = ModuleName;
 	proc_mod_t *mod = data->proc->modules;
+	int fnd = 0;
 
 	for(; mod != NULL; mod = mod->next) {
 		if (mod->imgbase == BaseOfDll &&
@@ -987,7 +1015,13 @@ MyEnumerateModulesProc1(PCTSTR ModuleName, DWORD64 BaseOfDll, PVOID UserContext)
 			map.pr_vaddr = BaseOfDll;
 			map.pr_mflags = MA_READ;
 			data->f(data->cd, &map, mod->name);
+			fnd = 1;
 		}
+	}
+	if (fnd == 0) {
+		map.pr_vaddr = BaseOfDll;
+		map.pr_mflags = MA_READ;
+		data->f(data->cd, &map, name);
 	}
 	return TRUE;
 }
@@ -1097,15 +1131,6 @@ Plmid_to_map(struct ps_prochandle *P, Lmid_t ignored, const char *cname)
 	}
 
 	return NULL;
-	/*uc.name = cname;
-	uc.map = NULL;
-	uc.P = P;
-
-	if ((SymEnumerateModules64(P->phandle, MyEnumerateModulesProc2, &uc) == FALSE)) {
-		dprintf("SymEnumerateModules64 failed (%d): %x\n", P->pid, GetLastError());
-	}
-
-	return uc.map;*/
 }
 
 char *
@@ -1113,6 +1138,7 @@ Pobjname(struct ps_prochandle *P, uint64_t addr, char *buffer, size_t bufsize)
 {
 	IMAGEHLP_MODULE64 info;
 	char *r, ext[8]= {0};
+	proc_mod_t *mod;
 
 	if (P->isetw) {
 		return dtrace_etw_objname(P->etwmods, P->pid, addr, buffer, bufsize);
@@ -1121,7 +1147,7 @@ Pobjname(struct ps_prochandle *P, uint64_t addr, char *buffer, size_t bufsize)
 	if (P->isnet) {
 		r = Netobjname(P, addr, buffer, bufsize);
 		if (r) {
-			return NULL;
+			return r;
 		}
 	}
 
@@ -1132,12 +1158,19 @@ Pobjname(struct ps_prochandle *P, uint64_t addr, char *buffer, size_t bufsize)
 		return NULL;
 	}
 
-	if (((r = strrchr(info.ImageName, '\\')) || (r = strrchr(info.ImageName, '/'))) &&
-	    strstr(r, "exe") == NULL) {
+	if ((r = strrchr(info.ImageName, '\\')) ||
+	    (r = strrchr(info.ImageName, '/'))) {
 		strncpy(buffer, ++r, bufsize);
 	} else {
 		strncpy(buffer, info.ModuleName, bufsize);
 	}
+	/*mod = findmodulebyaddr(P, addr);
+	if (mod == NULL) {
+		buffer[0] = 0;
+		return NULL;
+	}
+
+	strncpy(buffer, mod->name, bufsize);*/
 
 	buffer[bufsize-1] = 0;
 	return buffer;
@@ -1147,6 +1180,7 @@ Pobjname(struct ps_prochandle *P, uint64_t addr, char *buffer, size_t bufsize)
 struct lookup_uc {
 	proc_sym_f *f;
 	void *cd;
+	prsyminfo_t *sip;
 	struct ps_prochandle *ps;
 	int count;
 };
@@ -1159,19 +1193,19 @@ MyEnumSymbolsCallback(SYMBOL_INFO* SymInfo, ULONG SymbolSize, PVOID UserContext)
 
 	if (SymInfo != NULL) {
 		if (isfunction(tmp->ps, SymInfo)) {
-			symp->st_name = 0;
 			symp->st_info = GELF_ST_INFO((STB_GLOBAL), (STT_FUNC));
-			symp->st_other = 0;
 			symp->st_shndx = 1;
-			symp->st_value = SymInfo->Address;
-			symp->st_size = SymInfo->Size;
 		} else {
-			symp->st_name = 0;
 			symp->st_info = GELF_ST_INFO((STB_GLOBAL), (STT_NOTYPE));
-			symp->st_other = 0;
 			symp->st_shndx = SHN_UNDEF;
-			symp->st_value = SymInfo->Address;
-			symp->st_size = SymInfo->Size;
+		}
+		symp->st_name = 0;
+		symp->st_other = 0;
+		symp->st_value = SymInfo->Address;
+		symp->st_size = SymInfo->Size;
+		if (tmp->sip) {
+			tmp->sip->prs_id = SymInfo->Index;
+			tmp->sip->prs_base = SymInfo->ModBase;
 		}
 	}
 
@@ -1215,6 +1249,7 @@ Pxlookup_by_name(struct ps_prochandle *P, Lmid_t lmid,
 	uc.ps = P;
 	uc.cd = symp;
 	uc.f = NULL;
+	uc.sip = (prsyminfo_t *) sip;
 
 	if (SymEnumSymbols(P->phandle, 0, Mask, MyEnumSymbolsCallback, &uc) == FALSE) {
 		dprintf("SymEnumSymbols failed (%d): %x\n", P->pid, GetLastError());
@@ -1324,13 +1359,16 @@ Plookup_by_addr(struct ps_prochandle *P, uint64_t addr,
 
 	if (SymFromAddr(P->phandle, addr, 0, s) == TRUE) {
 		isfunction(P, s);
-		symp->st_name = 0;
-		symp->st_info = GELF_ST_INFO((STB_GLOBAL), (STT_FUNC));
-		symp->st_other = 0;
-		symp->st_shndx = 1;
-		symp->st_value = s->Address;
-		symp->st_size = s->Size;
-		strncpy(buf, s->Name, size);
+		if (symp != NULL) {
+			symp->st_name = 0;
+			symp->st_info = GELF_ST_INFO((STB_GLOBAL), (STT_FUNC));
+			symp->st_other = 0;
+			symp->st_shndx = 1;
+			symp->st_value = s->Address;
+			symp->st_size = s->Size;
+		}
+		if (buf != NULL && size > 0)
+			strncpy(buf, s->Name, size);
 		return 0;
 
 	}
@@ -1984,12 +2022,13 @@ addmodule(struct ps_prochandle *P, HANDLE file, char *s,
 	p->b_code = (uintptr_t) ( p->imgbase + NtHeader->OptionalHeader.BaseOfCode);
 	p->e_code = p->b_code + NtHeader->OptionalHeader.SizeOfCode;
 	p->loaded_order = load;
+	p->c_ctf = NULL;
 	p->next = NULL;
 
 	//if (type == PE_TYPE_EXE) {
 	//	_splitpath(s, NULL, NULL, name, NULL);
 	//} else {
-		name = PathFindFileNameA(s);
+	name = PathFindFileNameA(s);
 	//}
 	len = strlen(name);
 	sp = (char *) malloc(len+1);
@@ -2137,21 +2176,29 @@ etw_lookupkernel_by_addr(void *d, GElf_Addr addr, GElf_Sym *symp,
 }
 
 int
-etw_status(void *d, processorid_t cpu)
+p_online(void *d, processorid_t cpu)
 {
 	return (cpu < dtrace_etw_nprocessors() ? 1 : -1);
 }
 
 long
-etw_sysconf(void *d, int name)
+sysconf(int name)
 {
+	int ncpu = dtrace_etw_nprocessors();
+	if (ncpu == 1) {
+		SYSTEM_INFO info;
+
+		GetSystemInfo(&info);
+		ncpu = info.dwNumberOfProcessors;
+	}
 	switch(name) {
 	case _SC_CPUID_MAX:
+		return (ncpu - 1);
 	case _SC_NPROCESSORS_MAX: {
-		return dtrace_etw_nprocessors();
+		return ncpu;
 	}
 	default:
-		return 1;
+		ASSERT(0);
 	}
 }
 
@@ -2161,8 +2208,8 @@ Petwvector()
 	dtrace_vector_t *vec = (dtrace_vector_t *) malloc(sizeof(dtrace_vector_t));
 	vec->dtv_ioctl = NULL;
 	vec->dtv_lookup_by_addr = etw_lookupkernel_by_addr;
-	vec->dtv_status = etw_status;
-	vec->dtv_sysconf = etw_sysconf;
+	vec->dtv_status = p_online;
+	//vec->dtv_sysconf = sysconf;
 
 	return vec;
 }
@@ -2186,8 +2233,8 @@ Psetprov(struct ps_prochandle *P, int isfpid)
 	}
 
 	if (P->attached && P->isnet && isfpid == 0) {
-		fprintf(stderr, "Dtrace: Not attaching to .NET with pid provider."
-		    "Detach will kill the process\n");
+		fprintf(stderr, "> Not attaching to .NET with pid provider."
+		    "Detach will kill the process; Use fpid provider\n");
 		net_detach(P, 1);
 		return -1;
 	}
@@ -2367,4 +2414,40 @@ dtnetarch(int arch)
 	if (!x86 && arch == 0)
 		return 1;
 	return 0;
+}
+
+/*
+ * Given a virtual address, return the link map id of the underlying mapped
+ * object (file), as provided by the dynamic linker.  Return -1 on failure.
+ */
+int
+Plmid(struct ps_prochandle *P, uintptr_t addr, Lmid_t *lmidp)
+{
+	return (-1);
+}
+
+int
+Pobject_iter_resolved(struct ps_prochandle *P, proc_map_f *func, void *cd)
+{
+	return (Pobject_iter(P, func, cd));
+}
+
+void
+Pupdate_maps(struct ps_prochandle *P)
+{
+	;
+}
+
+ctf_file_t *pr_name_to_ctf(struct ps_prochandle *P, proc_mod_t *mod);
+
+ctf_file_t *
+Pname_to_ctf(struct ps_prochandle *P, const char *name)
+{
+	proc_mod_t *mod, *tmp = P->modules;
+
+	mod = findmodulebyname(P, name);
+	if (mod)
+		return pr_name_to_ctf(P, mod);
+
+	return NULL;
 }

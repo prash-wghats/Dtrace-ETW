@@ -161,7 +161,7 @@ static volatile uint64_t fasttrap_mod_gen;
  * incremented by the number of tracepoints that may be associated with that
  * probe; fasttrap_total is capped at fasttrap_max.
  */
-#define	FASTTRAP_MAX_DEFAULT		100000 //250000
+#define	FASTTRAP_MAX_DEFAULT		100000	/* 250000 */
 static uint32_t fasttrap_max;
 static uint32_t fasttrap_total;
 
@@ -325,12 +325,7 @@ fasttrap_pid_cleanup_cb(void *data)
 	while (fasttrap_cleanup_work) {
 		fasttrap_cleanup_work = 0;
 		mutex_exit(&fasttrap_cleanup_mtx);
-#if defined(windows)
-		/* fasttrap_pid_cleanup_cb is called asychronously, and could sleep while
-		 * holding the DTrace mutexes.
-		 */
-		//KeRaiseIrql(HIGH_LEVEL, &Irq); //HIGH_LEVEL
-#endif
+
 		later = 0;
 
 		/*
@@ -399,9 +394,6 @@ fasttrap_pid_cleanup_cb(void *data)
 			}
 			mutex_exit(&bucket->ftb_mtx);
 		}
-#if defined(windows)
-		//KeLowerIrql(Irq);
-#endif
 		mutex_enter(&fasttrap_cleanup_mtx);
 	}
 
@@ -443,10 +435,11 @@ fasttrap_pid_cleanup(void)
 	fasttrap_cleanup_work = 1;
 	if (fasttrap_timeout == 0)
 #if defined(sun)
-		fasttrap_timeout = timeout(&fasttrap_pid_cleanup_cb, NULL, NANOSEC/MILLISEC);
+		fasttrap_timeout = timeout(&fasttrap_pid_cleanup_cb,
+		    NULL, NANOSEC / MILLISEC);
 #else
-		fasttrap_timeout = timeout(&fasttrap_pid_cleanup_cb, NULL, NANOSEC);
-		//fasttrap_pid_cleanup_cb(NULL);
+		fasttrap_timeout = timeout(&fasttrap_pid_cleanup_cb,
+		    NULL, NANOSEC);
 #endif
 	mutex_exit(&fasttrap_cleanup_mtx);
 }
@@ -719,7 +712,8 @@ fasttrap_tracepoint_enable(proc_t *p, fasttrap_probe_t *probe, uint_t index)
 		 */
 #if defined(windows)
 		if (prov_type) {
-			if (fasttrap_tracepoint_install_fpid(p, probe, new_tp) != 0) {
+			if (fasttrap_tracepoint_install_fpid(p, probe,
+			    new_tp) != 0) {
 				rc = FASTTRAP_ENABLE_PARTIAL;
 			}
 		} else
@@ -777,7 +771,8 @@ fasttrap_tracepoint_enable(proc_t *p, fasttrap_probe_t *probe, uint_t index)
 	 */
 #if defined(windows)
 	if (prov_type) {
-		if (fasttrap_tracepoint_init_fpid(p, probe, new_tp, pc, id->fti_ptype) == 0)
+		if (fasttrap_tracepoint_init_fpid(p, probe, new_tp, pc,
+		    id->fti_ptype) == 0)
 			goto again;
 	} else
 #endif
@@ -986,13 +981,6 @@ fasttrap_enable_callbacks(void)
 	}
 	ASSERT(dtrace_pid_probe_ptr == &fasttrap_pid_probe);
 	ASSERT(dtrace_return_probe_ptr == &fasttrap_return_probe);
-#else
-	if (fasttrap_pid_count == 0) {
-		//ASSERT(FasttrapHookISR == 0);
-		//ASSERT(FasttrapRetHookISR == 0);
-		//dtrace_hook_int(T_DTRACE_FASTTRAP, interrupt_fasttrap, &FasttrapHookISR);
-		//dtrace_hook_int(T_DTRACE_RET, interrupt_fasttrapRET, &FasttrapRetHookISR);
-	}
 #endif
 	fasttrap_pid_count++;
 	mutex_exit(&fasttrap_count_mtx);
@@ -1023,13 +1011,6 @@ fasttrap_disable_callbacks(void)
 		    cur = cur->cpu_next_onln) {
 			rw_exit(&cur->cpu_ft_lock);
 		}
-	}
-#else
-	if (fasttrap_pid_count == 0) {
-		//dtrace_hook_int(T_DTRACE_FASTTRAP, (void(*)(void)) FasttrapHookISR, NULL);
-		//FasttrapHookISR = 0;
-		//dtrace_hook_int(T_DTRACE_RET, (void(*)(void)) FasttrapRetHookISR, NULL);
-		//FasttrapRetHookISR = 0;
 	}
 #endif
 	mutex_exit(&fasttrap_count_mtx);
@@ -1070,7 +1051,7 @@ fasttrap_pid_enable(void *arg, dtrace_id_t id, void *parg, int stackon)
 	 * provider can't go away while we're in this code path.
 	 */
 	if (probe->ftp_prov->ftp_retired)
-		return 0;
+		return (0);
 
 	/*
 	 * If we can't find the process, it may be that we're in the context of
@@ -1080,7 +1061,7 @@ fasttrap_pid_enable(void *arg, dtrace_id_t id, void *parg, int stackon)
 #if defined(sun)
 	if ((p = sprlock(probe->ftp_pid)) == NULL) {
 		if ((curproc->p_flag & SFORKING) == 0)
-			return;
+			return (0);
 
 		mutex_enter(&pidlock);
 		p = prfind(probe->ftp_pid);
@@ -1103,7 +1084,7 @@ fasttrap_pid_enable(void *arg, dtrace_id_t id, void *parg, int stackon)
 	mutex_exit(&p->p_lock);
 #else
 	if ((p = pfind(probe->ftp_pid)) == NULL)
-		return 0;
+		return (0);
 	p->withstacks = stackon;
 #endif
 
@@ -1150,7 +1131,7 @@ fasttrap_pid_enable(void *arg, dtrace_id_t id, void *parg, int stackon)
 			 * drop our reference on the trap table entry.
 			 */
 			fasttrap_disable_callbacks();
-			return 0;
+			return (0);
 		}
 	}
 #if defined(sun)
@@ -1159,7 +1140,7 @@ fasttrap_pid_enable(void *arg, dtrace_id_t id, void *parg, int stackon)
 #endif
 
 	probe->ftp_enabled = 1;
-	return 0;
+	return (0);
 }
 
 /*ARGSUSED*/
@@ -1306,11 +1287,11 @@ fasttrap_pid_destroy(void *arg, dtrace_id_t id, void *parg)
 
 
 static const dtrace_pattr_t pid_attr = {
-	{ DTRACE_STABILITY_EVOLVING, DTRACE_STABILITY_EVOLVING, DTRACE_CLASS_ISA },
-	{ DTRACE_STABILITY_PRIVATE, DTRACE_STABILITY_PRIVATE, DTRACE_CLASS_UNKNOWN },
-	{ DTRACE_STABILITY_PRIVATE, DTRACE_STABILITY_PRIVATE, DTRACE_CLASS_UNKNOWN },
-	{ DTRACE_STABILITY_EVOLVING, DTRACE_STABILITY_EVOLVING, DTRACE_CLASS_ISA },
-	{ DTRACE_STABILITY_PRIVATE, DTRACE_STABILITY_PRIVATE, DTRACE_CLASS_UNKNOWN },
+{ DTRACE_STABILITY_EVOLVING, DTRACE_STABILITY_EVOLVING, DTRACE_CLASS_ISA },
+{ DTRACE_STABILITY_PRIVATE, DTRACE_STABILITY_PRIVATE, DTRACE_CLASS_UNKNOWN },
+{ DTRACE_STABILITY_PRIVATE, DTRACE_STABILITY_PRIVATE, DTRACE_CLASS_UNKNOWN },
+{ DTRACE_STABILITY_EVOLVING, DTRACE_STABILITY_EVOLVING, DTRACE_CLASS_ISA },
+{ DTRACE_STABILITY_PRIVATE, DTRACE_STABILITY_PRIVATE, DTRACE_CLASS_UNKNOWN },
 };
 
 static dtrace_pops_t pid_pops = {
@@ -1354,7 +1335,7 @@ fasttrap_proc_lookup(pid_t pid)
 			mutex_enter(&fprc->ftpc_mtx);
 			mutex_exit(&bucket->ftb_mtx);
 			fprc->ftpc_rcount++;
-			atomic_add_64( &fprc->ftpc_acount, 1);
+			atomic_add_64(&fprc->ftpc_acount, 1);
 			ASSERT(fprc->ftpc_acount <= fprc->ftpc_rcount);
 			mutex_exit(&fprc->ftpc_mtx);
 
@@ -1499,11 +1480,7 @@ fasttrap_provider_lookup(pid_t pid, const char *name,
 	 */
 	if ((p = pfind(pid)) == NULL)
 		return (NULL);
-#if 0 //defined(windows)
-	/* if fpid type inject agent into process */
-	if (strcmp(name, "fpid") == 0 && fasttrap_inject_fpid(p) == 0)
-		return (NULL);
-#endif
+
 	/*
 	 * Increment p_dtrace_probes so that the process knows to inform us
 	 * when it exits or execs. fasttrap_provider_free() decrements this
@@ -1543,7 +1520,9 @@ fasttrap_provider_lookup(pid_t pid, const char *name,
 			mutex_enter(&fp->ftp_mtx);
 			mutex_exit(&bucket->ftb_mtx);
 			fasttrap_provider_free(new_fp);
-			//crfree(cred);
+#ifndef windows
+			crfree(cred);
+#endif
 			return (fp);
 		}
 	}
@@ -1560,12 +1539,14 @@ fasttrap_provider_lookup(pid_t pid, const char *name,
 	if (snprintf(provname, sizeof (provname), "%s%u", name, (uint_t)pid) >=
 	    sizeof (provname) ||
 	    dtrace_register(provname, pattr,
-	        DTRACE_PRIV_PROC | DTRACE_PRIV_OWNER | DTRACE_PRIV_ZONEOWNER, cred,
-	        pattr == &pid_attr ? &pid_pops : &usdt_pops, new_fp,
-	        &new_fp->ftp_provid) != 0) {
+	    DTRACE_PRIV_PROC | DTRACE_PRIV_OWNER | DTRACE_PRIV_ZONEOWNER, cred,
+	    pattr == &pid_attr ? &pid_pops : &usdt_pops, new_fp,
+	    &new_fp->ftp_provid) != 0) {
 		mutex_exit(&bucket->ftb_mtx);
 		fasttrap_provider_free(new_fp);
-		//crfree(cred);
+#ifndef windows
+		crfree(cred);
+#endif
 		return (NULL);
 	}
 
@@ -1575,7 +1556,9 @@ fasttrap_provider_lookup(pid_t pid, const char *name,
 	mutex_enter(&new_fp->ftp_mtx);
 	mutex_exit(&bucket->ftb_mtx);
 
-	//crfree(cred);
+#ifndef windows
+	crfree(cred);
+#endif
 	return (new_fp);
 }
 
@@ -1733,13 +1716,13 @@ fasttrap_add_probe(fasttrap_probe_spec_t *pdata)
 #if defined(windows)
 	if (pdata->ftps_prov_type == 1) {
 		if ((provider = fasttrap_provider_lookup(pdata->ftps_pid,
-		                FASTTRAP_FPID_NAME, &pid_attr)) == NULL) {
+		    FASTTRAP_FPID_NAME, &pid_attr)) == NULL) {
 			return (ESRCH);
 		}
 	} else
 #endif
 		if ((provider = fasttrap_provider_lookup(pdata->ftps_pid,
-		                FASTTRAP_PID_NAME, &pid_attr)) == NULL)
+		    FASTTRAP_PID_NAME, &pid_attr)) == NULL)
 			return (ESRCH);
 
 	/*
@@ -1768,7 +1751,7 @@ fasttrap_add_probe(fasttrap_probe_spec_t *pdata)
 			    (unsigned long long)pdata->ftps_offs[i]);
 
 			if (dtrace_probe_lookup(provider->ftp_provid,
-			        pdata->ftps_mod, pdata->ftps_func, name_str) != 0)
+			    pdata->ftps_mod, pdata->ftps_func, name_str) != 0)
 				continue;
 
 			atomic_add_32(&fasttrap_total, 1);
@@ -1787,7 +1770,7 @@ fasttrap_add_probe(fasttrap_probe_spec_t *pdata)
 			pp->ftp_ntps = 1;
 
 			tp = kmem_zalloc(sizeof (fasttrap_tracepoint_t),
-			        KM_SLEEP);
+			    KM_SLEEP);
 
 			tp->ftt_proc = provider->ftp_proc;
 			tp->ftt_pc = pdata->ftps_offs[i] + pdata->ftps_pc;
@@ -1797,12 +1780,12 @@ fasttrap_add_probe(fasttrap_probe_spec_t *pdata)
 			pp->ftp_tps[0].fit_id.fti_ptype = pdata->ftps_type;
 
 			pp->ftp_id = dtrace_probe_create(provider->ftp_provid,
-			        pdata->ftps_mod, pdata->ftps_func, name_str,
-			        FASTTRAP_OFFSET_AFRAMES, pp);
+			    pdata->ftps_mod, pdata->ftps_func, name_str,
+			    FASTTRAP_OFFSET_AFRAMES, pp);
 		}
 
 	} else if (dtrace_probe_lookup(provider->ftp_provid, pdata->ftps_mod,
-	        pdata->ftps_func, name) == 0) {
+	    pdata->ftps_func, name) == 0) {
 		atomic_add_32(&fasttrap_total, pdata->ftps_noffs);
 
 		if (fasttrap_total > fasttrap_max) {
@@ -1827,7 +1810,7 @@ fasttrap_add_probe(fasttrap_probe_spec_t *pdata)
 
 		ASSERT(pdata->ftps_noffs > 0);
 		pp = kmem_zalloc(offsetof(fasttrap_probe_t,
-		            ftp_tps[pdata->ftps_noffs]), KM_SLEEP);
+		    ftp_tps[pdata->ftps_noffs]), KM_SLEEP);
 
 		pp->ftp_prov = provider;
 		pp->ftp_faddr = pdata->ftps_pc;
@@ -1837,7 +1820,7 @@ fasttrap_add_probe(fasttrap_probe_spec_t *pdata)
 
 		for (i = 0; i < pdata->ftps_noffs; i++) {
 			tp = kmem_zalloc(sizeof (fasttrap_tracepoint_t),
-			        KM_SLEEP);
+			    KM_SLEEP);
 
 			tp->ftt_proc = provider->ftp_proc;
 			tp->ftt_pc = pdata->ftps_offs[i] + pdata->ftps_pc;
@@ -1848,7 +1831,7 @@ fasttrap_add_probe(fasttrap_probe_spec_t *pdata)
 		}
 
 		pp->ftp_id = dtrace_probe_create(provider->ftp_provid,
-		        pdata->ftps_mod, pdata->ftps_func, name, aframes, pp);
+		    pdata->ftps_mod, pdata->ftps_func, name, aframes, pp);
 
 	}
 
@@ -1902,7 +1885,7 @@ fasttrap_meta_provide(void *arg, dtrace_helper_provdesc_t *dhpv, pid_t pid)
 	if (strlen(dhpv->dthpv_provname) + 10 >=
 	    sizeof (provider->ftp_name)) {
 		printf("failed to instantiate provider %s: "
-			"name too long to accomodate pid", dhpv->dthpv_provname);
+		    "name too long to accomodate pid", dhpv->dthpv_provname);
 		return (NULL);
 	}
 
@@ -1911,7 +1894,8 @@ fasttrap_meta_provide(void *arg, dtrace_helper_provdesc_t *dhpv, pid_t pid)
 	 */
 	if (strcmp(dhpv->dthpv_provname, FASTTRAP_PID_NAME) == 0) {
 		printf("failed to instantiate provider %s: "
-			"%s is an invalid name", dhpv->dthpv_provname, FASTTRAP_PID_NAME);
+			"%s is an invalid name", dhpv->dthpv_provname,
+			FASTTRAP_PID_NAME);
 		return (NULL);
 	}
 
@@ -1931,8 +1915,8 @@ fasttrap_meta_provide(void *arg, dtrace_helper_provdesc_t *dhpv, pid_t pid)
 		dhpv->dthpv_pattr.dtpa_args.dtat_class = DTRACE_CLASS_ISA;
 
 	if ((provider = fasttrap_provider_lookup(pid, dhpv->dthpv_provname,
-	                &dhpv->dthpv_pattr)) == NULL) {
-		printf("failed to instantiate provider %s for process %u",  
+	    &dhpv->dthpv_pattr)) == NULL) {
+		printf("failed to instantiate provider %s for process %u",
 			dhpv->dthpv_provname, (uint_t)pid);
 		return (NULL);
 	}
@@ -1992,7 +1976,7 @@ fasttrap_meta_create_probe(void *arg, void *parg,
 	mutex_enter(&provider->ftp_cmtx);
 
 	if (dtrace_probe_lookup(provider->ftp_provid, dhpb->dthpb_mod,
-	        dhpb->dthpb_func, dhpb->dthpb_name) != 0) {
+	    dhpb->dthpb_func, dhpb->dthpb_name) != 0) {
 		mutex_exit(&provider->ftp_cmtx);
 		return;
 	}
@@ -2067,7 +2051,7 @@ fasttrap_meta_create_probe(void *arg, void *parg,
 	 * The probe is fully constructed -- register it with DTrace.
 	 */
 	pp->ftp_id = dtrace_probe_create(provider->ftp_provid, dhpb->dthpb_mod,
-	        dhpb->dthpb_func, dhpb->dthpb_name, FASTTRAP_OFFSET_AFRAMES, pp);
+	    dhpb->dthpb_func, dhpb->dthpb_name, FASTTRAP_OFFSET_AFRAMES, pp);
 
 	mutex_exit(&provider->ftp_cmtx);
 }
@@ -2124,7 +2108,7 @@ fasttrap_ioctl(void *arg,  int cmd)
 		char *c;
 
 		if (copyin(&uprobe->ftps_noffs, &noffs,
-		        sizeof (uprobe->ftps_noffs)))
+		    sizeof (uprobe->ftps_noffs)))
 			return (EFAULT);
 
 		/*
@@ -2138,6 +2122,7 @@ fasttrap_ioctl(void *arg,  int cmd)
 
 		if (size > 1024 * 1024)
 			return (ENOMEM);
+
 		probe = kmem_alloc(size, KM_SLEEP);
 
 		if (copyin(uprobe, probe, size) != 0) {
@@ -2188,7 +2173,7 @@ fasttrap_ioctl(void *arg,  int cmd)
 			mutex_exit(&pidlock);
 
 			if ((ret = priv_proc_cred_perm(cr, p, NULL,
-			                VREAD | VWRITE)) != 0) {
+			    VREAD | VWRITE)) != 0) {
 
 				mutex_exit(&p->p_lock);
 
@@ -2199,7 +2184,7 @@ fasttrap_ioctl(void *arg,  int cmd)
 		}
 #endif /* notyet */
 		ret = fasttrap_add_probe(probe);
-		err:
+err:
 		kmem_free(probe, size);
 
 		return (ret);
@@ -2227,10 +2212,9 @@ fasttrap_ioctl(void *arg,  int cmd)
 			p = pfind(pid);
 			if (p)
 				fill_kinfo_proc(p, &kp);
+
 			if (p == NULL || kp.ki_stat == SIDL) {
-
 				mutex_exit(&pidlock);
-
 				return (ESRCH);
 			}
 
@@ -2238,7 +2222,7 @@ fasttrap_ioctl(void *arg,  int cmd)
 			mutex_exit(&pidlock);
 
 			if ((ret = priv_proc_cred_perm(cr, p, NULL,
-			                VREAD)) != 0) {
+			    VREAD)) != 0) {
 
 				mutex_exit(&p->p_lock);
 
@@ -2285,10 +2269,11 @@ fasttrap_load(void)
 {
 	ulong_t nent;
 	int i, ret;
+
 #if defined(__FreeBSD__)
 	/* Create the /dev/dtrace/fasttrap entry. */
 	fasttrap_cdev = make_dev(&fasttrap_cdevsw, 0, UID_ROOT, GID_WHEEL, 0600,
-	        "dtrace/fasttrap");
+	    "dtrace/fasttrap");
 
 	mtx_init(&fasttrap_cleanup_mtx, "fasttrap clean", "dtrace", MTX_DEF);
 	mutex_init(&fasttrap_count_mtx, "fasttrap count mtx", MUTEX_DEFAULT,
@@ -2298,7 +2283,7 @@ fasttrap_load(void)
 	mutex_init(&fasttrap_count_mtx);
 #if defined(__FreeBSD__)
 	ret = kproc_create(fasttrap_pid_cleanup_cb, NULL,
-	        &fasttrap_cleanup_proc, 0, 0, "ftcleanup");
+	    &fasttrap_cleanup_proc, 0, 0, "ftcleanup");
 	if (ret != 0) {
 		destroy_dev(fasttrap_cdev);
 		return (ret);
@@ -2306,7 +2291,7 @@ fasttrap_load(void)
 #endif
 #if defined(sun)
 	fasttrap_max = ddi_getprop(DDI_DEV_T_ANY, devi, DDI_PROP_DONTPASS,
-	        "fasttrap-max-probes", FASTTRAP_MAX_DEFAULT);
+	    "fasttrap-max-probes", FASTTRAP_MAX_DEFAULT);
 #else
 	fasttrap_max = FASTTRAP_MAX_DEFAULT;
 #endif
@@ -2317,7 +2302,7 @@ fasttrap_load(void)
 	 */
 #if defined(sun)
 	nent = ddi_getprop(DDI_DEV_T_ANY, devi, DDI_PROP_DONTPASS,
-	        "fasttrap-hash-size", FASTTRAP_TPOINTS_DEFAULT_SIZE);
+	    "fasttrap-hash-size", FASTTRAP_TPOINTS_DEFAULT_SIZE);
 #else
 	nent = FASTTRAP_TPOINTS_DEFAULT_SIZE;
 #endif
@@ -2332,7 +2317,7 @@ fasttrap_load(void)
 	ASSERT(fasttrap_tpoints.fth_nent > 0);
 	fasttrap_tpoints.fth_mask = fasttrap_tpoints.fth_nent - 1;
 	fasttrap_tpoints.fth_table = kmem_zalloc(fasttrap_tpoints.fth_nent *
-	        sizeof (fasttrap_bucket_t), KM_SLEEP);
+	    sizeof (fasttrap_bucket_t), KM_SLEEP);
 #if !defined(sun)
 	for (i = 0; i < fasttrap_tpoints.fth_nent; i++)
 		mutex_init(&fasttrap_tpoints.fth_table[i].ftb_mtx);
@@ -2349,7 +2334,7 @@ fasttrap_load(void)
 	ASSERT(fasttrap_provs.fth_nent > 0);
 	fasttrap_provs.fth_mask = fasttrap_provs.fth_nent - 1;
 	fasttrap_provs.fth_table = kmem_zalloc(fasttrap_provs.fth_nent *
-	        sizeof (fasttrap_bucket_t), KM_SLEEP);
+	    sizeof (fasttrap_bucket_t), KM_SLEEP);
 #if !defined(sun)
 	for (i = 0; i < fasttrap_provs.fth_nent; i++)
 		mutex_init(&fasttrap_provs.fth_table[i].ftb_mtx);
@@ -2366,11 +2351,12 @@ fasttrap_load(void)
 	ASSERT(fasttrap_procs.fth_nent > 0);
 	fasttrap_procs.fth_mask = fasttrap_procs.fth_nent - 1;
 	fasttrap_procs.fth_table = kmem_zalloc(fasttrap_procs.fth_nent *
-	        sizeof (fasttrap_bucket_t), KM_SLEEP);
+	    sizeof (fasttrap_bucket_t), KM_SLEEP);
 #if !defined(sun)
 	for (i = 0; i < fasttrap_procs.fth_nent; i++)
 		mutex_init(&fasttrap_procs.fth_table[i].ftb_mtx);
-	fasttrap_cpuc_pid_lock = kmem_zalloc(MAXCPU * sizeof(kmutex_t), KM_SLEEP);
+	fasttrap_cpuc_pid_lock =
+	    kmem_zalloc(MAXCPU * sizeof (kmutex_t), KM_SLEEP);
 	CPU_FOREACH(i) {
 		mutex_init(&fasttrap_cpuc_pid_lock[i]);
 	}

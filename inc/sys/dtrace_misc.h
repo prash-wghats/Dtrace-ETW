@@ -132,6 +132,7 @@ typedef int 	boolean_t;
 /* misc.h */
 
 #define MAX_PATH_NAME 256
+#define MAX_THREAD_NAME 64
 
 typedef struct modctl {
 	int nenabled;		/* number of enabled probes. */
@@ -329,17 +330,17 @@ typedef struct proc {
 } proc_t;
 
 typedef struct thread {
-	pid_t		pid;
-	pid_t		tid;
-	pid_t		ppid;
-	proc_t		*proc;
+	pid_t pid;
+	pid_t tid;
+	pid_t ppid;
+	proc_t *proc;
 
-	uintptr_t		kbase;	/* Kernel stack base */
-	uintptr_t		klimit; /* Kernel stack limit */
-	uintptr_t		ubase;  /* Thread user stack base */
-	uintptr_t		ulimit; /* Thread user stack limit */
+	uintptr_t kbase;	/* Kernel stack base */
+	uintptr_t klimit; /* Kernel stack limit */
+	uintptr_t ubase;  /* Thread user stack base */
+	uintptr_t ulimit;		/* Thread user stack limit */
 
-	char 			pri; /* thread priority */
+	char pri; 			/* thread priority */
 	char waitr; 		/* thread wait reason */
 	char waitm;			/* wait mode */
 	char state; 		/* thread state */
@@ -352,22 +353,23 @@ typedef struct thread {
 	char iopri;			/* io priority */
 	char pagepri;		/* page priority */
 
-	uint64_t	t_hrtime;	/* Last time on cpu. */
-	int		t_errno;	/* Syscall return value. */
+	uint64_t t_hrtime;	/* Last time on cpu. */
+	int t_errno;	/* Syscall return value. */
+	char t_name[MAX_THREAD_NAME];	/* Thread Name */
 	HANDLE handle;
 
 	struct {
-		uintptr_t		upc;
-		uintptr_t		pc;
+		uintptr_t upc;
+		uintptr_t pc;
 	} profile;
-	uintptr_t		ebp; 	/* Kernel BP when probe activated */
-	struct reg		*tf;	/* trap frame when probe activated */
-	void		*td_dtrace_sscr; /* Saved scratch space location. */
-	uint8_t		t_dtrace_stop;	/* Indicates a DTrace-desired stop */
-	uint8_t		t_dtrace_sig;	/* Signal sent via DTrace's raise() */
-	uint32_t	t_predcache;	/* DTrace predicate cache */
-	uint64_t	t_dtrace_vtime; /* DTrace virtual time */
-	uint64_t	t_dtrace_start; /* DTrace slice start time */
+	uintptr_t ebp; 	/* Kernel BP when probe activated */
+	struct reg *tf;	/* trap frame when probe activated */
+	void *td_dtrace_sscr; /* Saved scratch space location. */
+	uint8_t t_dtrace_stop;	/* Indicates a DTrace-desired stop */
+	uint8_t t_dtrace_sig;	/* Signal sent via DTrace's raise() */
+	uint32_t t_predcache;	/* DTrace predicate cache */
+	uint64_t t_dtrace_vtime; /* DTrace virtual time */
+	uint64_t t_dtrace_start; /* DTrace slice start time */
 	union __tdu {
 		struct __tds {
 			uint8_t	_td_dtrace_on;
@@ -658,6 +660,19 @@ void DtraceWinOSFbtStack(thread_t *td, uintptr_t *stack);
 int dtrace_wcstombs(char * dest, wchar_t *src, int size);
 size_t dtrace_wstrlen(const wchar_t *s, size_t lim);
 
+#define	DIGIT(x)	\
+	(isdigit(x) ? (x) - '0' : islower(x) ? (x) + 10 - 'a' : (x) + 10 - 'A')
+
+
+/*
+ * The following macro is a version of isalnum() that limits alphabetic
+ * characters to the ranges a-z and A-Z; locale dependent characters will not
+ * return 1.  The members of a-z and A-Z are assumed to be in ascending order
+ * and contiguous.
+ */
+#define	lisalnum(x)	\
+	(isdigit(x) || ((x) >= 'a' && (x) <= 'z') || ((x) >= 'A' && (x) <= 'Z'))
+	
 /* end misc.h */
 
 #ifdef	__cplusplus

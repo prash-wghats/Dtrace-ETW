@@ -1,0 +1,3 @@
+provider doogle {
+	probe bagnoogle();
+};

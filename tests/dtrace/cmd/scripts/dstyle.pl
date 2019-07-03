@@ -1,4 +1,4 @@
-#!/usr/local/bin/perl
+#!/usr/perl5/bin/perl
 #
 # CDDL HEADER START
 #
@@ -23,6 +23,10 @@
 #
 # Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
+#
+
+#
+# Copyright (c) 2014, 2016 by Delphix. All rights reserved.
 #
 
 require 5.8.4;
@@ -131,7 +135,8 @@ sub dstyle
 		}
 
 		if (!/^enum/ && !/^\t*struct/ && !/^\t*union/ && !/^typedef/ &&
-		    !/^translator/ && !/^provider/) {
+		    !/^translator/ && !/^provider/ && !/\tif / &&
+		    !/ else /) {
 			if (/[\w\s]+{/) {
 				err "left brace not on its own line";
 			}
@@ -141,7 +146,7 @@ sub dstyle
 			}
 		}
 
-		if (!/;$/) {
+		if (!/;$/ && !/\t*}$/ && !/ else /) {
 			if (/[\w\s]+}/) {
 				err "right brace not on its own line";
 			}

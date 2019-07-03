@@ -1,4 +1,4 @@
-#define WIN32_LEAN_AND_MEAN             // Exclude rarely-used stuff from Windows headers
+#define	WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <commctrl.h>
 #include <psapi.h>
@@ -10,31 +10,33 @@
 #include <string.h>
 #include "inject.h"
 
-
-dt_pipe_t *ExampleFunc(dt_pipe_t *pipe)
+dt_pipe_t *
+ExampleFunc(dt_pipe_t *pipe)
 {
 	dt_pmsg_t *msg = (dt_pmsg_t *) pipe->hmap;
 	dt_pmsg_t rmsg = {0};
 
-	switch(msg->id) {
+	switch (msg->id) {
 	default:
 		rmsg.id = PIPE_DONE;
-		rmsg.size = sizeof(dt_pmsg_t);
+		rmsg.size = sizeof (dt_pmsg_t);
 		memcpy((void *) pipe->hmap, &rmsg, rmsg.size);
 		break;
 	}
 
-	return pipe;
+	return (pipe);
 }
 
-dt_pipe_t *dt_create_pipe(DWORD pid, int size, dt_pipe_t * (*func)(dt_pipe_t *))
+dt_pipe_t *
+dt_create_pipe(DWORD pid, int size, dt_pipe_t * (*func)(dt_pipe_t *))
 {
 	HANDLE hfile;
 	dt_pipe_t *pip;
 	char name[256], strs[128], strc[128];
 	int isserver;
+	void *addr;
 
-	pip = (dt_pipe_t *) malloc(sizeof(dt_pipe_t));
+	pip = (dt_pipe_t *) malloc(sizeof (dt_pipe_t));
 	if (pip == NULL) {
 		return (NULL);
 	}
@@ -45,22 +47,21 @@ dt_pipe_t *dt_create_pipe(DWORD pid, int size, dt_pipe_t * (*func)(dt_pipe_t *))
 		isserver = 1;
 	}
 
-	sprintf(name,"pid_%d", pid); 
+	sprintf(name, "pid_%d", pid);
 	hfile = CreateFileMapping(
-                 INVALID_HANDLE_VALUE,    // use paging file
-                 NULL,                    // default security
-                 PAGE_READWRITE,          // read/write access
-                 0,                       // maximum object size (high-order DWORD)
-                 size,                // maximum object size (low-order DWORD)
-                 name);                 // name of mapping object
+        INVALID_HANDLE_VALUE,	/* use paging file */
+        NULL,				/* default security */
+        PAGE_READWRITE,		/* read/write access */
+        0,					/* maximum object size high DWORD */
+        size,				/* low-order DWORD */
+        name);				/* name of mapping object */
     if (hfile == NULL) {
     	return (NULL);
 	}
-    void *addr = MapViewOfFile(hfile,   // handle to map object
-                        FILE_MAP_ALL_ACCESS, // read/write permission
-                        0,
-                        0,
-                        size);
+	
+    addr = MapViewOfFile(hfile, FILE_MAP_ALL_ACCESS,
+        0, 0, size);
+
 	if (addr == NULL) {
 		CloseHandle(hfile);
 		return (NULL);
@@ -156,30 +157,28 @@ dt_injectdll(DWORD pid, wchar_t *dllpath)
 	
 	len = (wcslen(dllpath)+1) * sizeof(wchar_t);
 
-	hprocess = OpenProcess(PROCESS_CREATE_THREAD | PROCESS_QUERY_INFORMATION |
-	        PROCESS_VM_OPERATION | PROCESS_VM_WRITE | PROCESS_VM_READ,
-	        FALSE, pid);
+	hprocess = OpenProcess(PROCESS_CREATE_THREAD |
+	    PROCESS_QUERY_INFORMATION | PROCESS_VM_OPERATION |
+	    PROCESS_VM_WRITE | PROCESS_VM_READ, FALSE, pid);
 
-	//hkernel32 = GetModuleHandle("Kernel32");
 	hkernel32 = GetRemoteModuleHandle(hprocess, "Kernel32");
 
-	// Allocate memory in the remote process for dllpath
+	/* Allocate memory in the remote process for dllpath */
 	plibremote = VirtualAllocEx(hprocess, NULL, len, MEM_COMMIT, PAGE_READWRITE);
 	if(plibremote == NULL) {
 		fprintf(stderr, "dt_injectdll, failed to allocate memory in,"
 			" pid (%d) status (%d)\n", pid, GetLastError());
 		return (0);
 	}
-	// Write dllpath to the allocated memory
+	
+	/* Write dllpath to the allocated memory */
 	WriteProcessMemory(hprocess, plibremote, (void*) dllpath, len, NULL);
 
-	// Load dll into the remote process
-	// (via CreateRemoteThread & LoadLibrary)
-	//FARPROC proc = GetProcAddress(hkernel32,"LoadLibraryW");
+	/* Load dll into the remote process */
 	FARPROC proc = GetRemoteProcAddress(hprocess, hkernel32,"LoadLibraryW", 0, 0);
 	hthread = CreateRemoteThread(hprocess, NULL, 0,
-	        (LPTHREAD_START_ROUTINE) proc,
-	        plibremote, 0, NULL);
+	    (LPTHREAD_START_ROUTINE) proc,
+	    plibremote, 0, NULL);
 
 	if(hthread == NULL) {
 		fprintf(stderr, "dt_injectdll, failed to create remote thread in,"
@@ -189,21 +188,21 @@ dt_injectdll(DWORD pid, wchar_t *dllpath)
 
 	WaitForSingleObject(hthread, INFINITE);
 
-	// Get handle of loaded module
+	/* Get handle of loaded module */
 	GetExitCodeThread(hthread, &hlibmodule);
 	CloseHandle(hthread);
 
-	JUMP:
+JUMP:
 	VirtualFreeEx(hprocess, plibremote, 0, MEM_RELEASE);
-	if(hlibmodule == NULL)
+	if(hlibmodule == NULL) {
+		fprintf(stderr, "dt_injectdll, failed inject tracing dll,"
+			" pid (%d) status (%d)\n", pid, GetLastError());
 		return (0);
+	}
 
 	return (1);
 }
 
-//-----------------------------------------------------------------------------
-
-#define MAX_SYM_NAME 2000
 //https://www.codeproject.com/Tips/139349/Getting-the-address-of-a-function-in-a-DLL-loaded
 HMODULE WINAPI
 GetRemoteModuleHandle(HANDLE hProcess, LPCSTR lpModuleName)
@@ -303,9 +302,6 @@ GetRemoteModuleHandle(HANDLE hProcess, LPCSTR lpModuleName)
 	/* Failure... */
 	return NULL;
 }
-
-
-//-----------------------------------------------------------------------------
 
 FARPROC WINAPI
 GetRemoteProcAddress (HANDLE hProcess, HMODULE hModule, LPCSTR lpProcName, UINT Ordinal, BOOL UseOrdinal)

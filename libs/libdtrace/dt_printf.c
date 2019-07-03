@@ -134,7 +134,11 @@ pfcheck_wstr(dt_pfargv_t *pfv, dt_pfargd_t *pfd, dt_node_t *dnp)
 	return (kind == CTF_K_ARRAY && ctf_array_info(ctfp, base, &r) == 0 &&
 	    (base = ctf_type_resolve(ctfp, r.ctr_contents)) != CTF_ERR &&
 	    ctf_type_kind(ctfp, base) == CTF_K_INTEGER &&
+#ifdef windows
+		ctf_type_encoding(ctfp, base, &e) == 0 && e.cte_bits == 16);
+#else
 	    ctf_type_encoding(ctfp, base, &e) == 0 && e.cte_bits == 32);
+#endif
 }
 
 /*ARGSUSED*/
@@ -663,7 +667,9 @@ static const dt_pfconv_t _dtrace_conversions[] = {
 { "hx", "x", "short", pfcheck_xshort, pfprint_uint },
 { "hX", "X", "short", pfcheck_xshort, pfprint_uint },
 { "i", "i", pfproto_xint, pfcheck_xint, pfprint_sint },
-//{ "I", "s", pfproto_cstr, pfcheck_str, pfprint_inetaddr },
+#if !defined(windows)
+{ "I", "s", pfproto_cstr, pfcheck_str, pfprint_inetaddr },
+#endif
 { "k", "s", "stack", pfcheck_stack, pfprint_stack },
 { "lc", "lc", "int", pfcheck_type, pfprint_sint }, /* a.k.a. wint_t */
 { "ld",	"d", "long", pfcheck_type, pfprint_sint },
@@ -686,7 +692,9 @@ static const dt_pfconv_t _dtrace_conversions[] = {
 { "LG",	"G", "long double", pfcheck_type, pfprint_fp },
 { "o", "o", pfproto_xint, pfcheck_xint, pfprint_uint },
 { "p", "x", pfproto_addr, pfcheck_addr, pfprint_uint },
-//{ "P", "s", "uint16_t", pfcheck_type, pfprint_port },
+#if !defined(windows)
+{ "P", "s", "uint16_t", pfcheck_type, pfprint_port },
+#endif
 { "s", "s", "char [] or string (or use stringof)", pfcheck_str, pfprint_cstr },
 { "S", "s", pfproto_cstr, pfcheck_str, pfprint_estr },
 { "T", "s", "int64_t", pfcheck_time, pfprint_time822 },
@@ -1067,7 +1075,7 @@ dt_printf_validate(dt_pfargv_t *pfv, uint_t flags,
 		xyerror(D_TYPE_ERR, "failed to lookup agg type %s\n", aggtype);
 
 	bzero(&aggnode, sizeof (aggnode));
-	dt_node_type_assign(&aggnode, dtt.dtt_ctfp, dtt.dtt_type);
+	dt_node_type_assign(&aggnode, dtt.dtt_ctfp, dtt.dtt_type, B_FALSE);
 
 	for (i = 0, j = 0; i < pfv->pfv_argc; i++, pfd = pfd->pfd_next) {
 		const dt_pfconv_t *pfc = pfd->pfd_conv;
@@ -1340,6 +1348,7 @@ dt_printf_format(dtrace_hdl_t *dtp, FILE *fp, const dt_pfargv_t *pfv,
 	dtrace_aggdesc_t *agg;
 	caddr_t lim = (caddr_t)buf + len, limit;
 	char format[64] = "%";
+	size_t ret;
 	int i, aggrec, curagg = -1;
 	uint64_t normal;
 
@@ -1371,7 +1380,9 @@ dt_printf_format(dtrace_hdl_t *dtp, FILE *fp, const dt_pfargv_t *pfv,
 		int prec = pfd->pfd_prec;
 		int rval;
 
+		const char *start;
 		char *f = format + 1; /* skip initial '%' */
+		size_t fmtsz = sizeof(format) - 1;
 		const dtrace_recdesc_t *rec;
 		dt_pfprint_f *func;
 		caddr_t addr;
@@ -1528,6 +1539,7 @@ dt_printf_format(dtrace_hdl_t *dtp, FILE *fp, const dt_pfargv_t *pfv,
 			break;
 		}
 
+		start = f;
 		if (pfd->pfd_flags & DT_PFCONV_ALT)
 			*f++ = '#';
 		if (pfd->pfd_flags & DT_PFCONV_ZPAD)
@@ -1540,7 +1552,8 @@ dt_printf_format(dtrace_hdl_t *dtp, FILE *fp, const dt_pfargv_t *pfv,
 			*f++ = '\'';
 		if (pfd->pfd_flags & DT_PFCONV_SPACE)
 			*f++ = ' ';
-
+		fmtsz -= f - start;
+		
 		/*
 		 * If we're printing a stack and DT_PFCONV_LEFT is set, we
 		 * don't add the width to the format string.  See the block
@@ -1550,13 +1563,20 @@ dt_printf_format(dtrace_hdl_t *dtp, FILE *fp, const dt_pfargv_t *pfv,
 		if (func == pfprint_stack && (pfd->pfd_flags & DT_PFCONV_LEFT))
 			width = 0;
 
-		if (width != 0)
-			f += snprintf(f, sizeof (format), "%d", ABS(width));
+		if (width != 0) {
+			ret = snprintf(f, fmtsz, "%d", ABS(width));
+			f += ret;
+			fmtsz = MAX(0, fmtsz - ret);
+		}
 
-		if (prec > 0)
-			f += snprintf(f, sizeof (format), ".%d", prec);
+		if (prec > 0) {
+			ret = snprintf(f, fmtsz, ".%d", prec);
+			f += ret;
+			fmtsz = MAX(0, fmtsz - ret);
+		}
 
-		(void) strcpy(f, pfd->pfd_fmt);
+		if (strlcpy(f, pfd->pfd_fmt, fmtsz) >= fmtsz)
+			return (dt_set_errno(dtp, EDT_COMPILER));
 		pfd->pfd_rec = rec;
 
 		if (func(dtp, fp, format, pfd, addr, size, normal) < 0)

@@ -25,22 +25,21 @@
  */
 
 /*
- * Copyright (c) 2011, Joyent, Inc. All rights reserved.
+ * Copyright (c) 2014, 2016 by Delphix. All rights reserved.
+ * Copyright (c) 2013, Joyent, Inc. All rights reserved.
  */
 
 #ifndef	_DTRACE_H
 #define	_DTRACE_H
 
+#ifdef windows
 #include <dtrace_misc.h>
+#include <libctf.h>
+#endif
 #include <sys/dtrace.h>
 #include <stdarg.h>
 #include <stdio.h>
-
-#include <libctf.h>
-//#include <libproc.h>
-//#if !defined(sun)
-//#include <rtld_db.h>
-//#endif
+#include <gelf.h>
 
 #ifdef	__cplusplus
 extern "C" {
@@ -60,6 +59,7 @@ extern "C" {
 #define	DTRACE_VERSION	3		/* library ABI interface version */
 
 struct ps_prochandle;
+struct dt_node;
 typedef struct dtrace_hdl dtrace_hdl_t;
 typedef struct dtrace_prog dtrace_prog_t;
 typedef struct dtrace_vector dtrace_vector_t;
@@ -69,7 +69,12 @@ typedef struct dtrace_aggdata dtrace_aggdata_t;
 #define	DTRACE_O_NOSYS		0x02	/* do not load /system/object modules */
 #define	DTRACE_O_LP64		0x04	/* force D compiler to be LP64 */
 #define	DTRACE_O_ILP32		0x08	/* force D compiler to be ILP32 */
+#ifndef windows
 #define	DTRACE_O_MASK		0x0f	/* mask of valid flags to dtrace_open */
+#else
+#define	DTRACE_O_FETW		0x10	/* read data from etw file */
+#define	DTRACE_O_MASK		0x1f	/* mask of valid flags to dtrace_open */
+#endif
 
 extern dtrace_hdl_t *dtrace_open(int, int, int *);
 extern dtrace_hdl_t *dtrace_vopen(int, int, int *,
@@ -89,10 +94,10 @@ extern int dtrace_setopt(dtrace_hdl_t *, const char *, const char *);
 extern int dtrace_getopt(dtrace_hdl_t *, const char *, dtrace_optval_t *);
 
 extern void dtrace_update(dtrace_hdl_t *);
-#if defined(sun)
-extern int dtrace_ctlfd(dtrace_hdl_t *);
-#else
+#ifdef windows
 extern HANDLE dtrace_ctlfd(dtrace_hdl_t *);
+#else
+extern int dtrace_ctlfd(dtrace_hdl_t *);
 #endif
 
 /*
@@ -120,7 +125,7 @@ typedef struct dtrace_proginfo {
 #define	DTRACE_C_CPP	0x0010	/* Preprocess input file with cpp(1) utility */
 #define	DTRACE_C_KNODEF	0x0020	/* Permit unresolved kernel symbols in DIFO */
 #define	DTRACE_C_UNODEF	0x0040	/* Permit unresolved user symbols in DIFO */
-#define	DTRACE_C_PSPEC	0x0080	/* Intepret ambiguous specifiers as probes */
+#define	DTRACE_C_PSPEC	0x0080	/* Interpret ambiguous specifiers as probes */
 #define	DTRACE_C_ETAGS	0x0100	/* Prefix error messages with error tags */
 #define	DTRACE_C_ARGREF	0x0200	/* Do not require all macro args to be used */
 #define	DTRACE_C_DEFARG	0x0800	/* Use 0/"" as value for unspecified args */
@@ -161,7 +166,7 @@ typedef struct dtrace_stmtdesc {
 	void *dtsd_aggdata;			/* aggregation data */
 	void *dtsd_fmtdata;			/* type-specific output data */
 	void *dtsd_strdata;			/* type-specific string data */
-	void (*dtsd_callback)(void);		/* callback function for EPID */
+	void (*dtsd_callback)();		/* callback function for EPID */
 	void *dtsd_data;			/* callback data pointer */
 	dtrace_attribute_t dtsd_descattr;	/* probedesc attributes */
 	dtrace_attribute_t dtsd_stmtattr;	/* statement attributes */
@@ -362,6 +367,12 @@ extern int dtrace_handle_setopt(dtrace_hdl_t *,
 #define	DTRACE_A_PERCPU		0x0001
 #define	DTRACE_A_KEEPDELTA	0x0002
 #define	DTRACE_A_ANONYMOUS	0x0004
+#define	DTRACE_A_TOTAL		0x0008
+#define	DTRACE_A_MINMAXBIN	0x0010
+#define	DTRACE_A_HASNEGATIVES	0x0020
+#define	DTRACE_A_HASPOSITIVES	0x0040
+
+#define	DTRACE_AGGZOOM_MAX		0.95	/* height of max bar */
 
 #define	DTRACE_AGGWALK_ERROR		-1	/* error while processing */
 #define	DTRACE_AGGWALK_NEXT		0	/* proceed to next element */
@@ -382,6 +393,10 @@ struct dtrace_aggdata {
 	caddr_t dtada_delta;			/* delta data, if available */
 	caddr_t *dtada_percpu;			/* per CPU data, if avail */
 	caddr_t *dtada_percpu_delta;		/* per CPU delta, if avail */
+	int64_t dtada_total;			/* per agg total, if avail */
+	uint16_t dtada_minbin;			/* minimum bin, if avail */
+	uint16_t dtada_maxbin;			/* maximum bin, if avail */
+	uint32_t dtada_flags;			/* flags */
 };
 
 typedef int dtrace_aggregate_f(const dtrace_aggdata_t *, void *);
@@ -444,7 +459,6 @@ extern struct ps_prochandle *dtrace_proc_grab(dtrace_hdl_t *, pid_t, int);
 extern void dtrace_proc_release(dtrace_hdl_t *, struct ps_prochandle *);
 extern void dtrace_proc_continue(dtrace_hdl_t *, struct ps_prochandle *);
 
-
 /*
  * DTrace Object, Symbol, and Type Interfaces
  *
@@ -470,14 +484,12 @@ typedef struct dtrace_objinfo {
 	const char *dto_file;			/* object file path (if any) */
 	int dto_id;				/* object file id (if any) */
 	uint_t dto_flags;			/* object flags (see below) */
-#if defined(sun)
 	GElf_Addr dto_text_va;			/* address of text section */
 	GElf_Xword dto_text_size;		/* size of text section */
 	GElf_Addr dto_data_va;			/* address of data section */
 	GElf_Xword dto_data_size;		/* size of data section */
 	GElf_Addr dto_bss_va;			/* address of BSS */
 	GElf_Xword dto_bss_size;		/* size of BSS */
-#endif
 } dtrace_objinfo_t;
 
 #define	DTRACE_OBJ_F_KERNEL	0x1		/* object is a kernel module */
@@ -504,7 +516,10 @@ typedef struct dtrace_typeinfo {
 	const char *dtt_object;			/* object containing type */
 	ctf_file_t *dtt_ctfp;			/* CTF container handle */
 	ctf_id_t dtt_type;			/* CTF type identifier */
+	uint_t dtt_flags;			/* Misc. flags */
 } dtrace_typeinfo_t;
+
+#define	DTT_FL_USER	0x1			/* user type */
 
 extern int dtrace_lookup_by_type(dtrace_hdl_t *, const char *, const char *,
     dtrace_typeinfo_t *);
@@ -517,6 +532,10 @@ extern int dtrace_type_strcompile(dtrace_hdl_t *,
 
 extern int dtrace_type_fcompile(dtrace_hdl_t *,
     FILE *, dtrace_typeinfo_t *);
+
+extern struct dt_node *dt_compile_sugar(dtrace_hdl_t *,
+    struct dt_node *);
+
 
 /*
  * DTrace Probe Interface
@@ -600,7 +619,5 @@ extern int _dtrace_debug;
 #ifdef	__cplusplus
 }
 #endif
-
-
 
 #endif	/* _DTRACE_H */

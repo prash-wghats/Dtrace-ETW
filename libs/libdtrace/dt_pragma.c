@@ -20,29 +20,26 @@
  */
 
 /*
- * Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
+ * Copyright (c) 2003, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2011, Joyent Inc. All rights reserved.
  */
 
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
-
-#if defined(sun)
-#include <stdint.h>
+#include <assert.h>
+#if !defined(windows)
 #include <strings.h>
 #include <alloca.h>
 #else
 #include <dtrace_misc.h>
 #endif
-
-#include <assert.h>
 #include <fcntl.h>
 #include <stdlib.h>
 #include <stdio.h>
+
 #include <sys/types.h>
 #include <sys/stat.h>
 
-#include <dt_impl.h>
 #include <dt_parser.h>
+#include <dt_impl.h>
 #include <dt_provider.h>
 #include <dt_module.h>
 
@@ -208,7 +205,7 @@ dt_pragma_binding(const char *prname, dt_node_t *dnp)
 		dtp->dt_globals->dh_defer = &dt_pragma_apply;
 }
 
-static void 
+static void
 dt_pragma_depends_finddep(dtrace_hdl_t *dtp, const char *lname, char *lib,
     size_t len)
 {
@@ -244,8 +241,6 @@ dt_pragma_depends(const char *prname, dt_node_t *cnp)
 	int found;
 	dt_lib_depend_t *dld;
 	char lib[MAXPATHLEN];
-	size_t plen;
-	char *provs, *cpy, *tok;
 
 	if (cnp == NULL || nnp == NULL ||
 	    cnp->dn_kind != DT_NODE_IDENT || nnp->dn_kind != DT_NODE_IDENT) {
@@ -253,35 +248,9 @@ dt_pragma_depends(const char *prname, dt_node_t *cnp)
 		    "<class> <name>\n", prname);
 	}
 
-	if (strcmp(cnp->dn_string, "provider") == 0) {
-		/*
-		 * First try to get the provider list using the
-		 * debug.dtrace.providers sysctl, since that'll work even if
-		 * we're not running as root.
-		 */
-		provs = NULL;
-#if defined(sun)	
-		if (sysctlbyname("debug.dtrace.providers", NULL, &plen, NULL, 0) ||
-		    ((provs = dt_alloc(dtp, plen)) == NULL) ||
-		    sysctlbyname("debug.dtrace.providers", provs, &plen, NULL, 0))
-			found = dt_provider_lookup(dtp, nnp->dn_string) != NULL;
-#else
-		if (0) { ;}
-#endif
-		else {
-			found = B_FALSE;
-			for (cpy = provs; (tok = strsep(&cpy, " ")) != NULL; )
-				if (strcmp(tok, nnp->dn_string) == 0) {
-					found = B_TRUE;
-					break;
-				}
-			if (found == B_FALSE)
-				found = dt_provider_lookup(dtp,
-				    nnp->dn_string) != NULL;
-		}
-		if (provs != NULL)
-			dt_free(dtp, provs);
-	} else if (strcmp(cnp->dn_string, "module") == 0) {
+	if (strcmp(cnp->dn_string, "provider") == 0)
+		found = dt_provider_lookup(dtp, nnp->dn_string) != NULL;
+	else if (strcmp(cnp->dn_string, "module") == 0) {
 		dt_module_t *mp = dt_module_lookup_by_name(dtp, nnp->dn_string);
 		found = mp != NULL && dt_module_getctf(dtp, mp) != NULL;
 	} else if (strcmp(cnp->dn_string, "library") == 0) {
@@ -394,9 +363,12 @@ dt_pragma_option(const char *prname, dt_node_t *dnp)
 		    "superfluous arguments specified for #pragma %s\n", prname);
 	}
 
+#ifdef illumos
+	opt = strdupa(dnp->dn_string);
+#else
 	opt = alloca(strlen(dnp->dn_string) + 1);
 	(void) strcpy(opt, dnp->dn_string);
-
+#endif
 	if ((val = strchr(opt, '=')) != NULL)
 		*val++ = '\0';
 

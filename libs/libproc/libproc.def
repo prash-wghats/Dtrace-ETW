@@ -1,6 +1,6 @@
 ;proc library
 EXPORTS
-	Pcreate
+	Pxcreate
 	Pcreate_error
 	Pgrab
 	Prelease
@@ -40,4 +40,14 @@ EXPORTS
 	Petwvector
 	Psetprov
 	Pnormobjname
-	;Pname_to_map
+	Plmid
+	Pobject_iter_resolved
+	Pname_to_map
+	Pupdate_maps
+	Pname_to_ctf
+	pr_ctf_func_info
+	pr_ctf_func_args
+	pr_ctf_lookup_by_name
+	p_online
+	sysconf
+	etw_lookupkernel_by_addr

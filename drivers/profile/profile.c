@@ -200,11 +200,11 @@ static uint32_t profile_total;		/* current number of profile probes */
 
 
 static dtrace_pattr_t profile_attr = {
-	{ DTRACE_STABILITY_EVOLVING, DTRACE_STABILITY_EVOLVING, DTRACE_CLASS_ETW },
-	{ DTRACE_STABILITY_PRIVATE, DTRACE_STABILITY_PRIVATE, DTRACE_CLASS_UNKNOWN },
-	{ DTRACE_STABILITY_PRIVATE, DTRACE_STABILITY_PRIVATE, DTRACE_CLASS_ISA },
-	{ DTRACE_STABILITY_EVOLVING, DTRACE_STABILITY_EVOLVING, DTRACE_CLASS_COMMON },
-	{ DTRACE_STABILITY_PRIVATE, DTRACE_STABILITY_PRIVATE, DTRACE_CLASS_ISA },
+{ DTRACE_STABILITY_EVOLVING, DTRACE_STABILITY_EVOLVING, DTRACE_CLASS_ETW },
+{ DTRACE_STABILITY_PRIVATE, DTRACE_STABILITY_PRIVATE, DTRACE_CLASS_UNKNOWN },
+{ DTRACE_STABILITY_PRIVATE, DTRACE_STABILITY_PRIVATE, DTRACE_CLASS_ISA },
+{ DTRACE_STABILITY_EVOLVING, DTRACE_STABILITY_EVOLVING, DTRACE_CLASS_COMMON },
+{ DTRACE_STABILITY_PRIVATE, DTRACE_STABILITY_PRIVATE, DTRACE_CLASS_ISA },
 };
 
 static dtrace_pops_t profile_pops = {
@@ -221,8 +221,8 @@ static dtrace_pops_t profile_pops = {
 };
 
 static dtrace_provider_id_t	profile_id;
-static hrtime_t			profile_interval_min = NANOSEC / 5000;	/* 5000 hz */
-static int			profile_aframes = 0;			/* override */
+static hrtime_t profile_interval_min = NANOSEC / 5000;	/* 5000 hz */
+static int profile_aframes = 0;			/* override */
 
 static void
 profile_fire(void *arg)
@@ -237,8 +237,6 @@ profile_fire(void *arg)
 
 	dtrace_etw_probe(prof->prof_id, cpu->cpu_profile_pc,
 	    cpu->cpu_profile_upc, late, 0, 0, TRUE);
-	//dtrace_probe(prof->prof_id, cpu->cpu_profile_pc,
-	//    cpu->cpu_profile_upc, late, 0, 0);
 }
 
 static void
@@ -281,8 +279,8 @@ profile_create(hrtime_t interval, char *name, int kind)
 	prof->prof_cyclic = CYCLIC_NONE;
 	prof->prof_kind = kind;
 	prof->prof_id = dtrace_probe_create(profile_id,
-	        NULL, NULL, name,
-	        profile_aframes ? profile_aframes : PROF_ARTIFICIAL_FRAMES, prof);
+	    NULL, NULL, name,
+	    profile_aframes ? profile_aframes : PROF_ARTIFICIAL_FRAMES, prof);
 }
 
 /*ARGSUSED*/
@@ -440,7 +438,6 @@ profile_destroy(void *arg, dtrace_id_t id, void *parg)
 #endif
 }
 
-
 /*ARGSUSED*/
 static void
 profile_online(void *arg, dtrace_cpu_t *cpu, cyc_handler_t *hdlr, cyc_time_t *when)
@@ -480,9 +477,11 @@ profile_offline(void *arg, dtrace_cpu_t *cpu, void *oarg)
 
 /* ARGSUSED */
 #if !defined(windows)
-int profile_enable(void *arg, dtrace_id_t id, void *parg)
+int
+profile_enable(void *arg, dtrace_id_t id, void *parg)
 #else
-int profile_enable(void *arg, dtrace_id_t id, void *parg, int stackon)
+int
+profile_enable(void *arg, dtrace_id_t id, void *parg, int stackon)
 #endif
 {
 	profile_probe_t *prof = parg;
@@ -491,7 +490,9 @@ int profile_enable(void *arg, dtrace_id_t id, void *parg, int stackon)
 	cyc_time_t when;
 
 	ASSERT(prof->prof_interval != 0);
-	//ASSERT(MUTEX_HELD(&cpu_lock));
+#ifndef windows
+	ASSERT(MUTEX_HELD(&cpu_lock));
+#endif
 
 	if (prof->prof_kind == PROF_TICK) {
 		hdlr.cyh_func = profile_tick;
@@ -517,7 +518,8 @@ int profile_enable(void *arg, dtrace_id_t id, void *parg, int stackon)
 	} else {
 		prof->prof_cyclic = cyclic_add_omni(&omni, prof->prof_interval);
 	}
-	return 0;
+
+	return (0);
 }
 
 /* ARGSUSED */
@@ -527,7 +529,9 @@ profile_disable(void *arg, dtrace_id_t id, void *parg)
 	profile_probe_t *prof = parg;
 
 	ASSERT(prof->prof_cyclic != CYCLIC_NONE);
-	//ASSERT(MUTEX_HELD(&cpu_lock));
+#ifndef windows
+	ASSERT(MUTEX_HELD(&cpu_lock));
+#endif
 
 	cyclic_remove(prof->prof_cyclic);
 	prof->prof_cyclic = CYCLIC_NONE;
@@ -539,15 +543,14 @@ profile_attach(void *dummy)
 #if defined(sun)
 	/* Create the /dev/dtrace/profile entry. */
 	profile_cdev = make_dev(&profile_cdevsw, 0, UID_ROOT, GID_WHEEL, 0600,
-	        "dtrace/profile");
+	    "dtrace/profile");
 #endif
 	profile_aframes = 0;
 
 	if (dtrace_register("profile", &profile_attr, DTRACE_PRIV_USER,
-	        NULL, &profile_pops, NULL, &profile_id) != 0)
-		return;
+	    NULL, &profile_pops, NULL, &profile_id) != 0)
+	    return;
 }
-
 
 int
 profile_detach()
@@ -561,4 +564,3 @@ profile_detach()
 #endif
 	return (error);
 }
-

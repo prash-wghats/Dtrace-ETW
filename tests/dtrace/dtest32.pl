@@ -570,8 +570,7 @@ find(\&wanted, "$defdir/$MACH") if (scalar(@ARGV) == 0);
 find(\&wanted, "$defdir/$PLATFORM") if (scalar(@ARGV) == 0);
 die $USAGE if (scalar(@files) == 0);
 
-#$dtrace_path = 'c:/work/Dropbox/dtrace/dtrace/i386/dtrace.exe';
-$dtrace_path = 'c:/work/dtrace/x86/bin/dtrace.exe';
+$dtrace_path = cwd . '/../bin/dtrace32.exe';
 $jdtrace_path = "$bindir/jdtrace";
 
 %exception_lists = ("$jdtrace_path" => "$bindir/exception.lst");

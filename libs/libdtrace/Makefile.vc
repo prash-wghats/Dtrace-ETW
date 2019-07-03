@@ -55,6 +55,7 @@ OBJS = $(ODIR)\dis_tables.obj \
 	 $(ODIR)\dt_string.obj \
 	 $(ODIR)\dt_strtab.obj \
 	 $(ODIR)\dt_subr.obj \
+	 $(ODIR)\dt_sugar.obj \
 	 $(ODIR)\dt_work.obj \
 	 $(ODIR)\dt_xlator.obj \
 	 $(ODIR)\gmatch.obj \
@@ -73,7 +74,7 @@ $(INST_LIB_DIR)/$(IMPLIB): $(INST_EXE_DIR)/$(SHAREDLIB)
 $(INST_EXE_DIR)/$(SHAREDLIB): $(OBJS) $(OBJA)
 	$(LD) $(LDFLAGS)  -def:$(DEF) -dll -implib:$(INST_LIB_DIR)/$(IMPLIB) \
 	  -out:$@  $(OBJS) $(OBJA) libdtracesysdll.lib fasttrapdll.lib libetwdll.lib \
-	  	libctf.lib libpe.lib dbghelp.lib psapi.lib advapi32.lib \
+	  	libctfdll.lib libpe.lib dbghelp.lib psapi.lib advapi32.lib \
 		pthreadVC2.lib zlib.lib libprocdll.lib corguids.lib mscoree.lib Shlwapi.lib
 
 {$(TOP)}.c.obj:

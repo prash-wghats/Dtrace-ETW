@@ -26,7 +26,7 @@
 
 #pragma ident	"%Z%%M%	%I%	%E% SMI"
 
-#if !defined(sun)
+#ifdef windows
 #include <dtrace_misc.h>
 #endif
 #include <ctf_impl.h>

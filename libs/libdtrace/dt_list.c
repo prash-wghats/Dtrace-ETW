@@ -34,13 +34,12 @@
  * (dl_prev) pointers.  The current head and tail list elements have their
  * previous and next pointers set to NULL, respectively.
  */
-#if defined(sun)
-#include <stdint.h>
+ 
+#if !defined(windows)
 #include <unistd.h>
 #else
 #include <dtrace_misc.h>
 #endif
-#include <stdio.h>
 #include <assert.h>
 #include <dt_list.h>
 

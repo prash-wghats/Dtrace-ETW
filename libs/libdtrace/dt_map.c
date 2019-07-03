@@ -27,15 +27,15 @@
  * Copyright (c) 2011 by Delphix. All rights reserved.
  */
 
-#if defined(sun)
-#include <stdint.h>
+#include <stdlib.h>
+#if !defined(windows)
 #include <strings.h>
+#include <errno.h>
 #include <unistd.h>
 #else
+#include <errno.h>
 #include <dtrace_misc.h>
 #endif
-#include <stdlib.h>
-#include <errno.h>
 #include <assert.h>
 
 #include <dt_impl.h>
@@ -320,8 +320,8 @@ dt_aggid_add(dtrace_hdl_t *dtp, dtrace_aggid_t id)
 {
 	dtrace_id_t max;
 	dtrace_epid_t epid;
-	int rval, i=0;
-	
+	int rval;
+
 	while (id >= (max = dtp->dt_maxagg) || dtp->dt_aggdesc == NULL) {
 		dtrace_id_t new_max = max ? (max << 1) : 1;
 		size_t nsize = new_max * sizeof (void *);
@@ -331,6 +331,7 @@ dt_aggid_add(dtrace_hdl_t *dtp, dtrace_aggid_t id)
 			return (dt_set_errno(dtp, EDT_NOMEM));
 
 		bzero(new_aggdesc, nsize);
+
 		if (dtp->dt_aggdesc != NULL) {
 			bcopy(dtp->dt_aggdesc, new_aggdesc,
 			    max * sizeof (void *));
@@ -352,7 +353,6 @@ dt_aggid_add(dtrace_hdl_t *dtp, dtrace_aggid_t id)
 		agg->dtagd_nrecs = 1;
 
 		if (dt_ioctl(dtp, DTRACEIOC_AGGDESC, agg) == -1) {
-
 			rval = dt_set_errno(dtp, errno);
 			free(agg);
 			return (rval);
@@ -389,7 +389,7 @@ dt_aggid_add(dtrace_hdl_t *dtp, dtrace_aggid_t id)
 		 * provide the compiler-generated aggregation information.
 		 */
 		if (dtp->dt_options[DTRACEOPT_GRABANON] == DTRACEOPT_UNSET &&
-		    agg->dtagd_rec[0].dtrd_uarg != 0) {
+		    agg->dtagd_rec[0].dtrd_uarg != NULL) {
 			dtrace_stmtdesc_t *sdp;
 			dt_ident_t *aid;
 

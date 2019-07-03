@@ -24,27 +24,24 @@
  */
 
 /*
- * Copyright (c) 2011, Joyent, Inc. All rights reserved.
+ * Copyright (c) 2017, Joyent, Inc. All rights reserved.
  * Copyright (c) 2012 by Delphix. All rights reserved.
  */
 
-#if defined(sun)
-#include <stdint.h>
+#include <stdlib.h>
+#if !defined(windows)
 #include <strings.h>
 #include <unistd.h>
 #include <alloca.h>
 #else
-#include <dtrace_misc.h>
+#include <dtrace_misc.h>	
 #endif
-
-#include <stdlib.h>
 #include <errno.h>
 #include <limits.h>
 #include <assert.h>
 #include <ctype.h>
 #include <dt_impl.h>
 #include <dt_pq.h>
-
 
 #define	DT_MASK_LO 0x00000000FFFFFFFFULL
 
@@ -59,6 +56,25 @@ dt_fabsl(long double x)
 		return (-x);
 
 	return (x);
+}
+
+static int
+dt_ndigits(long long val)
+{
+	int rval = 1;
+	long long cmp = 10;
+
+	if (val < 0) {
+		val = val == INT64_MIN ? INT64_MAX : -val;
+		rval++;
+	}
+
+	while (val > cmp && cmp > 0) {
+		rval++;
+		cmp *= 10;
+	}
+
+	return (rval < 4 ? 4 : rval);
 }
 
 /*
@@ -369,8 +385,10 @@ dt_stddev(uint64_t *data, uint64_t normal)
 	 * The standard approximation for standard deviation is
 	 * sqrt(average(x**2) - average(x)**2), i.e. the square root
 	 * of the average of the squares minus the square of the average.
+	 * When normalizing, we should divide the sum of x**2 by normal**2.
 	 */
 	dt_divide_128(data + 2, normal, avg_of_squares);
+	dt_divide_128(avg_of_squares, normal, avg_of_squares);
 	dt_divide_128(avg_of_squares, data[0], avg_of_squares);
 
 	norm_avg = (int64_t)data[1] / (int64_t)normal / (int64_t)data[0];
@@ -489,7 +507,125 @@ dt_nullrec()
 	return (DTRACE_CONSUME_NEXT);
 }
 
-int
+static void
+dt_quantize_total(dtrace_hdl_t *dtp, int64_t datum, long double *total)
+{
+	long double val = dt_fabsl((long double)datum);
+
+	if (dtp->dt_options[DTRACEOPT_AGGZOOM] == DTRACEOPT_UNSET) {
+		*total += val;
+		return;
+	}
+
+	/*
+	 * If we're zooming in on an aggregation, we want the height of the
+	 * highest value to be approximately 95% of total bar height -- so we
+	 * adjust up by the reciprocal of DTRACE_AGGZOOM_MAX when comparing to
+	 * our highest value.
+	 */
+	val *= 1 / DTRACE_AGGZOOM_MAX;
+
+	if (*total < val)
+		*total = val;
+}
+
+static int
+dt_print_quanthdr(dtrace_hdl_t *dtp, FILE *fp, int width)
+{
+	return (dt_printf(dtp, fp, "\n%*s %41s %-9s\n",
+	    width ? width : 16, width ? "key" : "value",
+	    "------------- Distribution -------------", "count"));
+}
+
+static int
+dt_print_quanthdr_packed(dtrace_hdl_t *dtp, FILE *fp, int width,
+    const dtrace_aggdata_t *aggdata, dtrace_actkind_t action)
+{
+	int min = aggdata->dtada_minbin, max = aggdata->dtada_maxbin;
+	int minwidth, maxwidth, i;
+
+	assert(action == DTRACEAGG_QUANTIZE || action == DTRACEAGG_LQUANTIZE);
+
+	if (action == DTRACEAGG_QUANTIZE) {
+		if (min != 0 && min != DTRACE_QUANTIZE_ZEROBUCKET)
+			min--;
+
+		if (max < DTRACE_QUANTIZE_NBUCKETS - 1)
+			max++;
+
+		minwidth = dt_ndigits(DTRACE_QUANTIZE_BUCKETVAL(min));
+		maxwidth = dt_ndigits(DTRACE_QUANTIZE_BUCKETVAL(max));
+	} else {
+		maxwidth = 8;
+		minwidth = maxwidth - 1;
+		max++;
+	}
+
+	if (dt_printf(dtp, fp, "\n%*s %*s .",
+	    width, width > 0 ? "key" : "", minwidth, "min") < 0)
+		return (-1);
+
+	for (i = min; i <= max; i++) {
+		if (dt_printf(dtp, fp, "-") < 0)
+			return (-1);
+	}
+
+	return (dt_printf(dtp, fp, ". %*s | count\n", -maxwidth, "max"));
+}
+
+/*
+ * We use a subset of the Unicode Block Elements (U+2588 through U+258F,
+ * inclusive) to represent aggregations via UTF-8 -- which are expressed via
+ * 3-byte UTF-8 sequences.
+ */
+#define	DTRACE_AGGUTF8_FULL	0x2588
+#define	DTRACE_AGGUTF8_BASE	0x258f
+#define	DTRACE_AGGUTF8_LEVELS	8
+
+#define	DTRACE_AGGUTF8_BYTE0(val)	(0xe0 | ((val) >> 12))
+#define	DTRACE_AGGUTF8_BYTE1(val)	(0x80 | (((val) >> 6) & 0x3f))
+#define	DTRACE_AGGUTF8_BYTE2(val)	(0x80 | ((val) & 0x3f))
+
+static int
+dt_print_quantline_utf8(dtrace_hdl_t *dtp, FILE *fp, int64_t val,
+    uint64_t normal, long double total)
+{
+	uint_t len = 40, i, whole, partial;
+	long double f = (dt_fabsl((long double)val) * len) / total;
+	const char *spaces = "                                        ";
+
+	whole = (uint_t)f;
+	partial = (uint_t)((f - (long double)(uint_t)f) *
+	    (long double)DTRACE_AGGUTF8_LEVELS);
+
+	if (dt_printf(dtp, fp, "|") < 0)
+		return (-1);
+
+	for (i = 0; i < whole; i++) {
+		if (dt_printf(dtp, fp, "%c%c%c",
+		    DTRACE_AGGUTF8_BYTE0(DTRACE_AGGUTF8_FULL),
+		    DTRACE_AGGUTF8_BYTE1(DTRACE_AGGUTF8_FULL),
+		    DTRACE_AGGUTF8_BYTE2(DTRACE_AGGUTF8_FULL)) < 0)
+			return (-1);
+	}
+
+	if (partial != 0) {
+		partial = DTRACE_AGGUTF8_BASE - (partial - 1);
+
+		if (dt_printf(dtp, fp, "%c%c%c",
+		    DTRACE_AGGUTF8_BYTE0(partial),
+		    DTRACE_AGGUTF8_BYTE1(partial),
+		    DTRACE_AGGUTF8_BYTE2(partial)) < 0)
+			return (-1);
+
+		i++;
+	}
+
+	return (dt_printf(dtp, fp, "%s %-9lld\n", spaces + i,
+	    (long long)val / normal));
+}
+
+static int
 dt_print_quantline(dtrace_hdl_t *dtp, FILE *fp, int64_t val,
     uint64_t normal, long double total, char positives, char negatives)
 {
@@ -507,6 +643,11 @@ dt_print_quantline(dtrace_hdl_t *dtp, FILE *fp, int64_t val,
 
 	if (!negatives) {
 		if (positives) {
+			if (dtp->dt_encoding == DT_ENCODING_UTF8) {
+				return (dt_print_quantline_utf8(dtp, fp, val,
+				    normal, total));
+			}
+
 			f = (dt_fabsl((long double)val) * len) / total;
 			depth = (uint_t)(f + 0.5);
 		} else {
@@ -549,6 +690,73 @@ dt_print_quantline(dtrace_hdl_t *dtp, FILE *fp, int64_t val,
 	}
 }
 
+/*
+ * As with UTF-8 printing of aggregations, we use a subset of the Unicode
+ * Block Elements (U+2581 through U+2588, inclusive) to represent our packed
+ * aggregation.
+ */
+#define	DTRACE_AGGPACK_BASE	0x2581
+#define	DTRACE_AGGPACK_LEVELS	8
+
+static int
+dt_print_packed(dtrace_hdl_t *dtp, FILE *fp,
+    long double datum, long double total)
+{
+	static boolean_t utf8_checked = B_FALSE;
+	static boolean_t utf8;
+	char *ascii = "__xxxxXX";
+	char *neg = "vvvvVV";
+	unsigned int len;
+	long double val;
+
+	if (!utf8_checked) {
+		char *term;
+
+		/*
+		 * We want to determine if we can reasonably emit UTF-8 for our
+		 * packed aggregation.  To do this, we will check for terminals
+		 * that are known to be primitive to emit UTF-8 on these.
+		 */
+		utf8_checked = B_TRUE;
+
+		if (dtp->dt_encoding == DT_ENCODING_ASCII) {
+			utf8 = B_FALSE;
+		} else if (dtp->dt_encoding == DT_ENCODING_UTF8) {
+			utf8 = B_TRUE;
+		} else if ((term = getenv("TERM")) != NULL &&
+		    (strcmp(term, "sun") == 0 ||
+		    strcmp(term, "sun-color") == 0) ||
+		    strcmp(term, "dumb") == 0) {
+			utf8 = B_FALSE;
+		} else {
+			utf8 = B_TRUE;
+		}
+	}
+
+	if (datum == 0)
+		return (dt_printf(dtp, fp, " "));
+
+	if (datum < 0) {
+		len = strlen(neg);
+		val = dt_fabsl(datum * (len - 1)) / total;
+		return (dt_printf(dtp, fp, "%c", neg[(uint_t)(val + 0.5)]));
+	}
+
+	if (utf8) {
+		int block = DTRACE_AGGPACK_BASE + (unsigned int)(((datum *
+		    (DTRACE_AGGPACK_LEVELS - 1)) / total) + 0.5);
+
+		return (dt_printf(dtp, fp, "%c%c%c",
+		    DTRACE_AGGUTF8_BYTE0(block),
+		    DTRACE_AGGUTF8_BYTE1(block),
+		    DTRACE_AGGUTF8_BYTE2(block)));
+	}
+
+	len = strlen(ascii);
+	val = (datum * (len - 1)) / total;
+	return (dt_printf(dtp, fp, "%c", ascii[(uint_t)(val + 0.5)]));
+}
+
 int
 dt_print_quantize(dtrace_hdl_t *dtp, FILE *fp, const void *addr,
     size_t size, uint64_t normal)
@@ -566,9 +774,9 @@ dt_print_quantize(dtrace_hdl_t *dtp, FILE *fp, const void *addr,
 
 	if (first_bin == DTRACE_QUANTIZE_NBUCKETS - 1) {
 		/*
-		 * There isn't any data.  This is possible if (and only if)
-		 * negative increment values have been used.  In this case,
-		 * we'll print the buckets around 0.
+		 * There isn't any data.  This is possible if the aggregation
+		 * has been clear()'d or if negative increment values have been
+		 * used.  Regardless, we'll print the buckets around 0.
 		 */
 		first_bin = DTRACE_QUANTIZE_ZEROBUCKET - 1;
 		last_bin = DTRACE_QUANTIZE_ZEROBUCKET + 1;
@@ -586,11 +794,10 @@ dt_print_quantize(dtrace_hdl_t *dtp, FILE *fp, const void *addr,
 	for (i = first_bin; i <= last_bin; i++) {
 		positives |= (data[i] > 0);
 		negatives |= (data[i] < 0);
-		total += dt_fabsl((long double)data[i]);
+		dt_quantize_total(dtp, data[i], &total);
 	}
 
-	if (dt_printf(dtp, fp, "\n%16s %41s %-9s\n", "value",
-	    "------------- Distribution -------------", "count") < 0)
+	if (dt_print_quanthdr(dtp, fp, 0) < 0)
 		return (-1);
 
 	for (i = first_bin; i <= last_bin; i++) {
@@ -602,6 +809,48 @@ dt_print_quantize(dtrace_hdl_t *dtp, FILE *fp, const void *addr,
 		    positives, negatives) < 0)
 			return (-1);
 	}
+
+	return (0);
+}
+
+int
+dt_print_quantize_packed(dtrace_hdl_t *dtp, FILE *fp, const void *addr,
+    size_t size, const dtrace_aggdata_t *aggdata)
+{
+	const int64_t *data = addr;
+	long double total = 0, count = 0;
+	int min = aggdata->dtada_minbin, max = aggdata->dtada_maxbin, i;
+	int64_t minval, maxval;
+
+	if (size != DTRACE_QUANTIZE_NBUCKETS * sizeof (uint64_t))
+		return (dt_set_errno(dtp, EDT_DMISMATCH));
+
+	if (min != 0 && min != DTRACE_QUANTIZE_ZEROBUCKET)
+		min--;
+
+	if (max < DTRACE_QUANTIZE_NBUCKETS - 1)
+		max++;
+
+	minval = DTRACE_QUANTIZE_BUCKETVAL(min);
+	maxval = DTRACE_QUANTIZE_BUCKETVAL(max);
+
+	if (dt_printf(dtp, fp, " %*lld :", dt_ndigits(minval),
+	    (long long)minval) < 0)
+		return (-1);
+
+	for (i = min; i <= max; i++) {
+		dt_quantize_total(dtp, data[i], &total);
+		count += data[i];
+	}
+
+	for (i = min; i <= max; i++) {
+		if (dt_print_packed(dtp, fp, data[i], total) < 0)
+			return (-1);
+	}
+
+	if (dt_printf(dtp, fp, ": %*lld | %lld\n",
+	    -dt_ndigits(maxval), (long long)maxval, (long long)count) < 0)
+		return (-1);
 
 	return (0);
 }
@@ -653,7 +902,7 @@ dt_print_lquantize(dtrace_hdl_t *dtp, FILE *fp, const void *addr,
 	for (i = first_bin; i <= last_bin; i++) {
 		positives |= (data[i] > 0);
 		negatives |= (data[i] < 0);
-		total += dt_fabsl((long double)data[i]);
+		dt_quantize_total(dtp, data[i], &total);
 	}
 
 	if (dt_printf(dtp, fp, "\n%16s %41s %-9s\n", "value",
@@ -665,8 +914,7 @@ dt_print_lquantize(dtrace_hdl_t *dtp, FILE *fp, const void *addr,
 		int err;
 
 		if (i == 0) {
-			(void) snprintf(c, sizeof (c), "< %d",
-			    base / (uint32_t)normal);
+			(void) snprintf(c, sizeof (c), "< %d", base);
 			err = dt_printf(dtp, fp, "%16s ", c);
 		} else if (i == levels + 1) {
 			(void) snprintf(c, sizeof (c), ">= %d",
@@ -683,6 +931,59 @@ dt_print_lquantize(dtrace_hdl_t *dtp, FILE *fp, const void *addr,
 	}
 
 	return (0);
+}
+
+/*ARGSUSED*/
+int
+dt_print_lquantize_packed(dtrace_hdl_t *dtp, FILE *fp, const void *addr,
+    size_t size, const dtrace_aggdata_t *aggdata)
+{
+	const int64_t *data = addr;
+	long double total = 0, count = 0;
+	int min, max, base, err;
+	uint64_t arg;
+	uint16_t step, levels;
+	char c[32];
+	unsigned int i;
+
+	if (size < sizeof (uint64_t))
+		return (dt_set_errno(dtp, EDT_DMISMATCH));
+
+	arg = *data++;
+	size -= sizeof (uint64_t);
+
+	base = DTRACE_LQUANTIZE_BASE(arg);
+	step = DTRACE_LQUANTIZE_STEP(arg);
+	levels = DTRACE_LQUANTIZE_LEVELS(arg);
+
+	if (size != sizeof (uint64_t) * (levels + 2))
+		return (dt_set_errno(dtp, EDT_DMISMATCH));
+
+	min = 0;
+	max = levels + 1;
+
+	if (min == 0) {
+		(void) snprintf(c, sizeof (c), "< %d", base);
+		err = dt_printf(dtp, fp, "%8s :", c);
+	} else {
+		err = dt_printf(dtp, fp, "%8d :", base + (min - 1) * step);
+	}
+
+	if (err < 0)
+		return (-1);
+
+	for (i = min; i <= max; i++) {
+		dt_quantize_total(dtp, data[i], &total);
+		count += data[i];
+	}
+
+	for (i = min; i <= max; i++) {
+		if (dt_print_packed(dtp, fp, data[i], total) < 0)
+			return (-1);
+	}
+
+	(void) snprintf(c, sizeof (c), ">= %d", base + (levels * step));
+	return (dt_printf(dtp, fp, ": %-8s | %lld\n", c, (long long)count));
 }
 
 int
@@ -742,7 +1043,7 @@ dt_print_llquantize(dtrace_hdl_t *dtp, FILE *fp, const void *addr,
 	for (i = first_bin; i <= last_bin; i++) {
 		positives |= (data[i] > 0);
 		negatives |= (data[i] < 0);
-		total += dt_fabsl((long double)data[i]);
+		dt_quantize_total(dtp, data[i], &total);
 	}
 
 	if (dt_printf(dtp, fp, "\n%16s %41s %-9s\n", "value",
@@ -756,7 +1057,7 @@ dt_print_llquantize(dtrace_hdl_t *dtp, FILE *fp, const void *addr,
 	step = next > nsteps ? next / nsteps : 1;
 
 	if (first_bin == 0) {
-		(void) snprintf(c, sizeof (c), "< %lld", (long long)value);
+		(void) snprintf(c, sizeof (c), "< %lld", value);
 
 		if (dt_printf(dtp, fp, "%16s ", c) < 0)
 			return (-1);
@@ -791,7 +1092,7 @@ dt_print_llquantize(dtrace_hdl_t *dtp, FILE *fp, const void *addr,
 		return (0);
 
 	assert(last_bin == bin);
-	(void) snprintf(c, sizeof (c), ">= %lld", (long long)value);
+	(void) snprintf(c, sizeof (c), ">= %lld", value);
 
 	if (dt_printf(dtp, fp, "%16s ", c) < 0)
 		return (-1);
@@ -825,7 +1126,7 @@ dt_print_stddev(dtrace_hdl_t *dtp, FILE *fp, caddr_t addr,
 }
 
 /*ARGSUSED*/
-int
+static int
 dt_print_bytes(dtrace_hdl_t *dtp, FILE *fp, caddr_t addr,
     size_t nbytes, int width, int quiet, int forceraw)
 {
@@ -878,10 +1179,12 @@ dt_print_bytes(dtrace_hdl_t *dtp, FILE *fp, caddr_t addr,
 			if (j != nbytes)
 				break;
 
-			if (quiet)
+			if (quiet) {
 				return (dt_printf(dtp, fp, "%s", c));
-			else
-				return (dt_printf(dtp, fp, "  %-*s", width, c));
+			} else {
+				return (dt_printf(dtp, fp, " %s%*s",
+				    width < 0 ? " " : "", width, c));
+			}
 		}
 
 		break;
@@ -978,7 +1281,7 @@ dt_print_stack(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 			return (dt_set_errno(dtp, EDT_BADSTACKPC));
 		}
 
-		if (pc == 0)
+		if (pc == NULL)
 			break;
 
 		addr += size;
@@ -990,7 +1293,7 @@ dt_print_stack(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 			if (pc > sym.st_value) {
 				(void) snprintf(c, sizeof (c), "%s`%s+0x%llx",
 				    dts.dts_object, dts.dts_name,
-				    (u_longlong_t)(pc - sym.st_value));
+				    pc - sym.st_value);
 			} else {
 				(void) snprintf(c, sizeof (c), "%s`%s",
 				    dts.dts_object, dts.dts_name);
@@ -1003,10 +1306,9 @@ dt_print_stack(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 			 */
 			if (dtrace_lookup_by_addr(dtp, pc, NULL, &dts) == 0) {
 				(void) snprintf(c, sizeof (c), "%s`0x%llx",
-				    dts.dts_object, (u_longlong_t)pc);
+				    dts.dts_object, pc);
 			} else {
-				(void) snprintf(c, sizeof (c), "0x%llx",
-				    (u_longlong_t)pc);
+				(void) snprintf(c, sizeof (c), "0x%llx", pc);
 			}
 		}
 
@@ -1067,10 +1369,11 @@ dt_print_ustack(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 #else
 		P = NULL;
 #endif
+
 	if (P != NULL)
 		dt_proc_lock(dtp, P); /* lock handle while we perform lookups */
 
-	for (i = 0; i < depth && pc[i] != 0; i++) {
+	for (i = 0; i < depth && pc[i] != NULL; i++) {
 		const prmap_t *map;
 
 		if ((err = dt_printf(dtp, fp, "%*s", indent, "")) < 0)
@@ -1089,8 +1392,8 @@ dt_print_ustack(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 				    "%s`%s", dt_basename(objname), name);
 			}
 		} else if (str != NULL && str[0] != '\0' && str[0] != '@' &&
-		    (P != NULL && ((map = Paddr_to_map(P, pc[i])) == NULL ||
-		    (map->pr_mflags & MA_WRITE)))) {
+		    (P == NULL || (map = Paddr_to_map(P, pc[i])) == NULL ||
+		    map->pr_mflags & MA_WRITE)) {
 			/*
 			 * If the current string pointer in the string table
 			 * does not point to an empty string _and_ the program
@@ -1102,12 +1405,15 @@ dt_print_ustack(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 			 * identify.  If we have a string for a program
 			 * counter that falls in a segment that isn't
 			 * writable, we assume that we have fallen into this
-			 * case and we refuse to use the string.
+			 * case and we refuse to use the string.  Finally,
+			 * note that if we could not grab the process (e.g.,
+			 * because it exited), the information from the helper
+			 * is better than nothing.
 			 */
 			(void) snprintf(c, sizeof (c), "%s", str);
 		} else {
 			if (P != NULL && Pobjname(P, pc[i], objname,
-			    sizeof (objname)) != 0) {
+			    sizeof (objname)) != NULL) {
 				(void) snprintf(c, sizeof (c), "%s`0x%llx",
 				    dt_basename(objname), (u_longlong_t)pc[i]);
 			} else {
@@ -1166,6 +1472,7 @@ dt_print_usym(dtrace_hdl_t *dtp, FILE *fp, caddr_t addr, dtrace_actkind_t act)
 	const char *format = "  %-50s";
 	char *s;
 	int n, len = 256;
+
 #if !defined(windows)
 	if (act == DTRACEACT_USYM && dtp->dt_vector == NULL) {
 		int flags = PGRAB_RDONLY | PGRAB_FORCE;
@@ -1232,7 +1539,7 @@ dt_print_umod(dtrace_hdl_t *dtp, FILE *fp, const char *format, caddr_t addr)
 	if (P != NULL)
 		dt_proc_lock(dtp, P); /* lock handle while we perform lookups */
 
-	if (P != NULL && Pobjname(P, pc, objname, sizeof (objname)) != 0) {
+	if (P != NULL && Pobjname(P, pc, objname, sizeof (objname)) != NULL) {
 		(void) snprintf(c, sizeof (c), "%s", dt_basename(objname));
 	} else {
 		(void) snprintf(c, sizeof (c), "0x%llx", (u_longlong_t)pc);
@@ -1246,317 +1553,6 @@ dt_print_umod(dtrace_hdl_t *dtp, FILE *fp, const char *format, caddr_t addr)
 	}
 
 	return (err);
-}
-
-int
-dt_print_memory(dtrace_hdl_t *dtp, FILE *fp, caddr_t addr)
-{
-	int quiet = (dtp->dt_options[DTRACEOPT_QUIET] != DTRACEOPT_UNSET);
-	size_t nbytes = *((uintptr_t *) addr);
-
-	return (dt_print_bytes(dtp, fp, addr + sizeof(uintptr_t),
-	    nbytes, 50, quiet, 1));
-}
-
-typedef struct dt_type_cbdata {
-	dtrace_hdl_t		*dtp;
-	dtrace_typeinfo_t	dtt;
-	caddr_t			addr;
-	caddr_t			addrend;
-	const char		*name;
-	int			f_type;
-	int			indent;
-	int			type_width;
-	int			name_width;
-	FILE			*fp;
-} dt_type_cbdata_t;
-
-static int	dt_print_type_data(dt_type_cbdata_t *, ctf_id_t);
-
-static int
-dt_print_type_member(const char *name, ctf_id_t type, ulong_t off, void *arg)
-{
-	dt_type_cbdata_t cbdata;
-	dt_type_cbdata_t *cbdatap = arg;
-	ssize_t ssz;
-
-	if ((ssz = ctf_type_size(cbdatap->dtt.dtt_ctfp, type)) <= 0)
-		return (0);
-
-	off /= 8;
-
-	cbdata = *cbdatap;
-	cbdata.name = name;
-	cbdata.addr += off;
-	cbdata.addrend = cbdata.addr + ssz;
-
-	return (dt_print_type_data(&cbdata, type));
-}
-
-static int
-dt_print_type_width(const char *name, ctf_id_t type, ulong_t off, void *arg)
-{
-	char buf[DT_TYPE_NAMELEN];
-	char *p;
-	dt_type_cbdata_t *cbdatap = arg;
-	size_t sz = strlen(name);
-
-	ctf_type_name(cbdatap->dtt.dtt_ctfp, type, buf, sizeof (buf));
-
-	if ((p = strchr(buf, '[')) != NULL)
-		p[-1] = '\0';
-	else
-		p = "";
-
-	sz += strlen(p);
-
-	if (sz > cbdatap->name_width)
-		cbdatap->name_width = sz;
-
-	sz = strlen(buf);
-
-	if (sz > cbdatap->type_width)
-		cbdatap->type_width = sz;
-
-	return (0);
-}
-
-static int
-dt_print_type_data(dt_type_cbdata_t *cbdatap, ctf_id_t type)
-{
-	caddr_t addr = cbdatap->addr;
-	caddr_t addrend = cbdatap->addrend;
-	char buf[DT_TYPE_NAMELEN];
-	char *p;
-	int cnt = 0;
-	uint_t kind = ctf_type_kind(cbdatap->dtt.dtt_ctfp, type);
-	ssize_t ssz = ctf_type_size(cbdatap->dtt.dtt_ctfp, type);
-
-	ctf_type_name(cbdatap->dtt.dtt_ctfp, type, buf, sizeof (buf));
-
-	if ((p = strchr(buf, '[')) != NULL)
-		p[-1] = '\0';
-	else
-		p = "";
-
-	if (cbdatap->f_type) {
-		int type_width = roundup(cbdatap->type_width + 1, 4);
-		int name_width = roundup(cbdatap->name_width + 1, 4);
-
-		name_width -= strlen(cbdatap->name);
-
-		dt_printf(cbdatap->dtp, cbdatap->fp, "%*s%-*s%s%-*s	= ",cbdatap->indent * 4,"",type_width,buf,cbdatap->name,name_width,p);
-	}
-
-	while (addr < addrend) {
-		dt_type_cbdata_t cbdata;
-		ctf_arinfo_t arinfo;
-		ctf_encoding_t cte;
-		uintptr_t *up;
-		void *vp = addr;
-		cbdata = *cbdatap;
-		cbdata.name = "";
-		cbdata.addr = addr;
-		cbdata.addrend = addr + ssz;
-		cbdata.f_type = 0;
-		cbdata.indent++;
-		cbdata.type_width = 0;
-		cbdata.name_width = 0;
-
-		if (cnt > 0)
-			dt_printf(cbdatap->dtp, cbdatap->fp, "%*s", cbdatap->indent * 4,"");
-
-		switch (kind) {
-		case CTF_K_INTEGER:
-			if (ctf_type_encoding(cbdatap->dtt.dtt_ctfp, type, &cte) != 0)
-				return (-1);
-			if ((cte.cte_format & CTF_INT_SIGNED) != 0)
-				switch (cte.cte_bits) {
-				case 8:
-					if (isprint(*((char *) vp)))
-						dt_printf(cbdatap->dtp, cbdatap->fp, "'%c', ", *((char *) vp));
-					dt_printf(cbdatap->dtp, cbdatap->fp, "%d (0x%x);\n", *((char *) vp), *((char *) vp));
-					break;
-				case 16:
-					dt_printf(cbdatap->dtp, cbdatap->fp, "%hd (0x%hx);\n", *((short *) vp), *((u_short *) vp));
-					break;
-				case 32:
-					dt_printf(cbdatap->dtp, cbdatap->fp, "%d (0x%x);\n", *((int *) vp), *((u_int *) vp));
-					break;
-				case 64:
-					dt_printf(cbdatap->dtp, cbdatap->fp, "%jd (0x%jx);\n", *((long long *) vp), *((unsigned long long *) vp));
-					break;
-				default:
-					dt_printf(cbdatap->dtp, cbdatap->fp, "CTF_K_INTEGER: format %x offset %u bits %u\n",cte.cte_format,cte.cte_offset,cte.cte_bits);
-					break;
-				}
-			else
-				switch (cte.cte_bits) {
-				case 8:
-					dt_printf(cbdatap->dtp, cbdatap->fp, "%u (0x%x);\n", *((uint8_t *) vp) & 0xff, *((uint8_t *) vp) & 0xff);
-					break;
-				case 16:
-					dt_printf(cbdatap->dtp, cbdatap->fp, "%hu (0x%hx);\n", *((u_short *) vp), *((u_short *) vp));
-					break;
-				case 32:
-					dt_printf(cbdatap->dtp, cbdatap->fp, "%u (0x%x);\n", *((u_int *) vp), *((u_int *) vp));
-					break;
-				case 64:
-					dt_printf(cbdatap->dtp, cbdatap->fp, "%ju (0x%jx);\n", *((unsigned long long *) vp), *((unsigned long long *) vp));
-					break;
-				default:
-					dt_printf(cbdatap->dtp, cbdatap->fp, "CTF_K_INTEGER: format %x offset %u bits %u\n",cte.cte_format,cte.cte_offset,cte.cte_bits);
-					break;
-				}
-			break;
-		case CTF_K_FLOAT:
-			dt_printf(cbdatap->dtp, cbdatap->fp, "CTF_K_FLOAT: format %x offset %u bits %u\n",cte.cte_format,cte.cte_offset,cte.cte_bits);
-			break;
-		case CTF_K_POINTER:
-			dt_printf(cbdatap->dtp, cbdatap->fp, "%p;\n", *((void **) addr));
-			break;
-		case CTF_K_ARRAY:
-			if (ctf_array_info(cbdatap->dtt.dtt_ctfp, type, &arinfo) != 0)
-				return (-1);
-			dt_printf(cbdatap->dtp, cbdatap->fp, "{\n%*s",cbdata.indent * 4,"");
-			dt_print_type_data(&cbdata, arinfo.ctr_contents);
-			dt_printf(cbdatap->dtp, cbdatap->fp, "%*s};\n",cbdatap->indent * 4,"");
-			break;
-		case CTF_K_FUNCTION:
-			dt_printf(cbdatap->dtp, cbdatap->fp, "CTF_K_FUNCTION:\n");
-			break;
-		case CTF_K_STRUCT:
-			cbdata.f_type = 1;
-			if (ctf_member_iter(cbdatap->dtt.dtt_ctfp, type,
-			    dt_print_type_width, &cbdata) != 0)
-				return (-1);
-			dt_printf(cbdatap->dtp, cbdatap->fp, "{\n");
-			if (ctf_member_iter(cbdatap->dtt.dtt_ctfp, type,
-			    dt_print_type_member, &cbdata) != 0)
-				return (-1);
-			dt_printf(cbdatap->dtp, cbdatap->fp, "%*s};\n",cbdatap->indent * 4,"");
-			break;
-		case CTF_K_UNION:
-			cbdata.f_type = 1;
-			if (ctf_member_iter(cbdatap->dtt.dtt_ctfp, type,
-			    dt_print_type_width, &cbdata) != 0)
-				return (-1);
-			dt_printf(cbdatap->dtp, cbdatap->fp, "{\n");
-			if (ctf_member_iter(cbdatap->dtt.dtt_ctfp, type,
-			    dt_print_type_member, &cbdata) != 0)
-				return (-1);
-			dt_printf(cbdatap->dtp, cbdatap->fp, "%*s};\n",cbdatap->indent * 4,"");
-			break;
-		case CTF_K_ENUM:
-			dt_printf(cbdatap->dtp, cbdatap->fp, "%s;\n", ctf_enum_name(cbdatap->dtt.dtt_ctfp, type, *((int *) vp)));
-			break;
-		case CTF_K_TYPEDEF:
-			dt_print_type_data(&cbdata, ctf_type_reference(cbdatap->dtt.dtt_ctfp,type));
-			break;
-		case CTF_K_VOLATILE:
-			if (cbdatap->f_type)
-				dt_printf(cbdatap->dtp, cbdatap->fp, "volatile ");
-			dt_print_type_data(&cbdata, ctf_type_reference(cbdatap->dtt.dtt_ctfp,type));
-			break;
-		case CTF_K_CONST:
-			if (cbdatap->f_type)
-				dt_printf(cbdatap->dtp, cbdatap->fp, "const ");
-			dt_print_type_data(&cbdata, ctf_type_reference(cbdatap->dtt.dtt_ctfp,type));
-			break;
-		case CTF_K_RESTRICT:
-			if (cbdatap->f_type)
-				dt_printf(cbdatap->dtp, cbdatap->fp, "restrict ");
-			dt_print_type_data(&cbdata, ctf_type_reference(cbdatap->dtt.dtt_ctfp,type));
-			break;
-		default:
-			break;
-		}
-
-		addr += ssz;
-		cnt++;
-	}
-
-	return (0);
-}
-
-static int
-dt_print_type(dtrace_hdl_t *dtp, FILE *fp, caddr_t addr)
-{
-	caddr_t addrend;
-	char *p;
-	dtrace_typeinfo_t dtt;
-	dt_type_cbdata_t cbdata;
-	int num = 0;
-	int quiet = (dtp->dt_options[DTRACEOPT_QUIET] != DTRACEOPT_UNSET);
-	ssize_t ssz;
-	size_t nbytes, typs;
-	char *strp;
-	int offset;
-	
-	if (!quiet)
-		dt_printf(dtp, fp, "\n");
-
-	/* Get the total number of bytes of data buffered. */
-	nbytes = *((uintptr_t *) addr);
-	addr += sizeof(uintptr_t);
-
-	/*
-	 * Get the size of the type so that we can check that it matches
-	 * the CTF data we look up and so that we can figure out how many
-	 * type elements are buffered.
-	 */
-	typs = *((uintptr_t *) addr);
-	addr += sizeof(uintptr_t);
-
-	/*
-	 * Point to the type string in the buffer. Get it's string
-	 * length and round it up to become the offset to the start
-	 * of the buffered type data which we would like to be aligned
-	 * for easy access.
-	 */
-	strp = (char *) addr;
-	offset = roundup(strlen(strp) + 1, sizeof(uintptr_t));
-
-	/*
-	 * The type string might have a format such as 'int [20]'.
-	 * Check if there is an array dimension present.
-	 */
-	if ((p = strchr(strp, '[')) != NULL) {
-		/* Strip off the array dimension. */
-		*p++ = '\0';
-
-		for (; *p != '\0' && *p != ']'; p++)
-			num = num * 10 + *p - '0';
-	} else
-		/* No array dimension, so default. */
-		num = 1;
-
-	/* Lookup the CTF type from the type string. */
-	if (dtrace_lookup_by_type(dtp,  DTRACE_OBJ_EVERY, strp, &dtt) < 0)
-		return (-1);
-
-	/* Offset the buffer address to the start of the data... */
-	addr += offset;
-
-	ssz = ctf_type_size(dtt.dtt_ctfp, dtt.dtt_type);
-
-	if (typs != ssz) {
-		printf("Expected type size from buffer (%lu) to match type size looked up now (%ld)\n", (u_long) typs, (long) ssz);
-		return (-1);
-	}
-
-	cbdata.dtp = dtp;
-	cbdata.dtt = dtt;
-	cbdata.name = "";
-	cbdata.addr = addr;
-	cbdata.addrend = addr + nbytes;
-	cbdata.indent = 1;
-	cbdata.f_type = 1;
-	cbdata.type_width = 0;
-	cbdata.name_width = 0;
-	cbdata.fp = fp;
-
-	return (dt_print_type_data(&cbdata, dtt.dtt_type));
 }
 
 static int
@@ -1814,10 +1810,83 @@ dt_trunc(dtrace_hdl_t *dtp, caddr_t base, dtrace_recdesc_t *rec)
 
 static int
 dt_print_datum(dtrace_hdl_t *dtp, FILE *fp, dtrace_recdesc_t *rec,
-    caddr_t addr, size_t size, uint64_t normal)
+    caddr_t addr, size_t size, const dtrace_aggdata_t *aggdata,
+    uint64_t normal, dt_print_aggdata_t *pd)
 {
-	int err;
+	int err, width;
 	dtrace_actkind_t act = rec->dtrd_action;
+	boolean_t packed = pd->dtpa_agghist || pd->dtpa_aggpack;
+	dtrace_aggdesc_t *agg = aggdata->dtada_desc;
+
+	static struct {
+		size_t size;
+		int width;
+		int packedwidth;
+	} *fmt, fmttab[] = {
+		{ sizeof (uint8_t),	3,	3 },
+		{ sizeof (uint16_t),	5,	5 },
+		{ sizeof (uint32_t),	8,	8 },
+		{ sizeof (uint64_t),	16,	16 },
+		{ 0,			-50,	16 }
+	};
+
+	if (packed && pd->dtpa_agghisthdr != agg->dtagd_varid) {
+		dtrace_recdesc_t *r;
+
+		width = 0;
+
+		/*
+		 * To print our quantization header for either an agghist or
+		 * aggpack aggregation, we need to iterate through all of our
+		 * of our records to determine their width.
+		 */
+		for (r = rec; !DTRACEACT_ISAGG(r->dtrd_action); r++) {
+			for (fmt = fmttab; fmt->size &&
+			    fmt->size != r->dtrd_size; fmt++)
+				continue;
+
+			width += fmt->packedwidth + 1;
+		}
+
+		if (pd->dtpa_agghist) {
+			if (dt_print_quanthdr(dtp, fp, width) < 0)
+				return (-1);
+		} else {
+			if (dt_print_quanthdr_packed(dtp, fp,
+			    width, aggdata, r->dtrd_action) < 0)
+				return (-1);
+		}
+
+		pd->dtpa_agghisthdr = agg->dtagd_varid;
+	}
+
+	if (pd->dtpa_agghist && DTRACEACT_ISAGG(act)) {
+		char positives = aggdata->dtada_flags & DTRACE_A_HASPOSITIVES;
+		char negatives = aggdata->dtada_flags & DTRACE_A_HASNEGATIVES;
+		int64_t val;
+
+		assert(act == DTRACEAGG_SUM || act == DTRACEAGG_COUNT);
+		val = (long long)*((uint64_t *)addr);
+
+		if (dt_printf(dtp, fp, " ") < 0)
+			return (-1);
+
+		return (dt_print_quantline(dtp, fp, val, normal,
+		    aggdata->dtada_total, positives, negatives));
+	}
+
+	if (pd->dtpa_aggpack && DTRACEACT_ISAGG(act)) {
+		switch (act) {
+		case DTRACEAGG_QUANTIZE:
+			return (dt_print_quantize_packed(dtp,
+			    fp, addr, size, aggdata));
+		case DTRACEAGG_LQUANTIZE:
+			return (dt_print_lquantize_packed(dtp,
+			    fp, addr, size, aggdata));
+		default:
+			break;
+		}
+	}
 
 	switch (act) {
 	case DTRACEACT_STACK:
@@ -1860,28 +1929,33 @@ dt_print_datum(dtrace_hdl_t *dtp, FILE *fp, dtrace_recdesc_t *rec,
 		break;
 	}
 
+	for (fmt = fmttab; fmt->size && fmt->size != size; fmt++)
+		continue;
+
+	width = packed ? fmt->packedwidth : fmt->width;
+
 	switch (size) {
 	case sizeof (uint64_t):
-		err = dt_printf(dtp, fp, " %16lld",
+		err = dt_printf(dtp, fp, " %*lld", width,
 		    /* LINTED - alignment */
 		    (long long)*((uint64_t *)addr) / normal);
 		break;
 	case sizeof (uint32_t):
 		/* LINTED - alignment */
-		err = dt_printf(dtp, fp, " %8d", *((uint32_t *)addr) /
+		err = dt_printf(dtp, fp, " %*d", width, *((uint32_t *)addr) /
 		    (uint32_t)normal);
 		break;
 	case sizeof (uint16_t):
 		/* LINTED - alignment */
-		err = dt_printf(dtp, fp, " %5d", *((uint16_t *)addr) /
+		err = dt_printf(dtp, fp, " %*d", width, *((uint16_t *)addr) /
 		    (uint32_t)normal);
 		break;
 	case sizeof (uint8_t):
-		err = dt_printf(dtp, fp, " %3d", *((uint8_t *)addr) /
+		err = dt_printf(dtp, fp, " %*d", width, *((uint8_t *)addr) /
 		    (uint32_t)normal);
 		break;
 	default:
-		err = dt_print_bytes(dtp, fp, addr, size, 50, 0, 0);
+		err = dt_print_bytes(dtp, fp, addr, size, width, 0, 0);
 		break;
 	}
 
@@ -1902,6 +1976,9 @@ dt_print_aggs(const dtrace_aggdata_t **aggsdata, int naggvars, void *arg)
 	caddr_t addr;
 	size_t size;
 
+	pd->dtpa_agghist = (aggdata->dtada_flags & DTRACE_A_TOTAL);
+	pd->dtpa_aggpack = (aggdata->dtada_flags & DTRACE_A_MINMAXBIN);
+
 	/*
 	 * Iterate over each record description in the key, printing the traced
 	 * data, skipping the first datum (the tuple member created by the
@@ -1918,7 +1995,8 @@ dt_print_aggs(const dtrace_aggdata_t **aggsdata, int naggvars, void *arg)
 			break;
 		}
 
-		if (dt_print_datum(dtp, fp, rec, addr, size, 1) < 0)
+		if (dt_print_datum(dtp, fp, rec, addr,
+		    size, aggdata, 1, pd) < 0)
 			return (-1);
 
 		if (dt_buffered_flush(dtp, NULL, rec, aggdata,
@@ -1941,7 +2019,8 @@ dt_print_aggs(const dtrace_aggdata_t **aggsdata, int naggvars, void *arg)
 		assert(DTRACEACT_ISAGG(act));
 		normal = aggdata->dtada_normal;
 
-		if (dt_print_datum(dtp, fp, rec, addr, size, normal) < 0)
+		if (dt_print_datum(dtp, fp, rec, addr,
+		    size, aggdata, normal, pd) < 0)
 			return (-1);
 
 		if (dt_buffered_flush(dtp, NULL, rec, aggdata,
@@ -1952,8 +2031,10 @@ dt_print_aggs(const dtrace_aggdata_t **aggsdata, int naggvars, void *arg)
 			agg->dtagd_flags |= DTRACE_AGD_PRINTED;
 	}
 
-	if (dt_printf(dtp, fp, "\n") < 0)
-		return (-1);
+	if (!pd->dtpa_agghist && !pd->dtpa_aggpack) {
+		if (dt_printf(dtp, fp, "\n") < 0)
+			return (-1);
+	}
 
 	if (dt_buffered_flush(dtp, NULL, NULL, aggdata,
 	    DTRACE_BUFDATA_AGGFORMAT | DTRACE_BUFDATA_AGGLAST) < 0)
@@ -2135,11 +2216,11 @@ dt_consume_cpu(dtrace_hdl_t *dtp, FILE *fp, int cpu,
 
 					(void) fflush(fp);
 					(void) ftruncate(fileno(fp), 0);
-#if defined(sun)
-					(void) fseeko(fp, 0, SEEK_SET);
-#else
+#if defined(windows)
 					(void) fseek(fp, 0, SEEK_SET);
-#endif					
+#else
+					(void) fseeko(fp, 0, SEEK_SET);
+#endif
 					continue;
 
 				case DT_ACT_NORMALIZE:
@@ -2214,7 +2295,7 @@ dt_consume_cpu(dtrace_hdl_t *dtp, FILE *fp, int cpu,
 
 			if (act == DTRACEACT_TRACEMEM_DYNSIZE &&
 			    rec->dtrd_size == sizeof (uint64_t)) {
-			    	/* LINTED - alignment */
+				/* LINTED - alignment */
 				tracememsize = *((unsigned long long *)addr);
 				continue;
 			}
@@ -2267,18 +2348,6 @@ dt_consume_cpu(dtrace_hdl_t *dtp, FILE *fp, int cpu,
 
 			if (act == DTRACEACT_UMOD) {
 				if (dt_print_umod(dtp, fp, NULL, addr) < 0)
-					return (-1);
-				goto nextrec;
-			}
-
-			if (act == DTRACEACT_PRINTM) {
-				if (dt_print_memory(dtp, fp, addr) < 0)
-					return (-1);
-				goto nextrec;
-			}
-
-			if (act == DTRACEACT_PRINTT) {
-				if (dt_print_type(dtp, fp, addr) < 0)
 					return (-1);
 				goto nextrec;
 			}
@@ -2426,7 +2495,7 @@ nofmt:
 				}
 
 				n = dt_print_bytes(dtp, fp, addr,
-				    tracememsize, 33, quiet, 1);
+				    tracememsize, -33, quiet, 1);
 
 				tracememsize = 0;
 
@@ -2459,7 +2528,7 @@ nofmt:
 				break;
 			default:
 				n = dt_print_bytes(dtp, fp, addr,
-				    rec->dtrd_size, 33, quiet, 0);
+				    rec->dtrd_size, -33, quiet, 0);
 				break;
 			}
 
@@ -2605,6 +2674,7 @@ dt_get_buf(dtrace_hdl_t *dtp, int cpu, dtrace_bufdesc_t **bufp)
 			*bufp = NULL;
 			return (0);
 		}
+
 		return (dt_set_errno(dtp, errno));
 	}
 
@@ -2835,7 +2905,7 @@ dtrace_consume(dtrace_hdl_t *dtp, FILE *fp,
 	int i, rval;
 	dtrace_optval_t interval = dtp->dt_options[DTRACEOPT_SWITCHRATE];
 	hrtime_t now = gethrtime();
-	
+
 	if (dtp->dt_lastswitch != 0) {
 		if (now - dtp->dt_lastswitch < interval)
 			return (0);
@@ -2969,9 +3039,6 @@ dtrace_consume(dtrace_hdl_t *dtp, FILE *fp,
 				break;
 
 			timestamp = dt_buf_oldest(buf, dtp);
-			assert(timestamp >= dtp->dt_last_timestamp);
-			dtp->dt_last_timestamp = timestamp;
-
 			if (timestamp == buf->dtbd_timestamp) {
 				/*
 				 * We've reached the end of the time covered
@@ -2979,13 +3046,14 @@ dtrace_consume(dtrace_hdl_t *dtp, FILE *fp,
 				 * buffer, we must do another pass
 				 * to retrieve more data.
 				 */
-
 				dt_put_buf(dtp, buf);
 				if (timestamp == first_timestamp &&
 				    !dtp->dt_stopped)
 					break;
 				continue;
 			}
+			assert(timestamp >= dtp->dt_last_timestamp);
+			dtp->dt_last_timestamp = timestamp;
 
 			if ((rval = dt_consume_cpu(dtp, fp,
 			    buf->dtbd_cpu, buf, B_TRUE, pf, rf, arg)) != 0)

@@ -30,17 +30,17 @@
 
 #ifndef	_CTF_IMPL_H
 #define	_CTF_IMPL_H
-#if defined(sun)
+
+#ifdef windows
+#include <errno.h>
+#include <sys/ctf_api.h>
+#else
 #include <sys/types.h>
 #include <sys/errno.h>
 #include <sys/sysmacros.h>
 #include <sys/ctf_api.h>
-#else
-#include <errno.h>
-#include <sys/ctf_api.h>
-
-#define	MAP_FAILED	((void *)-1)
 #endif
+
 #ifdef _KERNEL
 
 #include <sys/systm.h>
@@ -55,7 +55,11 @@
 
 #else	/* _KERNEL */
 
-//#include <strings.h>
+#ifdef windows
+#define    MAP_FAILED      ((void *)-1)
+#else
+#include <strings.h>
+#endif
 #include <stdlib.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -216,6 +220,9 @@ struct ctf_file {
 	ulong_t ctf_dtnextid;	/* next dynamic type id to assign */
 	ulong_t ctf_dtoldid;	/* oldest id that has been committed */
 	void *ctf_specific;	/* data for ctf_get/setspecific */
+#ifdef windows
+	void *ctf_osspecific;	/* data for ctf_get/setosspecific */
+#endif
 };
 
 #define	LCTF_INDEX_TO_TYPEPTR(fp, i) \

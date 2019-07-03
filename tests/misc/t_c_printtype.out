@@ -1,0 +1,16 @@
+ 0  65823               ff_getgameid:entry final_fantasy_info_t {
+    int ff_gameid = 0x1
+    int ff_partysize = 0x4
+    int ff_hassummons = 0
+}
+
+  0  65824            ff_getpartysize:entry final_fantasy_info_t {
+    int ff_gameid = 0xa
+    int ff_partysize = 0x3
+    int ff_hassummons = 0x1
+}
+
+  0  65825              ff_getsummons:entry final_fantasy_info_t {
+    int ff_gameid = 0x6
+    int ff_partysize = 0x4
+    int ff_hassummons = 0x1

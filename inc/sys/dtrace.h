@@ -25,14 +25,12 @@
  */
 
 /*
- * Copyright (c) 2011, Joyent, Inc. All rights reserved.
- * Copyright (c) 2012 by Delphix. All rights reserved.
+ * Copyright (c) 2013, Joyent, Inc. All rights reserved.
+ * Copyright (c) 2013 by Delphix. All rights reserved.
  */
 
 #ifndef _SYS_DTRACE_H
 #define	_SYS_DTRACE_H
-
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
 
 #ifdef	__cplusplus
 extern "C" {
@@ -82,7 +80,7 @@ typedef int model_t;
 
 #define	DTRACE_PROVNAMELEN	64
 #define	DTRACE_MODNAMELEN	64
-#define	DTRACE_FUNCNAMELEN	128
+#define	DTRACE_FUNCNAMELEN	192
 #define	DTRACE_NAMELEN		64
 #define	DTRACE_FULLNAMELEN	(DTRACE_PROVNAMELEN + DTRACE_MODNAMELEN + \
 				DTRACE_FUNCNAMELEN + DTRACE_NAMELEN + 4)
@@ -199,6 +197,7 @@ typedef enum dtrace_probespec {
 #define	DIF_OP_RLDX	77		/* rldx  [r1], rd */
 #define	DIF_OP_XLATE	78		/* xlate xlrindex, rd */
 #define	DIF_OP_XLARG	79		/* xlarg xlrindex, rd */
+#define	DIF_OP_STGA	80		/* stga var, ri, rd */
 
 #define	DIF_INTOFF_MAX		0xffff	/* highest integer table offset */
 #define	DIF_STROFF_MAX		0xffff	/* highest string table offset */
@@ -216,6 +215,7 @@ typedef enum dtrace_probespec {
 
 #define	DIF_VAR_ARGS		0x0000	/* arguments array */
 #define	DIF_VAR_REGS		0x0001	/* registers array */
+#define	DIF_VAR_VMREGS		0x0003	/* virtual machine registers array */
 #define	DIF_VAR_UREGS		0x0002	/* user registers array */
 #define	DIF_VAR_CURTHREAD	0x0100	/* thread pointer */
 #define	DIF_VAR_TIMESTAMP	0x0101	/* timestamp */
@@ -251,6 +251,7 @@ typedef enum dtrace_probespec {
 #define	DIF_VAR_GID		0x011f	/* process group ID */
 #define	DIF_VAR_ERRNO		0x0120	/* thread errno */
 #define	DIF_VAR_EXECARGS	0x0121	/* process arguments */
+#define	DIF_VAR_THREADNAME	0x0122	/* thread name */
 
 #if !defined(sun)
 #define	DIF_VAR_CPU		0x0200
@@ -302,15 +303,14 @@ typedef enum dtrace_probespec {
 #define	DIF_SUBR_INET_NTOA6		43
 #define	DIF_SUBR_TOUPPER		44
 #define	DIF_SUBR_TOLOWER		45
-#define	DIF_SUBR_MEMREF			46
-#define	DIF_SUBR_TYPEREF		47
-#define	DIF_SUBR_SX_SHARED_HELD		48
-#define	DIF_SUBR_SX_EXCLUSIVE_HELD	49
-#define	DIF_SUBR_SX_ISEXCLUSIVE		50
-#define DIF_SUBR_WSTRINGOF			51
-#define	DIF_SUBR_WSTRLEN			52	
-
-#define	DIF_SUBR_MAX			52	/* max subroutine value */
+//#define	DIF_SUBR_MEMREF			46
+//#define	DIF_SUBR_TYPEREF		47	
+#define	DIF_SUBR_GETF			46
+#define	DIF_SUBR_JSON			47
+#define	DIF_SUBR_STRTOLL		48
+#define DIF_SUBR_WSTRINGOF			49
+#define	DIF_SUBR_WSTRLEN			50
+#define	DIF_SUBR_MAX	50	/* max subroutine value */
 
 typedef uint32_t dif_instr_t;
 
@@ -372,6 +372,7 @@ typedef struct dtrace_diftype {
 #define	DIF_TYPE_STRING		1	/* type is a D string */
 
 #define	DIF_TF_BYREF		0x1	/* type is passed by reference */
+#define	DIF_TF_BYUREF		0x2	/* user type is passed by reference */
 
 /*
  * A DTrace Intermediate Format variable record is used to describe each of the
@@ -421,8 +422,6 @@ typedef struct dtrace_difv {
 #define	DTRACEACT_LIBACT		5	/* library-controlled action */
 #define	DTRACEACT_TRACEMEM		6	/* tracemem() action */
 #define	DTRACEACT_TRACEMEM_DYNSIZE	7	/* dynamic tracemem() size */
-#define	DTRACEACT_PRINTM		8	/* printm() action (BSD) */
-#define	DTRACEACT_PRINTT		9	/* printt() action (BSD) */
 
 #define	DTRACEACT_PROC			0x0100
 #define	DTRACEACT_USTACK		(DTRACEACT_PROC + 1)
@@ -721,6 +720,20 @@ typedef struct dof_sec {
 
 #define	DOF_SECF_LOAD		1	/* section should be loaded */
 
+#define	DOF_SEC_ISLOADABLE(x)						\
+	(((x) == DOF_SECT_ECBDESC) || ((x) == DOF_SECT_PROBEDESC) ||	\
+	((x) == DOF_SECT_ACTDESC) || ((x) == DOF_SECT_DIFOHDR) ||	\
+	((x) == DOF_SECT_DIF) || ((x) == DOF_SECT_STRTAB) ||		\
+	((x) == DOF_SECT_VARTAB) || ((x) == DOF_SECT_RELTAB) ||		\
+	((x) == DOF_SECT_TYPTAB) || ((x) == DOF_SECT_URELHDR) ||	\
+	((x) == DOF_SECT_KRELHDR) || ((x) == DOF_SECT_OPTDESC) ||	\
+	((x) == DOF_SECT_PROVIDER) || ((x) == DOF_SECT_PROBES) ||	\
+	((x) == DOF_SECT_PRARGS) || ((x) == DOF_SECT_PROFFS) ||		\
+	((x) == DOF_SECT_INTTAB) || ((x) == DOF_SECT_XLTAB) ||		\
+	((x) == DOF_SECT_XLMEMBERS) || ((x) == DOF_SECT_XLIMPORT) ||	\
+	((x) == DOF_SECT_XLIMPORT) || ((x) == DOF_SECT_XLEXPORT) ||	\
+	((x) == DOF_SECT_PREXPORT) || ((x) == DOF_SECT_PRENOFFS))
+
 typedef struct dof_ecbdesc {
 	dof_secidx_t dofe_probes;	/* link to DOF_SECT_PROBEDESC */
 	dof_secidx_t dofe_pred;		/* link to DOF_SECT_DIFOHDR */
@@ -767,6 +780,7 @@ typedef struct dof_relodesc {
 
 #define	DOF_RELO_NONE	0		/* empty relocation entry */
 #define	DOF_RELO_SETX	1		/* relocate setx value */
+#define	DOF_RELO_DOFREL	2		/* relocate DOF-relative value */
 
 typedef struct dof_optdesc {
 	uint32_t dofo_option;		/* option identifier */
@@ -1028,7 +1042,11 @@ typedef struct dtrace_fmtdesc {
 #define	DTRACEOPT_AGGSORTPOS	25	/* agg. position to sort on */
 #define	DTRACEOPT_AGGSORTKEYPOS	26	/* agg. key position to sort on */
 #define	DTRACEOPT_TEMPORAL	27	/* temporally ordered output */
-#define	DTRACEOPT_MAX		28	/* number of options */
+#define	DTRACEOPT_AGGHIST	28	/* histogram aggregation output */
+#define	DTRACEOPT_AGGPACK	29	/* packed aggregation output */
+#define	DTRACEOPT_AGGZOOM	30	/* zoomed aggregation scaling */
+#define	DTRACEOPT_ZONE		31	/* zone in which to enable probes */
+#define	DTRACEOPT_MAX	32	/* number of options */
 
 #define	DTRACEOPT_UNSET		(dtrace_optval_t)-2	/* unset option */
 
@@ -1727,7 +1745,22 @@ typedef struct dof_helper {
  *
  * 1.10.3  Return value
  *
- *   A boolean value.
+ *   A bitwise OR that encapsulates both the mode (either DTRACE_MODE_KERNEL
+ *   or DTRACE_MODE_USER) and the policy when the privilege of the enabling
+ *   is insufficient for that mode (a combination of DTRACE_MODE_NOPRIV_DROP,
+ *   DTRACE_MODE_NOPRIV_RESTRICT, and DTRACE_MODE_LIMITEDPRIV_RESTRICT).  If
+ *   DTRACE_MODE_NOPRIV_DROP bit is set, insufficient privilege will result
+ *   in the probe firing being silently ignored for the enabling; if the
+ *   DTRACE_NODE_NOPRIV_RESTRICT bit is set, insufficient privilege will not
+ *   prevent probe processing for the enabling, but restrictions will be in
+ *   place that induce a UPRIV fault upon attempt to examine probe arguments
+ *   or current process state.  If the DTRACE_MODE_LIMITEDPRIV_RESTRICT bit
+ *   is set, similar restrictions will be placed upon operation if the
+ *   privilege is sufficient to process the enabling, but does not otherwise
+ *   entitle the enabling to all zones.  The DTRACE_MODE_NOPRIV_DROP and
+ *   DTRACE_MODE_NOPRIV_RESTRICT are mutually exclusive (and one of these
+ *   two policies must be specified), but either may be combined (or not)
+ *   with DTRACE_MODE_LIMITEDPRIV_RESTRICT.
  *
  * 1.10.4  Caller's context
  *
@@ -2126,6 +2159,12 @@ typedef struct dtrace_pops {
 	void (*dtps_destroy)(void *arg, dtrace_id_t id, void *parg);
 } dtrace_pops_t;
 
+#define	DTRACE_MODE_KERNEL			0x01
+#define	DTRACE_MODE_USER			0x02
+#define	DTRACE_MODE_NOPRIV_DROP			0x10
+#define	DTRACE_MODE_NOPRIV_RESTRICT		0x20
+#define	DTRACE_MODE_LIMITEDPRIV_RESTRICT	0x40
+
 typedef uintptr_t	dtrace_provider_id_t;
 
 extern int dtrace_register(const char *, const dtrace_pattr_t *, uint32_t,
@@ -2186,12 +2225,18 @@ extern void dtrace_probe(dtrace_id_t, uintptr_t arg0, uintptr_t arg1,
  *
  * 1.2.4  Caller's context
  *
- *   dtms_create_probe() is called from either ioctl() or module load context.
- *   The DTrace framework is locked in such a way that meta providers may not
- *   register or unregister. This means that the meta provider cannot call
- *   dtrace_meta_register() or dtrace_meta_unregister(). However, the context is
- *   such that the provider may (and is expected to) call provider-related
- *   DTrace provider APIs including dtrace_probe_create().
+ *   dtms_create_probe() is called from either ioctl() or module load context
+ *   in the context of a newly-created provider (that is, a provider that
+ *   is a result of a call to dtms_provide_pid()). The DTrace framework is
+ *   locked in such a way that meta providers may not register or unregister,
+ *   such that no other thread can call into a meta provider operation and that
+ *   atomicity is assured with respect to meta provider operations across
+ *   dtms_provide_pid() and subsequent calls to dtms_create_probe().
+ *   The context is thus effectively single-threaded with respect to the meta
+ *   provider, and that the meta provider cannot call dtrace_meta_register()
+ *   or dtrace_meta_unregister(). However, the context is such that the
+ *   provider may (and is expected to) call provider-related DTrace provider
+ *   APIs including dtrace_probe_create().
  *
  * 1.3  void *dtms_provide_pid(void *arg, dtrace_meta_provider_t *mprov,
  *	      pid_t pid)
@@ -2328,11 +2373,8 @@ extern void (*dtrace_fasttrap_exit_ptr)(proc_t *);
 extern void dtrace_fasttrap_fork(proc_t *, proc_t *);
 #endif
 
-#if defined (sun)
 typedef uintptr_t dtrace_icookie_t;
-#else
-typedef uintptr_t dtrace_icookie_t;
-#endif
+
 typedef void (*dtrace_xcall_t)(void *);
 
 extern dtrace_icookie_t dtrace_interrupt_disable(void);

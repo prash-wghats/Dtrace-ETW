@@ -26,7 +26,6 @@
  * Use is subject to license terms.
  */
 
-
 #include <sys/dtrace_misc.h>
 #include <sys/dtrace_win32.h>
 #include <sys/dtrace_impl.h>
@@ -143,7 +142,8 @@ dtrace_getreg(void *regs, uint_t reg)
 }
 
 void
-dtrace_getpcstack(pc_t *pcstack, int pcstack_limit, int aframes, uint32_t *intrpc)
+dtrace_getpcstack(pc_t *pcstack, int pcstack_limit, int aframes,
+    uint32_t *intrpc)
 {
 	int depth = 0;
 	uintptr_t ebp;
@@ -155,8 +155,8 @@ dtrace_getpcstack(pc_t *pcstack, int pcstack_limit, int aframes, uint32_t *intrp
 	if ((depth = dtrace_etw_get_stack(pcstack, pcstack_limit, 0)) > 0) {
 		goto zerok;
 	}
-	
-	zerok:
+
+zerok:
 	for (; depth < pcstack_limit; depth++) {
 		pcstack[depth] = 0;
 	}
@@ -198,7 +198,7 @@ dtrace_getustack_common(uint64_t *pcstack, int pcstack_limit, uintptr_t pc,
 		if (sp == 0)
 			break;
 
-#if defined(sun) 	 /* XXX signal stack. */
+#if defined(sun)	/* XXX signal stack. */
 		if (oldcontext == sp + s1 || oldcontext == sp + s2) {
 			if (p->p_model == DATAMODEL_NATIVE) {
 				ucontext_t *ucp = (ucontext_t *)oldcontext;
@@ -254,7 +254,7 @@ dtrace_getustack_common(uint64_t *pcstack, int pcstack_limit, uintptr_t pc,
 #define	r_rip	r_eip
 #define	r_rflags r_eflags
 #define	r_rsp	r_esp
-#define r_rbp   r_ebp
+#define	r_rbp	r_ebp
 #endif
 
 void
@@ -281,7 +281,7 @@ dtrace_getupcstack(uint64_t *pcstack, int pcstack_limit)
 		pcstack += n;
 		goto zero;
 	}
-	
+
 	/*
 	 * If there's no user context we still need to zero the stack.
 	 */
@@ -297,7 +297,8 @@ dtrace_getupcstack(uint64_t *pcstack, int pcstack_limit)
 #ifdef __amd64
 	if (p->model == DATAMODEL_NATIVE && td->context) {
 		winos_reg_to_context(&ct, tf);
-		n = winos_unwind_user_stack(td, td->context, pcstack_limit, (uintptr_t) pcstack);
+		n = winos_unwind_user_stack(td, td->context, pcstack_limit,
+		    (uintptr_t) pcstack);
 		pcstack = &pcstack[n];
 		pcstack_limit -= n;
 	} else {
@@ -350,8 +351,8 @@ dtrace_getustackdepth(void)
 	uint64_t pcstack[100];
 	int pcstack_limit = 100;
 
-	if ((n=dtrace_etw_get_stack(pcstack, pcstack_limit, 1)) > 0) {
-		return n;
+	if ((n = dtrace_etw_get_stack(pcstack, pcstack_limit, 1)) > 0) {
+		return (n);
 	}
 
 	if (p == NULL || (tf = curthread->tf) == NULL)
@@ -365,7 +366,8 @@ dtrace_getustackdepth(void)
 		CONTEXT ct;
 
 		winos_reg_to_context(&ct, tf);
-		n += winos_unwind_user_stack(curthread, &ct, pcstack_limit, (uintptr_t) pcstack);
+		n += winos_unwind_user_stack(curthread, &ct, pcstack_limit,
+		    (uintptr_t) pcstack);
 	} else {
 #endif // i386
 		pc = tf->r_rip;
@@ -429,7 +431,8 @@ dtrace_getufpstack(uint64_t *pcstack, uint64_t *fpstack, int pcstack_limit)
 #ifdef __amd64
 	if (p->model == DATAMODEL_NATIVE) {
 		winos_reg_to_context(&ct, tf);
-		n = winos_unwind_user_stack(td, &ct, pcstack_limit, (uintptr_t) pcstack);
+		n = winos_unwind_user_stack(td, &ct, pcstack_limit,
+		    (uintptr_t) pcstack);
 		pcstack = &pcstack[n];
 		pcstack_limit -= n;
 	} else {
@@ -470,7 +473,7 @@ dtrace_getufpstack(uint64_t *pcstack, uint64_t *fpstack, int pcstack_limit)
 			if (fp == 0)
 				break;
 
-#ifdef notyet /* XXX signal stack */
+#ifdef notyet	/* XXX signal stack */
 			if (oldcontext == sp + s1 || oldcontext == sp + s2) {
 				if (p->p_model == DATAMODEL_NATIVE) {
 					ucontext_t *ucp = (ucontext_t *)oldcontext;
@@ -513,7 +516,6 @@ dtrace_getufpstack(uint64_t *pcstack, uint64_t *fpstack, int pcstack_limit)
 	zero:
 	while (pcstack_limit-- > 0)
 		*pcstack++ = 0;
-	return;
 }
 
 int
@@ -529,20 +531,22 @@ dtrace_getstackdepth(int aframes)
 	uint64_t pcstack[100];
 #endif
 
-	if ((depth=dtrace_etw_get_stack(pcstack, pcstack_limit, 0)) > 0) {
-		return depth;
+	if ((depth = dtrace_etw_get_stack(pcstack, pcstack_limit, 0)) > 0) {
+		return (depth);
 	}
 	ebp = td->ebp;
 	frame = (struct frame *)ebp;
 	depth++;
 
 #ifdef __amd64
-	depth += RtlCaptureStackBackTrace(0, pcstack_limit, (PVOID) pcstack, NULL);
+	depth += RtlCaptureStackBackTrace(0, pcstack_limit,
+	    (PVOID) pcstack, NULL);
 #else
-	for(;;) {
+	for (;;) {
 		if ((uintptr_t)frame < td->klimit ||
-		    (uintptr_t) ((char *) frame - sizeof(struct frame)) >= td->kbase)
-				break;
+		    (uintptr_t)((char *) frame - sizeof (struct frame)) >=
+		    td->kbase)
+			break;
 		depth++;
 		callpc = frame->f_retaddr;
 
@@ -553,9 +557,9 @@ dtrace_getstackdepth(int aframes)
 	}
 #endif
 	if (depth < aframes)
-		return 0;
+		return (0);
 	else
-		return depth - aframes;
+		return (depth - aframes);
 }
 
 uint64_t
@@ -563,7 +567,8 @@ dtrace_getarg(int arg, int aframes)
 {
 	UNREFERENCED_PARAMETER(arg);
 	UNREFERENCED_PARAMETER(aframes);
-	return 0;
+
+	return (0);
 }
 
 static int
@@ -573,7 +578,8 @@ dtrace_copycheck(uintptr_t uaddr, uintptr_t kaddr, size_t size)
 }
 
 void
-dtrace_copyin(uintptr_t uaddr, uintptr_t kaddr, size_t size, volatile uint16_t *flags)
+dtrace_copyin(uintptr_t uaddr, uintptr_t kaddr, size_t size,
+    volatile uint16_t *flags)
 {
 	if (pcopyin(uaddr, kaddr, size)) {
 		*flags |= CPU_DTRACE_FAULT;
@@ -592,7 +598,8 @@ dtrace_copyinstr(uintptr_t uaddr, uintptr_t kaddr, size_t size,
 
 
 void
-dtrace_copyoutstr(uintptr_t kaddr, uintptr_t uaddr, size_t size, volatile uint16_t *flags)
+dtrace_copyoutstr(uintptr_t kaddr, uintptr_t uaddr, size_t size,
+    volatile uint16_t *flags)
 {
 	int len = strlen(kaddr)+1;
 
@@ -634,8 +641,8 @@ dtrace_fulword(void *addr)
 {
 	uintptr_t ret;
 
-	RtlCopyMemory(&ret, addr, sizeof(uintptr_t));
-	return ret;
+	RtlCopyMemory(&ret, addr, sizeof (uintptr_t));
+	return (ret);
 }
 
 uint64_t

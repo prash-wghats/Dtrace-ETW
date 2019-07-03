@@ -21,7 +21,7 @@
 /*
  * Copyright (c) 2004, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2012, Joyent, Inc. All rights reserved.
- * Copyright (C) 2019, PK 
+ * Copyright (C) 2019, PK.
  */
 
 #include <sys/dtrace_misc.h>
@@ -46,24 +46,24 @@ DllMain(HMODULE hmodule, DWORD  reason, LPVOID notused)
 		}
 		break;
 	}
-	return TRUE;
+	return (TRUE);
 }
 #endif
 
 static dtrace_pattr_t stab_attr = {
-	{ DTRACE_STABILITY_EVOLVING, DTRACE_STABILITY_EVOLVING, DTRACE_CLASS_ETW },
-	{ DTRACE_STABILITY_PRIVATE, DTRACE_STABILITY_PRIVATE, DTRACE_CLASS_UNKNOWN },
-	{ DTRACE_STABILITY_PRIVATE, DTRACE_STABILITY_PRIVATE, DTRACE_CLASS_UNKNOWN },
-	{ DTRACE_STABILITY_EVOLVING, DTRACE_STABILITY_EVOLVING, DTRACE_CLASS_ISA },
-	{ DTRACE_STABILITY_EVOLVING, DTRACE_STABILITY_EVOLVING, DTRACE_CLASS_ISA },
+{ DTRACE_STABILITY_EVOLVING, DTRACE_STABILITY_EVOLVING, DTRACE_CLASS_ETW },
+{ DTRACE_STABILITY_PRIVATE, DTRACE_STABILITY_PRIVATE, DTRACE_CLASS_UNKNOWN },
+{ DTRACE_STABILITY_PRIVATE, DTRACE_STABILITY_PRIVATE, DTRACE_CLASS_UNKNOWN },
+{ DTRACE_STABILITY_EVOLVING, DTRACE_STABILITY_EVOLVING, DTRACE_CLASS_ISA },
+{ DTRACE_STABILITY_EVOLVING, DTRACE_STABILITY_EVOLVING, DTRACE_CLASS_ISA },
 };
 
 static dtrace_pattr_t sdt_attr = {
-	{ DTRACE_STABILITY_EVOLVING, DTRACE_STABILITY_EVOLVING, DTRACE_CLASS_ISA },
-	{ DTRACE_STABILITY_PRIVATE, DTRACE_STABILITY_PRIVATE, DTRACE_CLASS_UNKNOWN },
-	{ DTRACE_STABILITY_PRIVATE, DTRACE_STABILITY_PRIVATE, DTRACE_CLASS_UNKNOWN },
-	{ DTRACE_STABILITY_PRIVATE, DTRACE_STABILITY_PRIVATE, DTRACE_CLASS_ISA },
-	{ DTRACE_STABILITY_PRIVATE, DTRACE_STABILITY_PRIVATE, DTRACE_CLASS_ISA },
+{ DTRACE_STABILITY_EVOLVING, DTRACE_STABILITY_EVOLVING, DTRACE_CLASS_ISA },
+{ DTRACE_STABILITY_PRIVATE, DTRACE_STABILITY_PRIVATE, DTRACE_CLASS_UNKNOWN },
+{ DTRACE_STABILITY_PRIVATE, DTRACE_STABILITY_PRIVATE, DTRACE_CLASS_UNKNOWN },
+{ DTRACE_STABILITY_PRIVATE, DTRACE_STABILITY_PRIVATE, DTRACE_CLASS_ISA },
+{ DTRACE_STABILITY_PRIVATE, DTRACE_STABILITY_PRIVATE, DTRACE_CLASS_ISA },
 };
 
 int sdt_etw_procp_cb(PEVENT_RECORD ev, void *data);
@@ -83,47 +83,47 @@ int sdt_etw_diag_cb(PEVENT_RECORD ev, void *data);
 int sdt_etw_lost_cb(PEVENT_RECORD ev, void *data);
 
 sdt_etw_provider_t sdt_proc_events[] = {
-	{ "proc", "start", &ProcessGuid,1, sdt_etw_procp_cb},
-	{ "proc", "exit", &ProcessGuid,2, sdt_etw_procp_cb},
+	{ "proc", "start", &ProcessGuid, 1, sdt_etw_procp_cb},
+	{ "proc", "exit", &ProcessGuid, 2, sdt_etw_procp_cb},
 	{ "proc", "lwp-start", &ThreadGuid, 1, sdt_etw_proct_cb },
 	{ "proc", "lwp-exit", &ThreadGuid, 2, sdt_etw_proct_cb },
 	{ NULL }
 };
 
 sdt_etw_provider_t sdt_io_events[] = {
-	{ "io", "start", &DiskIoGuid,12, sdt_etw_diskio_cb, &FileIoGuid, NULL },
-	{ "io", "done", &DiskIoGuid,10, sdt_etw_diskio_cb, &FileIoGuid, NULL },
+	{ "io", "start", &DiskIoGuid, 12, sdt_etw_diskio_cb, &FileIoGuid, NULL },
+	{ "io", "done", &DiskIoGuid, 10, sdt_etw_diskio_cb, &FileIoGuid, NULL },
 	{ NULL }
 };
 
 sdt_etw_provider_t sdt_tcpip_events[] = {
-	{ "tcpip", "send", &TcpIpGuid, 10, sdt_etw_tcpip_cb }, /*26*/
-	{ "tcpip", "receive", &TcpIpGuid, 11, sdt_etw_tcpip_cb }, /*27*/
-	{ "tcpip", "connect", &TcpIpGuid, 12, sdt_etw_tcpip_cb }, /*28*/
-	{ "tcpip", "disconnect", &TcpIpGuid, 13, sdt_etw_tcpip_cb }, /*29*/
-	{ "tcpip", "retransmit", &TcpIpGuid, 14, sdt_etw_tcpip_cb }, /*30*/
-	{ "tcpip", "accept", &TcpIpGuid, 15, sdt_etw_tcpip_cb }, /*31*/
-	{ "tcpip", "reconnect", &TcpIpGuid, 16, sdt_etw_tcpip_cb }, /*32*/
+	{ "tcpip", "send", &TcpIpGuid, 10, sdt_etw_tcpip_cb }, 		/* 26 */
+	{ "tcpip", "receive", &TcpIpGuid, 11, sdt_etw_tcpip_cb }, 	/* 27 */
+	{ "tcpip", "connect", &TcpIpGuid, 12, sdt_etw_tcpip_cb }, 	/* 28 */
+	{ "tcpip", "disconnect", &TcpIpGuid, 13, sdt_etw_tcpip_cb },	/* 29 */
+	{ "tcpip", "retransmit", &TcpIpGuid, 14, sdt_etw_tcpip_cb },	/* 30 */
+	{ "tcpip", "accept", &TcpIpGuid, 15, sdt_etw_tcpip_cb }, 	/* 31 */
+	{ "tcpip", "reconnect", &TcpIpGuid, 16, sdt_etw_tcpip_cb }, /* 32 */
 	{ "tcpip", "fail", &TcpIpGuid, 17, sdt_etw_tcpip_cb },
-	{ "tcpip", "copy", &TcpIpGuid, 18, sdt_etw_tcpip_cb }, /*34*/
+	{ "tcpip", "copy", &TcpIpGuid, 18, sdt_etw_tcpip_cb },		/* 34 */
 	{ NULL }
 };
 
 sdt_etw_provider_t sdt_udpip_events[] = {
-	{ "udpip", "send", &UdpIpGuid, 10, sdt_etw_udpip_cb }, /*26*/
-	{ "udpip", "receive", &UdpIpGuid, 11, sdt_etw_udpip_cb }, /*27*/
+	{ "udpip", "send", &UdpIpGuid, 10, sdt_etw_udpip_cb }, /* 26 */
+	{ "udpip", "receive", &UdpIpGuid, 11, sdt_etw_udpip_cb }, /* 27 */
 	{ "udpip", "fail", &TcpIpGuid, 17, sdt_etw_tcpip_cb },
 	{ NULL }
 };
 
 sdt_etw_provider_t sdt_fsinfo_events[] = {
-	{ "fsinfo", "create", &FileIoGuid, 64, sdt_etw_fileio_cb }, //32
+	{ "fsinfo", "create", &FileIoGuid, 64, sdt_etw_fileio_cb }, /* 32 */
 	{ "fsinfo", "cleanup", &FileIoGuid, 65, sdt_etw_fileio_cb },
 	{ "fsinfo", "close", &FileIoGuid, 66, sdt_etw_fileio_cb },
 	{ "fsinfo", "read", &FileIoGuid, 67, sdt_etw_fileio_cb },
 	{ "fsinfo", "write", &FileIoGuid, 68, sdt_etw_fileio_cb },
 	{ "fsinfo", "setinfo", &FileIoGuid, 69, sdt_etw_fileio_cb },
-	{ "fsinfo", "delete", &FileIoGuid, 70, sdt_etw_fileio_cb }, //35
+	{ "fsinfo", "delete", &FileIoGuid, 70, sdt_etw_fileio_cb }, /* 35 */
 	{ "fsinfo", "rename", &FileIoGuid, 71, sdt_etw_fileio_cb },
 	{ "fsinfo", "direnum", &FileIoGuid, 72, sdt_etw_fileio_cb },
 	{ "fsinfo", "flush", &FileIoGuid, 73, sdt_etw_fileio_cb },
@@ -134,10 +134,12 @@ sdt_etw_provider_t sdt_fsinfo_events[] = {
 	{ NULL }
 };
 
-//[EventType{10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27},
-//EventTypeName{"Create", "Open", "Delete", "Query", "SetValue", "DeleteValue", "QueryValue",
-//"EnumerateKey", "EnumerateValueKey", "QueryMultipleValue", "SetInformation", "Flush", "KCBCreate",
-//"KCBDelete", "KCBRundownBegin", "KCBRundownEnd", "Virtualize", "Close"}]
+/*
+ * [EventType{10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27},
+ * EventTypeName{"Create", "Open", "Delete", "Query", "SetValue", "DeleteValue", "QueryValue",
+ * "EnumerateKey", "EnumerateValueKey", "QueryMultipleValue", "SetInformation", "Flush", "KCBCreate",
+ * "KCBDelete", "KCBRundownBegin", "KCBRundownEnd", "Virtualize", "Close"}]
+ */
 
 sdt_etw_provider_t sdt_reg_events[] = {
 	{ "reg", "create", &RegistryGuid, 10, sdt_etw_reg_cb },
@@ -169,15 +171,14 @@ sdt_etw_provider_t sdt_pf_events[] = {
 	{ "pf", "cow_flt", &PageFaultGuid, 12, sdt_etw_pf_cb },
 	{ "pf", "gp_flt", &PageFaultGuid, 13, sdt_etw_pf_cb },
 	{ "pf", "hp_flt", &PageFaultGuid, 14, sdt_etw_pf_cb },
-	{ "pf", "av_flt", &PageFaultGuid, 15, sdt_etw_pf_cb },		//Access Violation
+	{ "pf", "av_flt", &PageFaultGuid, 15, sdt_etw_pf_cb },
 	{ NULL }
 };
 
 sdt_etw_provider_t sdt_sched_events[] = {
-	{ "sched", "on-cpu", &ThreadGuid, 36, sdt_etw_sched_cb }, //switch
-	{ "sched", "off-cpu", &ThreadGuid, 35, sdt_etw_sched_cb }, //switch
-	{ "sched", "wakeup", &ThreadGuid, 50, sdt_etw_sched_cb }, //ready
-	//{ "sched", "ready", &ThreadGuid, 50, sdt_etw_sched_cb },
+	{ "sched", "on-cpu", &ThreadGuid, 36, sdt_etw_sched_cb },	/* switch */
+	{ "sched", "off-cpu", &ThreadGuid, 35, sdt_etw_sched_cb },	/* switch */
+	{ "sched", "wakeup", &ThreadGuid, 50, sdt_etw_sched_cb },	/* ready */
 	{ NULL }
 };
 
@@ -210,19 +211,34 @@ sdt_etw_provider_t sdt_guid_events[] = {
 	{ NULL }
 };
 
-
 sdt_provider_t sdt_providers[] = {
 	{ "proc", "proc", &stab_attr, sdt_proc_events},
-	{ "io", "io", &stab_attr, sdt_io_events, EVENT_TRACE_FLAG_DISK_IO|EVENT_TRACE_FLAG_DISK_IO_INIT},
-	{ "fsinfo", "fsinfo", &stab_attr, sdt_fsinfo_events, EVENT_TRACE_FLAG_DISK_FILE_IO|EVENT_TRACE_FLAG_FILE_IO|EVENT_TRACE_FLAG_FILE_IO_INIT},
-	{ "tcpip", "tcpip", &stab_attr, sdt_tcpip_events, EVENT_TRACE_FLAG_NETWORK_TCPIP },
-	{ "udpip", "udpip", &stab_attr, sdt_udpip_events, EVENT_TRACE_FLAG_NETWORK_TCPIP },
-	{ "reg", "reg", &stab_attr, sdt_reg_events, EVENT_TRACE_FLAG_REGISTRY },
-	{ "pf", "pf", &stab_attr, sdt_pf_events, EVENT_TRACE_FLAG_MEMORY_PAGE_FAULTS|EVENT_TRACE_FLAG_MEMORY_HARD_FAULTS|EVENT_TRACE_FLAG_VIRTUAL_ALLOC },
-	{ "sched", "sched", &stab_attr, sdt_sched_events, EVENT_TRACE_FLAG_CSWITCH|EVENT_TRACE_FLAG_DISPATCHER/*ReadyThread*/ },
-	{ "dpc", "dpc", &stab_attr, sdt_dpc_events, EVENT_TRACE_FLAG_DPC },
-	{ "isr", "isr", &stab_attr, sdt_isr_events, EVENT_TRACE_FLAG_INTERRUPT },
-	{ "syscall", "syscall", &stab_attr, sdt_syscall_events, EVENT_TRACE_FLAG_SYSTEMCALL },
+	{ "io", "io", &stab_attr, sdt_io_events,
+	    EVENT_TRACE_FLAG_DISK_IO |
+	    EVENT_TRACE_FLAG_DISK_IO_INIT},
+	{ "fsinfo", "fsinfo", &stab_attr, sdt_fsinfo_events,
+	    EVENT_TRACE_FLAG_DISK_FILE_IO |
+	    EVENT_TRACE_FLAG_FILE_IO |
+	    EVENT_TRACE_FLAG_FILE_IO_INIT},
+	{ "tcpip", "tcpip", &stab_attr, sdt_tcpip_events,
+	    EVENT_TRACE_FLAG_NETWORK_TCPIP },
+	{ "udpip", "udpip", &stab_attr, sdt_udpip_events,
+	    EVENT_TRACE_FLAG_NETWORK_TCPIP },
+	{ "reg", "reg", &stab_attr, sdt_reg_events,
+	    EVENT_TRACE_FLAG_REGISTRY },
+	{ "pf", "pf", &stab_attr, sdt_pf_events,
+	    EVENT_TRACE_FLAG_MEMORY_PAGE_FAULTS |
+	    EVENT_TRACE_FLAG_MEMORY_HARD_FAULTS |
+	    EVENT_TRACE_FLAG_VIRTUAL_ALLOC },
+	{ "sched", "sched", &stab_attr, sdt_sched_events,
+	    EVENT_TRACE_FLAG_CSWITCH |
+	    EVENT_TRACE_FLAG_DISPATCHER /* ReadyThread */ },
+	{ "dpc", "dpc", &stab_attr, sdt_dpc_events,
+	    EVENT_TRACE_FLAG_DPC },
+	{ "isr", "isr", &stab_attr, sdt_isr_events,
+	    EVENT_TRACE_FLAG_INTERRUPT },
+	{ "syscall", "syscall", &stab_attr, sdt_syscall_events,
+	    EVENT_TRACE_FLAG_SYSTEMCALL },
 	{ "diag", "diag", &stab_attr, sdt_guid_events},
 	{ "sdt", NULL, &sdt_attr },
 	{ NULL }
@@ -306,4 +322,3 @@ sdt_getargdesc(void *arg, dtrace_id_t id, void *parg, dtrace_argdesc_t *desc)
 
 	desc->dtargd_ndx = DTRACE_ARGNONE;
 }
-

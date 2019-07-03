@@ -48,17 +48,14 @@
 #include <sys/privregs.h>
 #else
 
-#define DATAMODEL_LP64	1
+#define	DATAMODEL_LP64	1
 
 #ifdef _AMD64_
 #define	DATAMODEL_NATIVE	1
 #else
 #define	DATAMODEL_NATIVE	0
 #endif
- 
 #endif
-
-
 
 /*
  * This subsystem (with the minor exception of the instr_size() function) is
