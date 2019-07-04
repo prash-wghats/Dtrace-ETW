@@ -70,8 +70,9 @@ translator tcpinfo_t < struct tcpip_msg *T > {
 	tcp_sport = T->ti_sport;
 	tcp_dport = T->ti_dport;
 	tcp_seq = T->ti_seqnum;
-	tcp_ack =
-	tcp_offset =
+	tcp_ack = 0;
+	tcp_offset = 0;
+	tcp_flags = 0;
 	tcp_window = T->ti_rcvwin;
 	tcp_checksum = 0;
 	tcp_urgent = 0;
