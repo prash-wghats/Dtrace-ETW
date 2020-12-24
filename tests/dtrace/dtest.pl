@@ -449,7 +449,7 @@ sub run_tests {
 				next;
 			}
 		}
-
+		
 		logmsg("[$pid]\n");
 		$wstat = $?;
 		$wifexited = ($wstat & 0xFF) == 0;
@@ -562,7 +562,7 @@ foreach $arg (@ARGV) {
 	}
 }
 
-$dt_tst = '/e/dtrace/DTrace-0.1_orig/tests/dtrace/tst';
+$dt_tst = abs_path('../../../tests/dtrace/tst');
 $dt_bin = '/opt/SUNWdtrt/bin';
 $defdir = -d $dt_tst ? $dt_tst : '.';
 $bindir = -d $dt_bin ? $dt_bin : '.';
@@ -575,7 +575,7 @@ die $USAGE if (scalar(@files) == 0);
 $dtrace_path = cwd . '/../bin/dtrace.exe';
 $jdtrace_path = "$bindir/jdtrace";
 
-$exception_lists = 'e:/dtrace/DTrace-0.1_orig/tests/dtrace/exception.lst';
+$exception_lists = cwd . '/../../../tests/dtrace/exception.lst';
 
 if ($opt_j || $opt_n || $opt_i) {
 	@dtrace_cmds = ();

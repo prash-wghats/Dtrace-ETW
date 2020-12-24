@@ -37,6 +37,7 @@ typedef vector<Pair> Functions;			/* a event can have more than in cb */
 #define DTRACE_SESSION_NAME_USER L"UserDtrace"
 #define DTRACE_SESSION_NAME_CLR L"CLRDtrace"
 #define DTRACE_SESSION_NAME_FT L"FTDtrace"
+#define DTRACE_SESSION_NAME_HFREQ L"DtraceHREQ"
 
 static const GUID DtraceSessionGuid =
 {0xc298dd9e, 0x42f9, 0x4b55, {0x8a, 0x94, 0xb7, 0x9a, 0x3b, 0x21, 0xcc, 0x10}};
@@ -46,6 +47,8 @@ static const GUID DtraceSessionGuidCLR =
 {0xa68e0e30,0x4486,0x4a39, {0xaf,0x78,0x54,0x50,0x54,0x63,0xcc,0x69}};
 static const GUID DtraceSessionGuidFT =
 {0xada80ef6, 0x714f, 0x4c01, {0xb3, 0xf0, 0x0d, 0xed, 0x56, 0x87, 0x9d, 0x75}};
+static const GUID DtraceSessionGuidHFREQ =
+{0x754125ca, 0x1c11, 0x4089, {0x85, 0x18, 0xaf, 0x7a, 0x80, 0x86, 0x38, 0xab}};
 
 #define NANOSEC		1000000000
 
@@ -145,7 +148,8 @@ struct etw_proc_module {
 #define DT_ETW_FT_SESSION 1
 #define DT_ETW_USER_SESSION 2
 #define DT_ETW_CLR_SESSION 3
-#define DT_ETW_MAX_SESSION 4
+#define DT_ETW_HFREQ_SESSION 4
+#define DT_ETW_MAX_SESSION 5
 
 
 
@@ -191,6 +195,7 @@ typedef struct etw_sessioninfo {
 	PEVENT_RECORD ev;
 	uetwptr_t *ftstack;
 	uint32_t ftsize;
+	int islive;
 } etw_sessioninfo_t;
 
 typedef struct sessioninfo {

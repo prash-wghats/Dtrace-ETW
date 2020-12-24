@@ -14,10 +14,10 @@ livelib.o: livelib.c prov.h
 	cc -c livelib.c
 
 prov.o: livelib.o prov.d
-	e:/dtrace/DTrace-0.1_orig/debug/amd64/bin/dtrace.exe -G -s prov.d livelib.o
+	/e/temp/Dtrace-ETW/debug/amd64/test/../bin/dtrace.exe -G -s prov.d livelib.o
 
 prov.h: prov.d
-	e:/dtrace/DTrace-0.1_orig/debug/amd64/bin/dtrace.exe -h -s prov.d
+	/e/temp/Dtrace-ETW/debug/amd64/test/../bin/dtrace.exe -h -s prov.d
 
 
 deadlib.so: deadlib.o

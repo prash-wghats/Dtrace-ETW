@@ -560,7 +560,7 @@ foreach $arg (@ARGV) {
 	}
 }
 
-$dt_tst = '/opt/SUNWdtrt/tst';
+$dt_tst = cwd . '/../../../tests/dtrace/tst';
 $dt_bin = '/opt/SUNWdtrt/bin';
 $defdir = -d $dt_tst ? $dt_tst : '.';
 $bindir = -d $dt_bin ? $dt_bin : '.';
@@ -573,7 +573,7 @@ die $USAGE if (scalar(@files) == 0);
 $dtrace_path = cwd . '/../bin/dtrace32.exe';
 $jdtrace_path = "$bindir/jdtrace";
 
-%exception_lists = ("$jdtrace_path" => "$bindir/exception.lst");
+$exception_lists = cwd . '/../../../tests/dtrace/exception.lst';
 
 if ($opt_j || $opt_n || $opt_i) {
 	@dtrace_cmds = ();

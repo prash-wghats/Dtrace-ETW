@@ -540,7 +540,7 @@ first_event_cb(Functions& funcs, PEVENT_RECORD ev)
 	sessinfo->etw->evcb = event_cb;
 	sessinfo->etw->evcb(funcs, ev);
 }
-
+long session_fence = 0;
 /*
  * ETW helper thread.
  */
@@ -558,8 +558,9 @@ etw_event_thread(void* data)
 	tsinfo->etw = sinfo;
 	sessinfo = tsinfo;
 	sinfo->evcb = first_event_cb;
-
+	sinfo->islive = 1; 
 	error = ProcessTrace(&sinfo->psession, 1, 0, 0);
+	sinfo->islive = 0;
 	if (error != ERROR_SUCCESS) {
 		dprintf("etw_event_thread, ProcessTrace failed: session (%ls) error (%d)\n",
 		    sinfo->sessname, error);
@@ -568,13 +569,13 @@ etw_event_thread(void* data)
 	/* process all pending events, without waiting for stacks */
 	etw_event_purge();
 
-	Sleep(1000);
+	//Sleep(1000);
 
 	/* if reading from a file send stop signal to dtrace, to end dtrace session */
 	for (int i = 0; i < DT_ETW_MAX_SESSION; i++) {
 		if (dtrace_etw_sessions[i] != NULL) {
 			if (dtrace_etw_sessions[i] == sinfo) {
-				dtrace_etw_sessions[i] = NULL;
+				;//dtrace_etw_sessions[i] = NULL;
 			} else {
 				notyet = 1;
 			}
@@ -2662,6 +2663,34 @@ lost_event_func(PEVENT_RECORD ev, void *data)
 	return (0);
 }
 
+static int
+etw_set_stackid(etw_sessioninfo_t *sess, CLASSIC_EVENT_ID id[], int len)
+{
+	int fnd = 0;
+	int err;
+
+	ASSERT(sess->stackidlen + len < ETW_MAX_STACKID);
+
+	for (int i = 0; i < len; i++) {
+		for (int j = 0; j < sess->stackidlen; j++) {
+			if (sess->stackid[j].EventGuid == id[i].EventGuid &&
+			    sess->stackid[j].Type == id[i].Type) {
+				fnd = 1;
+				break;
+			}
+		}
+		if (fnd == 0) {
+			sess->stackid[sess->stackidlen].EventGuid = id[i].EventGuid;
+			sess->stackid[sess->stackidlen].Type = id[i].Type;
+			sess->stackidlen++;
+		}
+	}
+
+	err = etw_set_kernel_stacktrace(sess->hsession,
+	        sess->stackid, sess->stackidlen);
+	return (err);
+}
+
 /*
  * Return the linked list of modules loaded for the process
  */
@@ -2705,6 +2734,7 @@ dtrace_etw_lookup_jit_addr(pid_t pid, uetwptr_t addr, char *buf,
 {
 	etw_jit_symbol_t *jsym = etw_lookup_jit_sym(pid, addr);
 	int ls, lw;
+	wchar_t wbuf[256];
 
 	if (jsym) {
 		if (symp != NULL) {
@@ -2716,7 +2746,11 @@ dtrace_etw_lookup_jit_addr(pid_t pid, uetwptr_t addr, char *buf,
 			symp->st_size = jsym->MethodSize;
 		}
 		if (buf != NULL && size > 0) {
-			ls = wcstombs_d(buf, jsym->MethodFullName, size);
+			wcscpy(wbuf, jsym->MethodFullName);
+			ls = wcslen(wbuf);
+			wbuf[ls++] = L'.';
+			wcscpy(wbuf + ls, jsym->MethodFullName + ls);
+			ls = wcstombs_d(buf, wbuf, size);
 		}
 
 		return (0);
@@ -3180,35 +3214,6 @@ dtrace_etw_samplerate(int interval)
 	return (etw_set_freqNT(interval));
 }
 
-int
-dtrace_etw_set_stackid(CLASSIC_EVENT_ID id[], int len)
-{
-	int fnd = 0;
-	etw_sessioninfo_t *sess = dtrace_etw_sessions[DT_ETW_KERNEL_SESSION];
-	int err;
-
-	ASSERT(sess->stackidlen + len < ETW_MAX_STACKID);
-
-	for (int i = 0; i < len; i++) {
-		for (int j = 0; j < sess->stackidlen; j++) {
-			if (sess->stackid[j].EventGuid == id[i].EventGuid &&
-			    sess->stackid[j].Type == id[i].Type) {
-				fnd = 1;
-				break;
-			}
-		}
-		if (fnd == 0) {
-			sess->stackid[sess->stackidlen].EventGuid = id[i].EventGuid;
-			sess->stackid[sess->stackidlen].Type = id[i].Type;
-			sess->stackidlen++;
-		}
-	}
-
-	err = etw_set_kernel_stacktrace(sess->hsession,
-	        sess->stackid, sess->stackidlen);
-	return (err);
-}
-
 /*
  * Get the stacktrace for current event,
  * returns stack depth
@@ -3304,7 +3309,45 @@ dtrace_etw_get_fname(uetwptr_t fobj)
 int
 dtrace_etw_kernel_stack_enable(CLASSIC_EVENT_ID id[], int len)
 {
-	return (dtrace_etw_set_stackid(id, len));
+	etw_sessioninfo_t *sess = NULL;
+	int nlen = 0, ret;
+	CLASSIC_EVENT_ID *nid = (CLASSIC_EVENT_ID *) 
+	    mem_zalloc(sizeof(CLASSIC_EVENT_ID) * len);
+
+	if (etw_win8_or_gt()) {
+		for (int i = 0; i < len; i++) {
+			switch (id[i].Type) {
+			case 35:
+			case 36:
+			case 50:
+
+			case 66:
+			case 68: case 69:
+
+			case 67:
+			case 51: case 52:
+				nid[nlen].EventGuid = id[i].EventGuid;
+				nid[nlen++].Type = id[i].Type;
+				
+				id[i].Type = 0;
+				break;
+			default:
+				break;
+			}
+		}
+		if (nlen) {
+			sess = dtrace_etw_sessions[DT_ETW_HFREQ_SESSION];
+			ret = etw_set_stackid(sess, nid, nlen);
+			if (nlen != len)
+				ASSERT(0);
+
+			return ret;
+		}
+	}
+
+	sess = dtrace_etw_sessions[DT_ETW_KERNEL_SESSION];
+
+	return (etw_set_stackid(sess, id, len));
 }
 
 int
@@ -3322,7 +3365,7 @@ dtrace_etw_profile_enable(hrtime_t interval, int type)
 	id[0].EventGuid = PerfInfoGuid;
 	id[0].Type = 46;
 
-	dtrace_etw_set_stackid(id, 1);
+	etw_set_stackid(sess, id, 1);
 
 	dtrace_etw_samplerate((int)(interval / 100.0));
 
@@ -3357,14 +3400,49 @@ dtrace_etw_profile_disable()
 int
 dtrace_etw_prov_enable(int flags)
 {
-	etw_sessioninfo_t *sess = dtrace_etw_sessions[DT_ETW_KERNEL_SESSION];
-
+	etw_sessioninfo_t *fsess, *sess = dtrace_etw_sessions[DT_ETW_KERNEL_SESSION];
+	int nflags = 0;
 	if (sess->isfile)
 		return (0);
 
+	if (etw_win8_or_gt()) {
+		if (flags & EVENT_TRACE_FLAG_CSWITCH)
+			nflags |= EVENT_TRACE_FLAG_CSWITCH;
+		if (flags & EVENT_TRACE_FLAG_DISPATCHER)
+			nflags |= EVENT_TRACE_FLAG_DISPATCHER;
+		if (flags & EVENT_TRACE_FLAG_DPC)
+			nflags |= EVENT_TRACE_FLAG_DPC;
+		if (flags & EVENT_TRACE_FLAG_INTERRUPT)
+			nflags |= EVENT_TRACE_FLAG_INTERRUPT;
+		if (flags & EVENT_TRACE_FLAG_DPC)
+			nflags |= EVENT_TRACE_FLAG_DPC;
+		if (flags & EVENT_TRACE_FLAG_SYSTEMCALL)
+			nflags |= EVENT_TRACE_FLAG_SYSTEMCALL;
+		if (nflags) {
+			if ((fsess = dtrace_etw_sessions[DT_ETW_HFREQ_SESSION]) == NULL) {
+				fsess = etw_new_session(DTRACE_SESSION_NAME_HFREQ,
+		            &DtraceSessionGuidHFREQ,
+		            ETW_TS_QPC, EVENT_TRACE_REAL_TIME_MODE | EVENT_TRACE_SYSTEM_LOGGER_MODE,
+		            sess->dtrace_probef, sess->dtrace_ioctlf);
+				dtrace_etw_sessions[DT_ETW_HFREQ_SESSION] = fsess;
+			}
+			if (fsess == NULL)
+				goto oldsession;
+			if (etw_enable_kernel_prov(NULL, fsess->sessname,
+	            nflags, TRUE) != 0) {
+				dprintf("dtrace_etw_prov_enable, failed for session %s flags (%d)\n ",
+				    fsess->sessname, flags);
+				return (-1);
+			}
+			return (0);
+		}
+	}
+
+oldsession:
 	if (etw_enable_kernel_prov(NULL, sess->sessname,
 	        flags, TRUE) != 0) {
-		dprintf("dtrace_etw_prov_enable, failed for flags (%d)\n ", flags);
+		dprintf("dtrace_etw_prov_enable, failed for session %s flags (%d)\n ",
+		    sess->sessname, flags);
 		return (-1);
 	}
 	return (0);
@@ -3558,6 +3636,7 @@ dtrace_etw_enable_ft(GUID *guid, int kw, int enablestack)
 	        kw, TRACE_LEVEL_VERBOSE, enablestack);
 }
 
+
 /*
  * Initialize ETW for real time events
  */
@@ -3694,8 +3773,9 @@ dtrace_etw_stop(etw_sessions_t *sinfo)
 
 	for (int i = 0; i < DT_ETW_MAX_SESSION; i++) {
 		if (status[i] == ERROR_CTX_CLOSE_PENDING) {
-			Sleep(100);
-			break;
+			while(dtrace_etw_sessions[i]->islive)
+				Sleep(100);
+			//break;
 		}
 	}
 }
@@ -3707,6 +3787,13 @@ dtrace_etw_close(etw_sessions_t *sinfo)
 		if (dtrace_etw_sessions[i] &&
 		    dtrace_etw_sessions[i]->sessname != NULL) {
 			etw_end_session(dtrace_etw_sessions[i], NULL);
+		}
+	}
+	for (int i = 0; i < DT_ETW_MAX_SESSION; i++) {
+		if (dtrace_etw_sessions[i]) {
+			while(dtrace_etw_sessions[i]->islive)
+				Sleep(100);
+			//break;
 		}
 	}
 }

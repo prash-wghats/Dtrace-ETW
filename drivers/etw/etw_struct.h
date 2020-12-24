@@ -24,6 +24,7 @@ typedef struct etw_jit_symbol {
 	uint32_t MethodToken;
 	uint32_t MethodFlags;
 	wchar_t MethodFullName[1]; /* classname\0method\0signature\0 */
+	/*ClrInstanceID 	win:UInt16*/
 } etw_jit_symbol_t;
 #pragma pack()
 

@@ -54,7 +54,7 @@ $(INST_EXE_DIR)/$(EXE): $(OBJS)
 	$(LD) $(LDFLAGS) /out:$(INST_EXE_DIR)/$(EXE) $(OBJS)  $(LIBS) dbghelp.lib psapi.lib advapi32.lib \
 		pthreadVC2.lib zlib.lib corguids.lib mscoree.lib Shlwapi.lib
 	xcopy /y $(BDLL)\*.dll $(INST_EXE_DIR)\*
-	cat $(DLIB_SRC) > $(INST_EXE_DIR)\$(DLIB)
+	type $(DLIB_SRC) > $(INST_EXE_DIR)\$(DLIB)
 	mt.exe -manifest "dtrace.exe.manifest" -outputresource:$(INST_EXE_DIR)/$(EXE);#1
 
 $(INST_EXE_DIR)/$(DLIB): $(SCR_DLIB)
