@@ -398,8 +398,8 @@ fasttrap_fpid_msg(proc_t *p, int msgid, uetwptr_t faddr,
 }
 
 static int
-ft_etw_process(pid_t pid, pid_t tid, uetwptr_t pc, uetwptr_t *stack, int ssz,
-    uetwptr_t *args, uetwptr_t rax, uint64_t ts, uint32_t cpuno)
+ft_etw_process(pid_t pid, pid_t tid, uint64_t pc, uint64_t *stack, int ssz,
+    uint64_t *args, uint64_t rax, uint64_t ts, uint32_t cpuno)
 {
 	fasttrap_tracepoint_t *tp;
 	fasttrap_bucket_t *bucket;
@@ -434,7 +434,7 @@ ft_etw_process(pid_t pid, pid_t tid, uetwptr_t pc, uetwptr_t *stack, int ssz,
 			HANDLE *lock = dtrace_etw_set_cur(pid, tid,
 			    ts, cpuno);
 			dtrace_etw_probe(id->fti_probe->ftp_id, args[0],
-			    args[1], args[2], args[3], args[4], 1);
+			    args[1], args[2], args[3], args[4]);
 			dtrace_etw_reset_cur(lock);
 		} else {
 			ASSERT(0);
@@ -444,9 +444,12 @@ ft_etw_process(pid_t pid, pid_t tid, uetwptr_t pc, uetwptr_t *stack, int ssz,
 	if (tp->ftt_retids != NULL) {
 		for (id = tp->ftt_retids; id != NULL; id = id->fti_next) {
 			if (id->fti_ptype == DTFTP_RETURN) {
+				HANDLE *lock = dtrace_etw_set_cur(pid, tid,
+			    ts, cpuno);
 				dtrace_etw_probe(id->fti_probe->ftp_id,
 				    pc - id->fti_probe->ftp_faddr,
-				    rax, 0, 0, 0, 1);
+				    rax, 0, 0, 0);
+				dtrace_etw_reset_cur(lock);
 			} else {
 				ASSERT(0);
 			}
@@ -534,36 +537,52 @@ FastTrapCB(PEVENT_RECORD ev, void *data)
 	uint32_t pid = ev->EventHeader.ProcessId;
 	uint32_t tid = ev->EventHeader.ThreadId;
 
-	if (ev->EventHeader.EventDescriptor.Id == 1 ||
-	    ev->EventHeader.EventDescriptor.Id == 2) {
-		struct etwft *ft = (struct etwft *) ev->UserData;
+	if (ev->EventHeader.EventDescriptor.Id == 1) {
+		struct ftetw_event_entry *ft = (struct ftetw_event_entry *) ev->UserData;
 
 		ASSERT(ft->addr > 0);
 
 		pc = ft->addr;
 		ft_etw_process(pid, tid, pc, ft->stack,
-		    (ft->stacksz / sizeof (uintptr_t)), &ft->arg0,
+		    (ft->stacksz / sizeof (uint64_t)), &ft->arg0,
+		    0, ev->EventHeader.TimeStamp.QuadPart,
+		    ev->BufferContext.ProcessorNumber);
+	} else if (ev->EventHeader.EventDescriptor.Id == 2) {
+		struct ftetw_event_return *ft = (struct ftetw_event_return *) ev->UserData;
+
+		ASSERT(ft->addr > 0);
+
+		pc = ft->addr;
+		ft_etw_process(pid, tid, pc, ft->stack,
+		    (ft->stacksz / sizeof (uint64_t)), NULL,
 		    ft->ax, ev->EventHeader.TimeStamp.QuadPart,
 		    ev->BufferContext.ProcessorNumber);
 	} else if (ev->EventHeader.EventDescriptor.Id == 3) {
-		struct etwft0 *ft = (struct etwft0 *) ev->UserData;
-		etw_event_t *tmp = &ft->arr[0], *tmpr;
+		struct ftetw_blob *ft = (struct ftetw_blob *) ev->UserData;
+		ftetw_msg_t *tmp = &ft->arr[0], *tmpr;
 		int samp = ft->count, j = 0, co = 0;
 
 		ASSERT(ev->UserDataLength >= ft->count);
 
-		while (samp >= (int) sizeof (etw_event_t)) {
+		while (samp >= (int) sizeof (ftetw_msg_t)) {
 			/*
 			 * TODO: sanity check the packet
 			 */
-			ft_etw_process(pid, tid, tmp->addr, tmp->stack,
-			    tmp->stacksz, &tmp->arg0, tmp->ax,
-			    tmp->time, tmp->cpuno);
+			if (tmp->type == INJ_ENTRY_TYPE) {
+			ft_etw_process(tmp->pid, tmp->tid, tmp->addr, 
+				&tmp->stack[INJ_ENTRY_TYPE], tmp->stacksz - INJ_ENTRY_TYPE, 
+				tmp->stack, 0, tmp->time, tmp->cpuno);
+			} else {
+				ft_etw_process(tmp->pid, tmp->tid, tmp->addr, 
+				&tmp->stack[INJ_RETURN_TYPE], tmp->stacksz - INJ_RETURN_TYPE, 
+				NULL, tmp->stack[0], tmp->time, tmp->cpuno);
+			}
 			tmpr = tmp;
 			tmp = &(tmp->stack[tmp->stacksz+1]);
 			samp -= ((char *)tmp - (char *)tmpr);
 			co++;
 		}
+		co = co + 0;
 	} else if (ev->EventHeader.EventDescriptor.Id == 4) {
 		;
 	}

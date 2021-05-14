@@ -28,7 +28,7 @@
  *            network index %6, interface index %7, is asynchronous query %8
  */
 
-Microsoft-Windows-DNS-Client:::events 
+microsoft-windows-dns-client:::events 
 /arg0 == 3006/
 {
 	off = arg2;
@@ -55,6 +55,5 @@ Microsoft-Windows-DNS-Client:::events
 	
 	printf("isNetwork query (%d), network index (%d), interface index (%d), is asynchronous query (%d)\n",
 		isq, netqind, intind, isasyn);
-
 	exit(0);
 }

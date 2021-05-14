@@ -17,13 +17,20 @@
                 >
 
                 <templates>
-                   <template tid="TransferTemplate">
+                   <template tid="TransferTemplateEntry">
                         <data name="Id" inType="win:Pointer"/>
                         <data name="Arg0" inType="win:Pointer"/>
                         <data name="Arg1" inType="win:Pointer"/>
                         <data name="Arg2" inType="win:Pointer"/>
                         <data name="Arg3" inType="win:Pointer"/>
                         <data name="Arg4" inType="win:Pointer"/>
+						<data name="Rax" inType="win:Pointer"/>
+						<data name="StackCount" inType="win:UInt32"/>
+						<data name="Array" count="StackCount" inType="win:UInt64"/>
+                    </template>
+					<template tid="TransferTemplateReturn">
+                        <data name="Id" inType="win:Pointer"/>
+						<data name="Rax" inType="win:Pointer"/>
 						<data name="StackCount" inType="win:UInt32"/>
 						<data name="Array" count="StackCount" inType="win:UInt64"/>
                     </template>
@@ -40,12 +47,12 @@
                 <events>
                     <event value="1" 
                         level="win:Informational" 
-                        template="TransferTemplate" 
+                        template="TransferTemplateEntry" 
                         symbol="Entry"
                         message ="$(string.Event.Entry)"/>
 					<event value="2" 
                         level="win:Informational" 
-                        template="TransferTemplate" 
+                        template="TransferTemplateReturn" 
                         symbol="Return"
                         message ="$(string.Event.Return)"/>
                     <event value="3" 

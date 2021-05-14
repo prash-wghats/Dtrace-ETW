@@ -5,9 +5,11 @@
 extern "C" {
 #endif
 
+#include <dbghelp.h>
 
 extern int _m_debug;
 void dprintf(const char *format, ...);
+void eprintf(const char *format, ...);
 
 /* mutex helper functions */
 void wmutex_init(HANDLE *m);
@@ -22,6 +24,7 @@ void *mem_zalloc(size_t size);
 
 int guidcmp(const GUID *g0, const GUID *g1);
 BOOL setpriv(LPCTSTR priv);
+
 HANDLE init_symbols(HANDLE h, int inv, PSYMBOL_REGISTERED_CALLBACK64 cb);
 
 #define NET_STR_VERSION_20	0

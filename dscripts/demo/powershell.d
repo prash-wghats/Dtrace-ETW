@@ -21,7 +21,7 @@
 #pragma D option quiet
 #pragma D option strsize=2048
 
-Microsoft-Windows-PowerShell:::
+microsoft-windows-powershell:::
 /arg0 == 7937/
 {
 	off = arg2;
@@ -38,5 +38,5 @@ Microsoft-Windows-PowerShell:::
 	printf("Description: %s\n", pload);
 	printf("\tContext:\n\t %s\n", cinfo);
 	printf("\tUser Data\n\t %s\n", udata);
-
+	exit(0);
 }

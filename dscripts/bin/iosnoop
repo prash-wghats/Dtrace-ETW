@@ -256,7 +256,7 @@ dtrace.exe -n '
  /self->ok/
  {
 	/* these are used as a unique disk event key, */
- 	this->dev = args[0]->b_edev;
+ 	this->dev = 0;/*args[0]->b_edev;*/
  	this->blk = args[0]->b_addr;
 	
 	/* save disk event details, */
@@ -282,7 +282,7 @@ dtrace.exe -n '
 	 * Process details
 	 */
  	/* fetch entry values */
- 	this->dev = args[0]->b_edev;
+ 	this->dev = 0;/*args[0]->b_edev;*/
  	/*this->blk = args[0]->b_blkno;*/
  	this->blk = args[0]->b_addr;
  	this->suid = start_uid[this->dev, this->blk];

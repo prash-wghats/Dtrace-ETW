@@ -93,6 +93,13 @@ ProfileInitate(hrtime_t interval, int type)
 	return (event);
 }
 
+struct SampledProfileoff {
+	int ip, tid, co;
+} soff[2][1]= {
+	{{0, 4, 8}},
+	{{0, 8, 12}},
+};
+
 int
 CycFuncProc(PEVENT_RECORD event, void *data)
 {
@@ -104,20 +111,25 @@ CycFuncProc(PEVENT_RECORD event, void *data)
 	hrtime_t now, exp;
 	int cpu;
 	cpu_data_t *cpus = &CPU[curcpu];
-	struct SampledProfile *samp =
-	    (struct SampledProfile *) event->UserData;
+	char *ud = (char *) event->UserData;
+	int arch = event->EventHeader.Flags & EVENT_HEADER_FLAG_64_BIT_HEADER;
+	
+	//struct SampledProfile *samp =
+	//    (struct SampledProfile *) event->UserData;
 
 	if (event->EventHeader.EventDescriptor.Opcode != 46)
 		return (0);
+	
+	uint64_t ip = arch ? *(uint64_t *)ud : *(uint32_t *)ud; 
 
 	now = dtrace_etw_gethrtime();
 	cpus->cpu_profile_upc = 0;
 	cpus->cpu_profile_pc = 0;
 
-	if (INKERNEL(samp->InstructionPointer)) {
-		cpus->cpu_profile_pc = samp->InstructionPointer;
+	if (INKERNEL(ip)) {
+		cpus->cpu_profile_pc = ip;
 	} else {
-		cpus->cpu_profile_upc = samp->InstructionPointer;
+		cpus->cpu_profile_upc = ip;
 	}
 
 	cpu = event->BufferContext.ProcessorNumber;
@@ -315,8 +327,8 @@ cyclic_remove(cyclic_id_t id)
 		while (cpus--) {
 			cyclic_t *cyclic = cyc++;
 			cyclic->cpuno = -1;
-
-			(omni->cyo_offline)(omni->cyo_arg, NULL, cyclic->cy_arg);
+			if (cyclic->cy_arg)
+				(omni->cyo_offline)(omni->cyo_arg, NULL, cyclic->cy_arg);
 		}
 		kmem_free(c->cyc, 1);
 		kmem_free(c, sizeof (cyclic_omni_t));

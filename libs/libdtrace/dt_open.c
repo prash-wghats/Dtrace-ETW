@@ -461,6 +461,12 @@ static const dt_ident_t _dtrace_globals[] = {
 	DT_ATTR_STABCMN, DT_VERS_1_0,
 	&dt_idops_type, "int64_t" },
 #if defined(windows)
+{ "etwtimestamp", DT_IDENT_SCALAR, 0, DIF_VAR_ETWTIMESTAMP,
+	DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_type, "int64_t" },
+{ "etwwalltimestamp", DT_IDENT_SCALAR, 0, DIF_VAR_ETWWALLTIMESTAMP,
+	DT_ATTR_STABCMN, DT_VERS_1_0,
+	&dt_idops_type, "int64_t" },
 { "wstrlen", DT_IDENT_FUNC, 0, DIF_SUBR_WSTRLEN, DT_ATTR_STABCMN, DT_VERS_1_0,
 	&dt_idops_func, "size_t(const wchar_t *)" },
 { "wstringof", DT_IDENT_FUNC, 0, DIF_SUBR_WSTRINGOF, DT_ATTR_STABCMN, DT_VERS_1_0,
@@ -836,7 +842,7 @@ dt_provmod_open(dt_provmod_t **provmod, dt_fdlist_t *dfp)
 		prov->dp_next = *provmod;
 		*provmod = prov;
 
-		dt_dprintf("opened provider %s\n", providers[i]);
+		dt_dprintf("opened provider %s\n", providers[i].name);
 		dfp->df_fds[dfp->df_ents++] = fd;
 	}
 }
@@ -1029,7 +1035,7 @@ dt_vopen(int version, int flags, int *errp,
 		if (SetPrivilege(token_hdl,SE_SYSTEM_PROFILE_NAME, TRUE) == FALSE)
 			dt_dprintf("failed to raise privilege SE_SYSTEM_PROFILE_NAME\n");
 	}
-	if (DtraceETWInit(arg) < 0) {
+	if (DtraceETWInit(arg, flags & DTRACE_O_ALLFETW ? 1 : 0) < 0) {
 		return (set_open_errno(dtp, errp, EINVAL));
 	}
 #endif

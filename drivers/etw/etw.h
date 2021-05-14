@@ -29,6 +29,14 @@
 extern "C" {
 #endif
 
+#define ARCH_WIN32	0
+#define ARCH_AMD64	1
+
+extern uint64_t kernellmts[2][2];
+
+#define INKERNEL_ETW(va, arch) (((va)) >= (uint64_t) kernellmts[(arch)][0] && ((va)) < (uint64_t) kernellmts[(arch)][1])
+//#define INKERNEL(va, low, high) (((va)) >= (uint64_t) low && ((va)) < (uint64_t) high)
+
 #if defined(__amd64_etw__)
 typedef uint64_t uetwptr_t;
 #define INKERNEL(va) (((va)) >= (uetwptr_t) 0x7ffffffeffff && ((va)) < (uetwptr_t) ~(0))
@@ -39,6 +47,17 @@ typedef uint32_t uetwptr_t;
 
 typedef LONG64 hrtime_t;
 
+#define PERF_PMC_PROFILR_GM1	0x20000400
+
+#define SDT_ETW_USER_EVENTS	-1
+#define SDT_DIAG_ALL_EVENTS	-3
+#define SDT_DIAG_IGNORED_EVENTS	-5
+#define SDT_DIAG_ZUSTACK_EVENTS	-9
+#define SDT_DIAG_ZSTACK_EVENTS	-17
+#define SDT_DIAG_NSTACK_EVENTS	-33
+
+// SystemTraceControlGuid = 9e814aad-3204-11d2-9a82-006008a86939
+// EventTraceGuid = 68fdd900-4a3e-11d1-84f4-0000f80464e3
 static const GUID TcpIpGuid =
 {0x9a280ac0,0xc8e0,0x11d1,{0x84,0xe2,0x00,0xc0,0x4f,0xb9,0x98,0xa2}};
 static const GUID PerfInfoGuid =
@@ -66,6 +85,8 @@ static GUID KernelRundownGuid_I =
 //always enabled for NT kernel loggers
 static const GUID HWSystemConfigGuid =
 {0x01853a65,0x418f,0x4f36,{0xae,0xfc,0xdc,0x0f,0x1d,0x2f,0xd2,0x35}};
+static GUID UMDEtwProviderId = 
+{0xa688ee40, 0xd8d9, 0x4736, { 0xb6, 0xf9, 0x6b, 0x74, 0x93, 0x5b, 0xa3, 0xb1}};
 
 //This struct is always the first event trace struct sent to a consumer
 // (this event is not sent to real-time consumers)
@@ -95,7 +116,7 @@ static const GUID MSDotNETRuntimeRundownGuid =
 static const GUID MSDotNETRuntimeGuid =
 {0xE13C0D23, 0xCCBC, 0x4E12, {0x93, 0x1B, 0xD9, 0xCC, 0x2E, 0xEE, 0x27, 0xE4}};
 
-static const GUID AllEventsGuid = 
+static const GUID WGDiagEventsGuid = 
 	{0xe10ad5ec, 0xef54, 0x4c79, {0x8b, 0x02, 0xb8, 0x5b, 0x8d, 0xbb, 0x9f, 0x3f}};
 
 /* provider keyword info */
@@ -108,13 +129,61 @@ typedef struct etw_provkw {
 typedef struct etw_provinfo {
 	char *provn;		/* provider name */
 	GUID provg;			/* GUID */
+	int src;			/* provider type */
 	int provnkw;		/* number of keywords */
 	struct etw_provkw *provkw; 	/* keyword info */
 } etw_provinfo_t;
 
+typedef struct etw_pmc {
+	char name[DTRACE_FUNCNAMELEN];
+	ulong_t srcid;
+	ulong_t interval, minint, maxint;
+} etw_pmc_t;
+
 typedef struct etw_module etw_module_t;	/* module info */
 typedef struct etw_proc_module etw_proc_module_t;	/* process module info */
 
+#pragma pack(1)
+typedef struct CV_INFO_PDB70 {
+	DWORD cvsig;
+	GUID  sig;
+	DWORD age;
+	BYTE pdbname[1];
+} cvpdbinfo_t;
+#pragma pack()
+
+typedef struct etw_dbg {
+	HANDLE h;
+	uint64_t endaddr;
+	struct etw_dbgmod {
+		etw_module_t *mod;
+		struct etw_dbgmod *next;
+	} mods;
+} etw_dbg_t;
+
+struct etw_module {
+ 	size_t size;
+ 	uetwptr_t base;
+	uetwptr_t dbgbase;
+	etw_dbg_t *sym;
+	uint32_t chksum;
+	uint32_t tmstamp;
+	uint32_t tmbuild;
+	cvpdbinfo_t *cvinfo;
+	wchar_t  name[MAX_PATH_NAME];
+};
+
+struct etw_proc_module {
+	uetwptr_t base;
+	int symloaded;
+	etw_module_t *mod;
+	etw_proc_module_t *next;
+};
+struct ImageLoad {
+	int base, size, pid, chksum, tmstamp, dbase, wname;
+};
+
+extern struct ImageLoad etw_imgload[][4];
 
 typedef int (*Function)(PEVENT_RECORD ev, void *data);
 typedef void
@@ -126,9 +195,9 @@ typedef struct etw_sessioninfo* etw_sessions_t;
 proc_t *dtrace_etw_proc_find(pid_t pid, int create);
 thread_t *dtrace_etw_td_find(pid_t pid, pid_t tid, int current);
 etw_sessions_t * dtrace_etw_init(etw_dtrace_probe_t,
-    etw_dtrace_ioctl_t ioctlf);
+    etw_dtrace_ioctl_t ioctlf, wchar_t *oetwfile, uint32_t flags);
 etw_sessions_t *dtrace_etwfile_init(etw_dtrace_probe_t probef,
-    etw_dtrace_ioctl_t ioctlf, wchar_t *etlfile);
+    etw_dtrace_ioctl_t ioctlf, wchar_t *etlfile, uint32_t flags);
 HANDLE dtrace_etwfile_start(etw_sessions_t *session);
 int dtrace_etw_profile_disable();
 int dtrace_etw_profile_enable(hrtime_t interval, int type);
@@ -161,14 +230,25 @@ hrtime_t dtrace_etw_gethrestime(void);
 HANDLE *dtrace_etw_set_cur(pid_t pid, pid_t tid, hrtime_t tm, int cpuno);
 void dtrace_etw_reset_cur(HANDLE *lock);
 void dtrace_etw_probe(dtrace_id_t id, uetwptr_t arg0, uetwptr_t arg1,
-    uetwptr_t arg2, uetwptr_t arg3, uetwptr_t arg4, int istack);
+    uetwptr_t arg2, uetwptr_t arg3, uetwptr_t arg4);
+void dtrace_etw_probe_sdt(dtrace_id_t id, uetwptr_t arg0, uetwptr_t arg1,
+    uetwptr_t arg2, uetwptr_t arg3, uetwptr_t arg4, uetwptr_t stackid, uetwptr_t pl, uetwptr_t epl);
 void *dtrace_etw_user_providers();
 int dtrace_etw_uprov_enable(GUID *pguid, uint64_t keyword,
-    uint32_t eventno, int level, int estack);
+    uint32_t eventno, int level, int estack, int capture);
 int dtrace_etw_session_ft_on(etw_sessions_t *sinfo);
 int dtrace_etw_set_diagnostic(int (*cb) (PEVENT_RECORD, void *), uint32_t flags);
 int dtrace_set_ft_stack(uetwptr_t *stack, uint32_t size);
 wchar_t *dtrace_etw_get_fname(uetwptr_t fobj);
+void *dtrace_sdtmem_alloc(int sz);
+int dtrace_sdtmem_free(intptr_t sz);
+etw_pmc_t *dtrace_etw_pmc_info(ulong_t *count, ulong_t *maxpmc);
+void dtrace_etw_pmc_samples(ulong_t *ids, TRACE_PROFILE_INTERVAL *tpintrval, int length);
+void dtrace_etw_pmc_counters(int h, ulong_t *ids, CLASSIC_EVENT_ID *events, int length);
+void dtrace_etw_prov_enable_gm(int sid, ulong_t mask, int level);
+int dtrace_stack_func(PEVENT_RECORD ev, void *data);
+int dtrace_etwloadinfo(int arch, int ver, char *p, int len, etw_module_t *mod, int32_t *pid, uint64_t *pbase);
+int dtrace_dnet_stack_func(PEVENT_RECORD ev, void *data);
 
 #define ETW_SET_CURRENT 1
 #define ETW_PROC_FIND 0
@@ -189,8 +269,49 @@ wchar_t *dtrace_etw_get_fname(uetwptr_t fobj);
 enum {
 	ETW_EVENTCB_ORDER_FRIST,
 	ETW_EVENTCB_ORDER_ANY,
-	ETW_EVENTCB_ORDER_LAST
+	ETW_EVENTCB_ORDER_LAST,
+	SDT_ARG0 = 0,
+	SDT_ARG1,
+	SDT_ARG2,
+	SDT_ARG3,
+	SDT_ARG4,
+	SDT_ARG5,
+	SDT_ARG6,
+	SDT_ARG7,
+	SDT_ARG8,
+	SDT_ARGPL,
+	SDT_ARGEXTPL,
+	SDT_ARGSTACK,
+	SDT_CUR_LOCK,
+	SDT_ARGMAX,
+
 };
+
+enum {
+	NETExceptionKeyword = 0x00008000,
+	NETContentionKeyword = 0x00004000,
+	NETThreadingKeyword = 0x00010000,
+	NETJITKeyword = 0x00000010,
+	NETNGenKeyword = 0x00000020,
+	NETJITTracingKeyword = 0x00001000,
+	NETInteropKeyword = 0x00002000,
+	NETAppDomainResourceManagementKeyword = 0x00000800,
+	NETSecurityKeyword = 0x00000400,
+	NETLoaderKeyword = 0x00000008,
+	NETGCKeyword = 0x00000001,
+	NETPerfTrackKeyWord = 0x2000000,
+	NETStackKeyword = 0x40000000,
+	NETOverrideAndSuppressNGenEventsKeyword = 0x00040000,
+};
+
+#define	ARCHETW(ev)	EVENT_HEADER_FLAG_32_BIT_HEADER == \
+	((ev)->EventHeader.Flags & EVENT_HEADER_FLAG_32_BIT_HEADER) ? 0 : 1
+#define PTR(arch, p, off)	(arch) ? *(uint64_t *) ((p)+(off)) : *(uint32_t *) ((p)+(off))
+#define V32(p, off)	*(uint32_t *) ((p) + (off))
+#define V64(p, off)	*(uint64_t *) ((p) + (off))
+#define WSTR(p, off)	(wchar_t *) ((p)+(off))
+#define V16(p, off)	*(uint16_t *) ((p) + (off))
+#define V8(p, off)	*(uint8_t *) ((p) + (off))
 
 #ifdef __cplusplus
 }

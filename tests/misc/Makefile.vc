@@ -15,7 +15,6 @@ TESTS_CS = $(ODIR)\t_cs_dyndll.exe \
 		$(ODIR)\t_cs_dyndll3.dll \
 		$(ODIR)\t_cs_inf.exe \
 		$(ODIR)\t_cs_eloop.exe \
-		$(ODIR)\t_cs_eloop.exe \
 		$(ODIR)\t_cs_str.exe \
 		$(ODIR)\t_cs_win.exe 
 		
@@ -27,16 +26,12 @@ TESTS_C = $(ODIR)\t_c_dyndll.exe \
 		$(ODIR)\t_c_dyndll3.dll \
 		$(ODIR)\t_c_inf.exe \
 		$(ODIR)\t_c_eloop.exe \
-		$(ODIR)\t_c_thr.exe \
-		$(ODIR)\t_c_thrinf.exe \
 		$(ODIR)\t_c_win.exe \
 		$(ODIR)\t_c_sim.exe \
 		$(ODIR)\t_c_args.exe \
-		$(ODIR)\t_c_slowfast.exe \
 		$(ODIR)\t_c_userland.exe \
 		$(ODIR)\t_c_printtype.exe \
-		$(ODIR)\t_c_tprinttype.exe \
-		$(ODIR)\t_c_badstack.exe
+		$(ODIR)\t_c_fprinttype.exe
 
 all: $(TESTS_CS) $(TESTS_C)
 	
@@ -52,10 +47,9 @@ $(ODIR)\t_c_dyndll3.dll: t_c_dyndll.c
 	$(CC) $(CFLAGS) /DLOOPSDLL3 /LD /Zi t_c_dyndll.c /link /implib:$(ODIR)\dummy /out:$@
 $(ODIR)\t_c_win.exe: t_c_win.c
 	$(CC) -Zi $(CFLAGS) /DMAIN t_c_win.c /link /out:$@ user32.lib gdi32.lib
-$(ODIR)\t_c_badstack.exe: t_c_fpidbadstack.c
-	$(CC) -Zi $(CFLAGS) /DMAIN t_c_fpidbadstack.c /link /out:$@
+
 {$(TOP)}.c.exe:
-	$(CC) -Zi $(CFLAGS) /DMAIN $< /link /out:$@
+	$(CC)  -Zi $(CFLAGS)  /DMAIN /Tc$< /link /out:$@
 
 
 $(ODIR)\t_cs_dyndll.exe: t_cs_dyndll.cs
@@ -70,17 +64,20 @@ $(ODIR)\t_cs_dyndll3.dll: t_cs_dyndll.cs
 	csc $(CSARCH_FLAGS) /target:library $(CSCFLAGS) /define:TESTAS3 /out:$@ t_cs_dyndll.cs
 
 $(ODIR)\t_cs_eloop.exe: t_cs_eloop.cs
-	csc $(CSARCH_FLAGS) $(CSCFLAGS) /out:$@ t_cs_eloop.cs
+	csc $(CSARCH_FLAGS)  $(CSCFLAGS) /out:$@ t_cs_eloop.cs
 
 $(ODIR)\t_cs_inf.exe: t_cs_inf.cs
 	csc $(CSARCH_FLAGS) $(CSCFLAGS) /out:$@ t_cs_inf.cs
 
 $(ODIR)\t_cs_str.exe: t_cs_str.cs
-	csc $(CSARCH_FLAGS) $(CSCFLAGS) /out:$@ t_cs_str.cs
+	csc $(CSARCH_FLAGS) $(CSCFLAGS) /out:$@ t_cs_str.cs /resource:UTF8.txt
 
 $(ODIR)\t_cs_win.exe: t_cs_win.cs
 !IF EXISTS("C:\Program Files (x86)\Microsoft SDKs\Windows\v8.1A\bin\NETFX 4.5.1 Tools\resgen.exe")
 		"C:\Program Files (x86)\Microsoft SDKs\Windows\v8.1A\bin\NETFX 4.5.1 Tools\resgen.exe" \
+			/compile t_cs_win.resx,$(ODIR)\TextEditor.TextEditor.resources
+!ELSEIF EXISTS("C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\resgen.exe")
+		"C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools\resgen.exe" \
 			/compile t_cs_win.resx,$(ODIR)\TextEditor.TextEditor.resources
 !ELSE
 		resgen /compile t_cs_win.resx,$(ODIR)\TextEditor.TextEditor.resources

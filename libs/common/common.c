@@ -1,8 +1,8 @@
 #include <windows.h>
 #include <commctrl.h>
 #include <psapi.h>
-#include <dbghelp.h>
 #include <stdio.h>
+#include "common.h"
 
 #if C_MUTEX
 /* MUTEX */
@@ -86,25 +86,46 @@ mem_free(void *buf)
 
 #if C_DEBUG
 int _m_debug = 0;
-EXTERN_C IMAGE_DOS_HEADER __ImageBase;
+
+
+static char *
+_modulename()
+{
+	EXTERN_C IMAGE_DOS_HEADER __ImageBase;
+	static char *modulename = NULL;
+	DWORD sz = 0;
+	char *_name;
+
+	if (modulename == NULL) {
+		_name = (char *) malloc(256 * 2);
+		sz = GetModuleFileNameA((HINSTANCE)&__ImageBase, _name, 256);
+		modulename = strrchr(_name, '\\') + 1;
+	}
+	return (modulename);
+}
+void
+eprintf(const char *format, ...)
+{
+	va_list alist;
+	
+	va_start(alist, format);
+	//(void) fputs("%s DEBUG: ", stderr);
+	(void) fprintf(stderr, "%s : ", _modulename());
+	(void) vfprintf(stderr, format, alist);
+	if (format[strlen(format) - 1] != '\n')
+		(void) fprintf(stderr, "\n");
+	va_end(alist);
+}
 
 void
 dprintf(const char *format, ...)
 {
-	DWORD sz = 0;
-	char *_name;
-	static char *modulename = NULL;
-
 	if (_m_debug) {
 		va_list alist;
-		if (modulename == NULL) {
-			_name = (char *) malloc(256*2);
-			sz = GetModuleFileNameA((HINSTANCE)&__ImageBase, _name, 256);
-			modulename = strrchr(_name, '\\') + 1;
-		}
+
 		va_start(alist, format);
 		//(void) fputs("%s DEBUG: ", stderr);
-		(void) fprintf(stderr, "%s DEBUG: ", modulename);
+		(void) fprintf(stderr, "%s DEBUG: ", _modulename());
 		(void) vfprintf(stderr, format, alist);
 		va_end(alist);
 	}
@@ -130,7 +151,8 @@ setpriv(LPCTSTR priv)
 	//LPCTSTR priv = SE_SYSTEM_PROFILE_NAME;
 	BOOL enable = TRUE;
 
-	if (!OpenProcessToken (GetCurrentProcess (), TOKEN_QUERY | TOKEN_ADJUST_PRIVILEGES, &token)) {
+	if (!OpenProcessToken (GetCurrentProcess (),
+	    TOKEN_QUERY | TOKEN_ADJUST_PRIVILEGES, &token)) {
 		return FALSE;
 	}
 	if (!LookupPrivilegeValue(NULL, priv, &luid)) {
@@ -145,7 +167,7 @@ setpriv(LPCTSTR priv)
 		tp.Privileges[0].Attributes = 0;
 
 	if (!AdjustTokenPrivileges(token, FALSE, &tp, sizeof(TOKEN_PRIVILEGES),
-	        (PTOKEN_PRIVILEGES) NULL, (PDWORD) NULL)) {
+	    (PTOKEN_PRIVILEGES) NULL, (PDWORD) NULL)) {
 		return FALSE;
 	}
 
@@ -171,7 +193,7 @@ SymRegisterCallbackProc64(HANDLE hProcess, ULONG ActionCode,
 	CHAR *str = NULL;
 	BOOL r = FALSE;
 	//const CHAR *TEXT ="\r[#] Locating symbols for (%s)..\n\t      ";
-	const CHAR *TEXT ="\r[#] Locating symbols for (%s)..\r";
+	const CHAR *TEXT = "\r[#] Locating symbols for (%s)..\r";
 	// If SYMOPT_DEBUG is set, then the symbol handler will pass
 	// verbose information on its attempt to load symbols.
 	// This information be delivered as text strings.
@@ -257,15 +279,15 @@ runcmd(char *cmd)
 
 	// Start the child process.
 	if(!CreateProcessA( NULL,   // No module name (use command line)
-	        cmd,   // Command line
-	        NULL,           // Process handle not inheritable
-	        NULL,           // Thread handle not inheritable
-	        FALSE,          // Set handle inheritance to FALSE
-	        0,              // No creation flags
-	        NULL,           // Use parent's environment block
-	        NULL,           // Use parent's starting directory
-	        &si,            // Pointer to STARTUPINFO structure
-	        &pi )           // Pointer to PROCESS_INFORMATION structure
+	    cmd,   // Command line
+	    NULL,           // Process handle not inheritable
+	    NULL,           // Thread handle not inheritable
+	    FALSE,          // Set handle inheritance to FALSE
+	    0,              // No creation flags
+	    NULL,           // Use parent's environment block
+	    NULL,           // Use parent's starting directory
+	    &si,            // Pointer to STARTUPINFO structure
+	    &pi )           // Pointer to PROCESS_INFORMATION structure
 	) {
 		dprintf("runcmd(), failed cmd (%s) (%x)\n", cmd, GetLastError());
 		return (-1);
@@ -306,7 +328,7 @@ is64bitos(BOOL *arch)
 	//BOOL f64bitOS = FALSE;
 	*arch = 0;
 	return ((DoesWin32MethodExist("kernel32.dll", "IsWow64Process") &&
-	            IsWow64Process(GetCurrentProcess(), arch)) && *arch);
+	    IsWow64Process(GetCurrentProcess(), arch)) && *arch);
 #endif
 }
 //http://forums.codeguru.com/showthread.php?424454-Check-if-DLL-is-managed-or-not
@@ -316,11 +338,12 @@ PtrFromRVA(IMAGE_SECTION_HEADER* pSectionHeader,
 {
 	DWORD dwRet = 0;
 
-	for(int j = 0; j < pNTHeaders->FileHeader.NumberOfSections; j++,pSectionHeader++) {
+	for(int j = 0; j < pNTHeaders->FileHeader.NumberOfSections;
+	    j++, pSectionHeader++) {
 		DWORD cbMaxOnDisk
 		    = min( pSectionHeader->Misc.VirtualSize, pSectionHeader->SizeOfRawData );
 
-		DWORD startSectRVA,endSectRVA;
+		DWORD startSectRVA, endSectRVA;
 
 		startSectRVA = pSectionHeader->VirtualAddress;
 		endSectRVA = startSectRVA + cbMaxOnDisk;
@@ -352,7 +375,7 @@ filetype(char *name, int *arch, int *isnet)
 	*isnet = 0;
 	*arch = 0;
 
-	fd = _open(name, _O_RDONLY|_O_BINARY, 0);
+	fd = _open(name, _O_RDONLY | _O_BINARY, 0);
 	if (fd == -1) {
 		return (-1);
 	}
@@ -402,13 +425,13 @@ filetype(char *name, int *arch, int *isnet)
 			*arch = -1;
 		DWORD netloc = arch == 1 ?
 		    ((PIMAGE_NT_HEADERS32) nthdr)->OptionalHeader.DataDirectory
-		    [IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR].VirtualAddress:
+		    [IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR].VirtualAddress :
 		    ((PIMAGE_NT_HEADERS64) nthdr)->OptionalHeader.DataDirectory
 		    [IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR].VirtualAddress;
 		if (netloc) {
 			IMAGE_COR20_HEADER* nethdr = (IMAGE_COR20_HEADER*)((BYTE*)dos +
-			        PtrFromRVA((IMAGE_SECTION_HEADER*)((BYTE*) nthdr + sizeof(IMAGE_NT_HEADERS)),
-			            nthdr, netloc));
+			    PtrFromRVA((IMAGE_SECTION_HEADER*)((BYTE*) nthdr + sizeof(IMAGE_NT_HEADERS)),
+			    nthdr, netloc));
 			if (nethdr) {
 				if (hdr->Machine == IMAGE_FILE_MACHINE_AMD64) {
 					*isnet = 1; // 64 bit mode
@@ -452,12 +475,12 @@ ngenpath(char *path, int len, int ver, int arch)
 {
 	int n = 0;
 
-	if ((n=GetWindowsDirectoryA(path, len)) == 0) {
+	if ((n = GetWindowsDirectoryA(path, len)) == 0) {
 		dprintf("net_ngened(), failed to get Windows directory (%x)\n", GetLastError());
 		return (-1);
 	}
 
-	strncpy(path+n, str_netver[ver][arch], (len-n));
+	strncpy(path + n, str_netver[ver][arch], (len - n));
 	n = strlen(path);
 
 	return n;
@@ -503,7 +526,7 @@ set_syms_path(char *path)
 	char *envs = getenv(SYMS_ENV);
 	int mserver = 1;
 
-	if ((n=GetWindowsDirectoryA(buf, MAX_PATH)) == 0) {
+	if ((n = GetWindowsDirectoryA(buf, MAX_PATH)) == 0) {
 		dprintf("set_syms_path(), failed to get Windows directory (%x)\n",
 		    GetLastError());
 	} else {

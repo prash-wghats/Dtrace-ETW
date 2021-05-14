@@ -161,7 +161,7 @@ static volatile uint64_t fasttrap_mod_gen;
  * incremented by the number of tracepoints that may be associated with that
  * probe; fasttrap_total is capped at fasttrap_max.
  */
-#define	FASTTRAP_MAX_DEFAULT		100000	/* 250000 */
+#define	FASTTRAP_MAX_DEFAULT		150000	/* 250000 */
 static uint32_t fasttrap_max;
 static uint32_t fasttrap_total;
 

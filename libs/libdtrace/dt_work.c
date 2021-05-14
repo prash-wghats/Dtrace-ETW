@@ -78,8 +78,12 @@ dtrace_sleep(dtrace_hdl_t *dtp)
 	now = gethrtime();
 
 	if (earliest < now) {
+#if !defined(windows)
 		(void) pthread_mutex_unlock(&dph->dph_lock);
 		return; /* sleep duration has already past */
+#else
+		goto check_proc;
+#endif
 	}
 
 #if !defined(windows)
@@ -100,6 +104,7 @@ dtrace_sleep(dtrace_hdl_t *dtp)
 	(void) pthread_cond_reltimedwait_np(&dph->dph_cv, &dph->dph_lock, &tv);
 #else
 	(void) pthread_cond_timedwait(&dph->dph_cv, &dph->dph_lock, &tv);
+check_proc:
 #endif
 
 	while ((dprn = dph->dph_notify) != NULL) {

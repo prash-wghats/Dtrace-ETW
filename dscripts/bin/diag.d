@@ -4,8 +4,9 @@
  */
 diag:::events
 {
-	@[stringof(arg0), arg1, arg2] = count();
+	@[stringof(arg0)] = count();
 }
+
 END {
 	printf("\n\t\t\tGUID\t\t\t\t\tEvent No\tOpcode\t\t\tCount\n");
 	printa(@);

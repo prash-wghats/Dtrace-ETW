@@ -33,11 +33,18 @@ typedef pair<Function, void *> Pair;	/* cb function and 2nd argument (void *) to
 typedef vector<Pair> Functions;			/* a event can have more than in cb */
 
 #define DTRACE_SESSION_PATH "e:/temp/dtrace.etl"
-#define DTRACE_SESSION_NAME L"Dtrace Event Trace Session"
-#define DTRACE_SESSION_NAME_USER L"UserDtrace"
-#define DTRACE_SESSION_NAME_CLR L"CLRDtrace"
-#define DTRACE_SESSION_NAME_FT L"FTDtrace"
-#define DTRACE_SESSION_NAME_HFREQ L"DtraceHREQ"
+#define DTRACE_SESSION_NAME L"Dtrace-Event-Trace-Session"
+#define DTRACE_SESSION_NAME_USER L"Dtrace-User-Session"
+#define DTRACE_SESSION_NAME_CLR L"Dtrace-CLR-Session"
+#define DTRACE_SESSION_NAME_FT L"Dtrace-FT-Session"
+#define DTRACE_SESSION_NAME_HFREQ L"Dtrace-HFREQ-Session"
+
+#define DT_ETW_KERNEL_SESSION	0
+#define DT_ETW_FT_SESSION 1
+#define DT_ETW_USER_SESSION 2
+#define DT_ETW_CLR_SESSION 3
+#define DT_ETW_HFREQ_SESSION 4
+#define DT_ETW_MAX_SESSION 5
 
 static const GUID DtraceSessionGuid =
 {0xc298dd9e, 0x42f9, 0x4b55, {0x8a, 0x94, 0xb7, 0x9a, 0x3b, 0x21, 0xcc, 0x10}};
@@ -64,7 +71,7 @@ static const GUID DtraceSessionGuidHFREQ =
 
 #define ETW_MAX_STACKID 256
 #define ETW_MAX_STACK 256
-#define ETW_QUEUE_SIZE 100
+#define ETW_QUEUE_SIZE 1000
 
 #define wcstombs_d(dest, src, size) \
 	WideCharToMultiByte(CP_UTF8, 0, (src), -1, (dest), (size), NULL, NULL )
@@ -82,45 +89,18 @@ typedef struct etw_dprobe {
 	uint32_t pid;
 	uint32_t tid;
 	uint32_t cpuno;
-
+	uintptr_t payload, extpayload;
+	int thrid;
 } etw_dprobe_t;
 
 typedef struct etw_stack {
 	etw_dprobe_t dprobe;
 	int stacklen;
 	int stackready;
-	uetwptr_t stack[ETW_MAX_STACK];
+	uint64_t key;
+	uint64_t stack[ETW_MAX_STACK];
+	struct etw_stack *next;
 } etw_stack_t;
-
-#pragma pack(1)
-typedef struct CV_INFO_PDB70 {
-	DWORD cvsig;
-	GUID  sig;
-	DWORD age;
-	BYTE pdbname[1];
-} cvpdbinfo_t;
-#pragma pack()
-
-typedef struct etw_dbg {
-	HANDLE h;
-	uint64_t endaddr;
-	struct etw_dbgmod{
-		etw_module_t *mod;
-		struct etw_dbgmod *next;
-	} mods;
-} etw_dbg_t;
-
-struct etw_module {
- 	size_t size;
- 	uetwptr_t base;
-	uetwptr_t dbgbase;
-	etw_dbg_t *sym;
-	uint32_t chksum;
-	uint32_t tmstamp;
-	uint32_t tmbuild;
-	cvpdbinfo_t *cvinfo;
-	wchar_t  name[MAX_PATH_NAME];
-};
 
 typedef struct etw_proc_cvinfo {
 	cvpdbinfo_t *cv;
@@ -135,68 +115,45 @@ typedef struct etw_sym_info {
 	uetwptr_t addr;
 } etw_sym_info_t;
 
+#define NHASH	131072
+typedef struct Hashblk Hashblk;
+struct Hashblk {
+	uintptr_t key;
+	uintptr_t value;
+	struct Hashblk *next;
+};
+typedef struct Hashmap {
+	Hashblk *buckets[NHASH];
+} Hashmap;
 
-struct etw_proc_module {
-	uetwptr_t base;
-	int symloaded;
-	etw_module_t *mod;
-	etw_proc_module_t *next;
+int cmpint64(uint64_t a, uint64_t b);
+unsigned int hashint64(uint64_t key);
+Hashblk * addhm(Hashmap *hashmap, uint64_t key, uint64_t value, uint_t (*hashfn)(uint64_t key));
+intptr_t lookuphm(Hashmap *hashmap, uint64_t key, uint_t (*hashfn)(uint64_t key),
+	int (*cmp)(uint64_t, uint64_t));
+Hashblk *erasehm(Hashmap *hashmap, uint64_t key, uint_t (*hashfn)(uint64_t key),int (*cmp)(uint64_t, uint64_t));
+int lookupallhm(Hashmap *hash, uint64_t key, intptr_t *ret, int sz,
+    uint_t (*hashfn)(uint64_t key), int (*cmp)(uint64_t, uint64_t));
+Hashblk *replacehm(Hashmap *hash, uint64_t key, uint64_t value, uint_t (*hashfn)(uint64_t key),
+    int (*cmp)(uint64_t, uint64_t));
+
+enum {
+	SESSINFO_ISLIVE = 1,
+	SESSINFO_ISFILE = 2,
+	SESSINFO_LIVEFILE = 4,
+	SESSINFO_FILE_ENABLE_ALL = 8,
+	SESSINFO_ISUSERMODE = 16,
+	SESSINFO_RAWTIME = 32,
+	SESSINFO_DONE = 64,
 };
 
-
-#define DT_ETW_KERNEL_SESSION	0
-#define DT_ETW_FT_SESSION 1
-#define DT_ETW_USER_SESSION 2
-#define DT_ETW_CLR_SESSION 3
-#define DT_ETW_HFREQ_SESSION 4
-#define DT_ETW_MAX_SESSION 5
-
-
-
-typedef struct etw_sessioninfo {
-	DWORD id; //thread id of the helper thread
-	uint32_t ncpus;
-	hrtime_t boottime;
-	hrtime_t perffreq;
-	hrtime_t starttime;
-	ulong_t cpumhz;
-	uint32_t ptrsz;
-	uint32_t clctype;
-	TRACEHANDLE hsession;
-	TRACEHANDLE psession;
-	ulong_t timerres;
-	
-	void (*evcb)(Functions&, PEVENT_RECORD);
-	uint64_t timebase;		// converting etw trace raw timestamp to system time
-	double timescale;
-	etw_dtrace_probe_t dtrace_probef;
-	etw_dtrace_ioctl_t dtrace_ioctlf;
-	wchar_t *sessname;
-	GUID *sessguid;
-	wchar_t *etlfile;
-
-	// Used to determine if the session is a private session or kernel session.
-	// You need to know this when accessing some members of the EVENT_TRACE.Header
-	// member (for example, KernelTime or UserTime).
-	int isusermode;
-	//https://docs.microsoft.com/en-us/windows/desktop/etw/wnode-header
-	int israwtime;		
-	int isfile;			// Trace data from a file 
-	void *data;			// etw provider data
-	struct {			// stalkwalk data. stack info for ncpus
-		queue<etw_stack_t *> queue;
-		map<hrtime_t, etw_stack_t *> *map;
-		uint32_t lock;
-	} Q;
-	etw_stack_t *stackinfo;
-	int stackidlen;
-	CLASSIC_EVENT_ID stackid[ETW_MAX_STACKID];
-	int hb;		//FT heartheat
-	PEVENT_RECORD ev;
-	uetwptr_t *ftstack;
-	uint32_t ftsize;
-	int islive;
-} etw_sessioninfo_t;
+typedef struct sdtmem {
+	intptr_t buffer;
+	intptr_t max, end, head, tail;
+	int prevsz, rcsz;
+	char a;
+	struct sdtmem *next;
+} sdtmem_t;
 
 typedef struct sessioninfo {
 	hrtime_t timestamp;
@@ -207,7 +164,60 @@ typedef struct sessioninfo {
 	proc_t *proc;
 	thread_t *td;
 	struct etw_sessioninfo *etw;
+	uintptr_t payload;
 } sessioninfo_t;
+
+typedef struct etw_sessioninfo {
+	DWORD id; //thread id of the helper thread
+	uint32_t ncpus;
+	uint32_t ptrsz;
+	uint32_t clctype;
+	uint32_t ftsize;
+	uint32_t flags;
+	uetwptr_t *ftstack;
+	uint64_t timebase;		// converting etw trace raw timestamp to system time
+	ulong_t cpumhz;
+	ulong_t timerres;
+	hrtime_t boottime;
+	hrtime_t perffreq;
+	hrtime_t starttime;
+	TRACEHANDLE hsession;
+	TRACEHANDLE psession;
+	GUID *sessguid;
+	CLASSIC_EVENT_ID stackid[ETW_MAX_STACKID];
+	PEVENT_RECORD ev;
+	etw_stack_t *stackinfo;
+	
+	void (*evcb)(Functions&, PEVENT_RECORD);
+			
+	etw_dtrace_probe_t dtrace_probef;
+	etw_dtrace_ioctl_t dtrace_ioctlf;
+	wchar_t *sessname;
+	wchar_t *etlfile;
+	double timescale;
+	// Used to determine if the session is a private session or kernel session.
+	// You need to know this when accessing some members of the EVENT_TRACE.Header
+	// member (for example, KernelTime or UserTime).
+	int isusermode;
+	//https://docs.microsoft.com/en-us/windows/desktop/etw/wnode-header
+	int israwtime;		
+	int isfile;			// Trace data from a file 
+	int islive;
+	int stackidlen;
+	int hb;		//FT heartheat
+	int thrid;
+	void *data;			// etw provider data
+	sessioninfo_t *sessinfo;
+	sdtmem_t *sdtmem;
+	etw_stack_t *freelistetw;
+	Hashblk *freelist;
+	struct {			// stalkwalk data. stack info for ncpus
+		queue<etw_stack_t *> queue;
+		//map<hrtime_t, etw_stack_t *> *map;
+		Hashmap *map;
+		uint32_t lock;
+	} Q;
+} etw_sessioninfo_t;
 
 typedef struct etw_jitsym_map {
 	int sorted;
@@ -215,6 +225,17 @@ typedef struct etw_jitsym_map {
 	vector<etw_jit_symbol_t *> jit_syms;
 } etw_jitsym_map_t;
 
+
+int relog(etw_sessioninfo **sessions, int max, wchar_t *etwfile);
+void relog_single(etw_sessioninfo *session, int i);
+wchar_t *sesstofile(wchar_t *sessname, size_t *fsz);
+int tempfiles(wchar_t *oetwfile);
+
+void *sdtmem_alloc(int sz);
+int sdtmem_free(sdtmem_t *sdtmem,intptr_t sz, bool reclaim, int thr);
+void esfree(etw_stack_t *f);
+etw_stack_t* esalloc();
+int etw_merge_etlfiles();
 
 #ifdef __cplusplus
 }

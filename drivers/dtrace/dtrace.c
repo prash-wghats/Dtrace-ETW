@@ -394,7 +394,7 @@ static kmutex_t dtrace_errlock;
 	for (; actv; actv >>= 1) \
 		intr++; \
 	ASSERT(intr < (1 << 3)); \
-	(where) = (((uint64_t)curthread->tid + DIF_VARIABLE_MAX) & \
+	(where) = (((uint64_t)(curthread->tid ? curthread->tid : _curcpu()) + DIF_VARIABLE_MAX) & \
 	    (((uint64_t)1 << 61) - 1)) | ((uint64_t)intr << 61); \
 }
 #endif
@@ -3087,7 +3087,13 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 #else
 		return (mstate->dtms_walltimestamp);
 #endif
+#ifdef windows
+	case DIF_VAR_ETWTIMESTAMP:
+		return (dtrace_etw_gethrtime());
 
+	case DIF_VAR_ETWWALLTIMESTAMP:
+		return (dtrace_etw_gethrestime());
+#endif
 	case DIF_VAR_IPL:
 		if (!dtrace_priv_kernel(state))
 			return (0);

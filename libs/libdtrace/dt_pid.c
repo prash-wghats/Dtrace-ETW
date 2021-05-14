@@ -482,7 +482,9 @@ dt_pid_fix_mod(dtrace_probedesc_t *pdp, struct ps_prochandle *P)
 	(void) Plmid(P, pmp->pr_vaddr, &lmid);
 #else
 	obj = pdp->dtpd_mod;
-	Pnormobjname(P, pdp->dtpd_mod, m, sizeof (m));
+	
+	if (Pnormobjname(P, pdp->dtpd_mod, m, sizeof (m)) == 0)
+		return (pmp);
 	obj = &m[0];
 #endif
 	dt_pid_objname(pdp->dtpd_mod, sizeof (pdp->dtpd_mod), lmid, obj);
@@ -789,7 +791,7 @@ dt_pid_create_probes(dtrace_probedesc_t *pdp, dtrace_hdl_t *dtp, dt_pcb_t *pcb)
 #endif	
 		}
 
-#if defined(windows)
+#if 0 //defined(windows)
 		/* for any ustack helpers */
 		if (!dpr->dpr_usdt) {
 			err = dt_pid_create_usdt_probes(pdp, dtp, pcb, dpr);
@@ -818,12 +820,13 @@ dt_pid_create_probes(dtrace_probedesc_t *pdp, dtrace_hdl_t *dtp, dt_pcb_t *pcb)
 		dpr = dt_proc_lookup(dtp, P, 0);
 		assert(dpr != NULL);
 		(void) pthread_mutex_lock(&dpr->dpr_lock);
-
+		
+#if !defined(windows)
 		if (!dpr->dpr_usdt) {
 			err = dt_pid_create_usdt_probes(pdp, dtp, pcb, dpr);
 			dpr->dpr_usdt = B_TRUE;
 		}
-
+#endif
 		(void) pthread_mutex_unlock(&dpr->dpr_lock);
 		dt_proc_release(dtp, P);
 	}
@@ -875,19 +878,21 @@ dt_pid_create_probes_module(dtrace_hdl_t *dtp, dt_proc_t *dpr)
 			if (gmatch(provname, pdp->dtpd_provider) != 0 &&
 			    dt_pid_create_pid_probes(&pd, dtp, NULL, dpr) != 0)
 				ret = 1;
-
+#if defined(windows)
+			else if (gmatch(provname0, pdp->dtpd_provider) != 0 &&
+			    dt_pid_create_pid_probes(&pd, dtp, NULL, dpr) != 0)
+				ret = 1;
+#endif
+#if !defined(windows)
 			/*
 			 * If it's not strictly a pid provider, we might match
 			 * a USDT provider.
 			 */
-#if defined(windows)
-			if ((gmatch(provname, pdp->dtpd_provider) != 0 || 
-			gmatch(provname0, pdp->dtpd_provider) != 0) &&
-#else
 			if (strcmp(provname, pdp->dtpd_provider) != 0 &&
-#endif
 			    dt_pid_create_usdt_probes(&pd, dtp, NULL, dpr) != 0)
 				ret = 1;
+		}
+#endif
 		}
 	}
 

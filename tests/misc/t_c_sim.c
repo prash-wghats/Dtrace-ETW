@@ -1,6 +1,4 @@
-//ex. dtrace -n "pid$target:loops64::entry {@[ustack()]=count();}" -c loops64.exe
-//cl.exe  /Zi /Feloops[64/32].exe loops.c
-//gcc -o loops loops.c
+//.\debug\amd64\bin\dtrace.exe -s .\tests\misc\t_user_ctf.d -c .\debug\amd64\obj\t_c_sim.exe
 
 #include <stdio.h>
 #include <windows.h>

@@ -1,5 +1,5 @@
 
-/* 
+/*
 csc /platform:x64 /target:exe /debug+ /debug:full  /optimize- /define:MAIN /out:loopass.exe ..\..\internal\loopsass.cs
 csc /platform:x64 /target:library /debug+ /debug:full  /optimize- /define:TESTAS0 /out:t_cs_dyndll0.dll ..\..\internal\loopsass.cs
 csc /platform:x64 /target:library /debug+ /debug:full  /optimize- /define:TESTAS1 /out:t_cs_dyndll1.dll ..\..\internal\loopsass.cs
@@ -10,6 +10,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.IO;
 using System.Reflection;
 using System.Threading;
 
@@ -17,6 +18,18 @@ using System.Threading;
 namespace test {
 class Program {
 	public static int LOOPS = 1000;
+	public static string
+	GetExecutingDirectory()
+	{
+		var location = new Uri(Assembly.GetEntryAssembly().GetName().CodeBase);
+		return new FileInfo(location.AbsolutePath).Directory.FullName;
+	}
+	
+	public static int
+	sum(int a, int b)
+	{
+		return a + b;
+	}
 
 	public static void
 	method1(object co)
@@ -24,21 +37,21 @@ class Program {
 		int coi = (int) co;
 		Assembly myassembly;
 		Type type = null;
-
+		string basedir = GetExecutingDirectory();
 		if (coi == 0) {
-			myassembly = Assembly.LoadFrom("t_cs_dyndll0.dll");
+			myassembly = Assembly.LoadFrom(basedir + "/t_cs_dyndll0.dll");
 			type = myassembly.GetType("t_cs_dyndll0.Class1");
 		} else  if (coi == 1) {
-			myassembly = Assembly.LoadFrom("t_cs_dyndll1.dll");
+			myassembly = Assembly.LoadFrom(basedir + "/t_cs_dyndll1.dll");
 			type = myassembly.GetType("t_cs_dyndll1.Class1");
 		} else  if (coi == 2) {
-			myassembly = Assembly.LoadFrom("t_cs_dyndll2.dll");
+			myassembly = Assembly.LoadFrom(basedir + "/t_cs_dyndll2.dll");
 			type = myassembly.GetType("t_cs_dyndll2.Class1");
 		} else  if (coi == 3) {
-			myassembly = Assembly.LoadFrom("t_cs_dyndll3.dll");
+			myassembly = Assembly.LoadFrom(basedir + "/t_cs_dyndll3.dll");
 			type = myassembly.GetType("t_cs_dyndll3.Class1");
 		}
-
+		sum(1,2);
 		object instance = Activator.CreateInstance(type);
 
 		MethodInfo[] methods = type.GetMethods();

@@ -46,13 +46,18 @@ dtrace_wcstombs(char *dest, wchar_t *src, int size)
 	volatile uint16_t *flags = (volatile uint16_t *)
 	    &cpu_core[curcpu].cpuc_dtrace_flags;
 	int len = 0;
+	errno_t err;
 
 	__try {
 		/*
 		 * if the destination utf8 string buffer, is not
 		 * enought to convert the wchar string, truncate it.
 		 */
-		wcstombs_s(&len, dest, size, src, _TRUNCATE);
+		//err = wcstombs_s(&len, dest, size, src, _TRUNCATE);
+		len = wcslen(src);
+		err = WideCharToMultiByte(CP_UTF8, 0, (src), (len), (dest), (size), NULL, NULL );
+		len = err == 0 ? size : err;
+		err = GetLastError();
 	} __except(EXCEPTION_EXECUTE_HANDLER) {
 		*flags |= CPU_DTRACE_FAULT;
 	}
@@ -688,7 +693,7 @@ fasttrap_pfind(pid_t id)
 	proc_t *p;
 	p = dtrace_etw_proc_find(id, ETW_PROC_FIND);
 
-	return (p == NULL || p->dead ? NULL: p);
+	return ((p == NULL || p->dead) ? NULL: p);
 }
 
 /*

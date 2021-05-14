@@ -725,8 +725,8 @@ dt_print_packed(dtrace_hdl_t *dtp, FILE *fp,
 			utf8 = B_TRUE;
 		} else if ((term = getenv("TERM")) != NULL &&
 		    (strcmp(term, "sun") == 0 ||
-		    strcmp(term, "sun-color") == 0) ||
-		    strcmp(term, "dumb") == 0) {
+		    strcmp(term, "sun-color") == 0 ||
+		    strcmp(term, "dumb") == 0)) {
 			utf8 = B_FALSE;
 		} else {
 			utf8 = B_TRUE;
@@ -1362,13 +1362,13 @@ dt_print_ustack(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 	 * this is a vector open, we just print the raw address or string.
 	 */
 	if (dtp->dt_vector == NULL)
-		P = dt_proc_grab(dtp, pid, PGRAB_RDONLY | PGRAB_FORCE, 0);
-	else
+		P = dt_proc_grab(dtp, pid, PGRAB_RDONLY | PGRAB_FORCE
 #if defined(windows)
-		P = dt_proc_grab(dtp, pid, PGRAB_RDONLY | PGRAB_ETW, 0);
-#else
-		P = NULL;
+		| (dtp->dt_oflags & DTRACE_O_FETW ? PGRAB_ETW : 0)
 #endif
+		, 0);
+	else
+		P = NULL;
 
 	if (P != NULL)
 		dt_proc_lock(dtp, P); /* lock handle while we perform lookups */
@@ -1473,16 +1473,11 @@ dt_print_usym(dtrace_hdl_t *dtp, FILE *fp, caddr_t addr, dtrace_actkind_t act)
 	char *s;
 	int n, len = 256;
 
-#if !defined(windows)
 	if (act == DTRACEACT_USYM && dtp->dt_vector == NULL) {
+#if !defined(windows)
 		int flags = PGRAB_RDONLY | PGRAB_FORCE;
 #else
-	if (act == DTRACEACT_USYM) {
-		int flags;
-		if (dtp->dt_vector == NULL)
-			flags = PGRAB_RDONLY | PGRAB_FORCE;
-		else
-			flags = PGRAB_RDONLY | PGRAB_ETW;
+		int flags = PGRAB_RDONLY | PGRAB_FORCE | (dtp->dt_oflags & DTRACE_O_FETW ? PGRAB_ETW : 0);
 #endif
 		struct ps_prochandle *P;
 
@@ -1528,13 +1523,13 @@ dt_print_umod(dtrace_hdl_t *dtp, FILE *fp, const char *format, caddr_t addr)
 	 * printing raw addresses in the vectored case.
 	 */
 	if (dtp->dt_vector == NULL)
-		P = dt_proc_grab(dtp, pid, PGRAB_RDONLY | PGRAB_FORCE, 0);
-	else
+		P = dt_proc_grab(dtp, pid, PGRAB_RDONLY | PGRAB_FORCE
 #if defined(windows)
-		P = dt_proc_grab(dtp, pid, PGRAB_RDONLY | PGRAB_ETW, 0);
-#else
-		P = NULL;
+		| (dtp->dt_oflags & DTRACE_O_FETW ? PGRAB_ETW : 0)
 #endif
+		, 0);
+	else
+		P = NULL;
 
 	if (P != NULL)
 		dt_proc_lock(dtp, P); /* lock handle while we perform lookups */

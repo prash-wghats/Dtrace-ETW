@@ -39,11 +39,12 @@ typedef struct Context32 Context;
 #define	MAX_SIZE 7000
 
 /* thread info */
-#define	MAX_THREAD 1024
+#define	MAX_THREADS 1024
 struct Tls {
 	DWORD in;
 	DWORD tid;
-} tidtls[MAX_THREAD];
+	struct Tls *next;
+} tidtls[MAX_THREADS] = {0};
 
 static int ETWTYPE = 1;
 static int tlsmax = 0;
@@ -52,23 +53,25 @@ static HMODULE agentdll;
 static DWORD _agent_tid, _proc_pid, _stackon;
 
 typedef struct etw_evarc {
-	uetwptr_t addr[MAX_SIZE];
-	uetwptr_t end;
-	uetwptr_t off;
+	uint64_t addr[MAX_SIZE];
+	uint64_t end;
+	uint64_t off;
 	int co;
-	uint32_t blked;
 	struct etw_evarc *next;
 } etw_evarc_t;
 
 static etw_evarc_t *event_add_list;
 static etw_evarc_t *event_send_list, *event_passive_list;
-static HANDLE agent_add_lock;
+static HANDLE agent_add_lock, test_lock;
 
-static int StackTrace(uetwptr_t *pcstack, uintptr_t ip,
-	uintptr_t sp, int limit, int aframes);
+static int StackTrace(uint64_t *pcstack, uintptr_t ip,
+    uintptr_t sp, int limit, int aframes);
 
-static int tester = 0, entry, total, dropped;
+static int blobevents, dropped, blobsent, lllen, events, eventsent;
 static int _debug = 0;
+static int thread_lock = 0;
+
+#define DIAG(st)	if (_debug) { if (st != ERROR_SUCCESS) dropped++; eventsent++; events++; }
 
 dt_pipe_t *proc_func(dt_pipe_t *pipe);
 
@@ -78,36 +81,108 @@ dprintf(char *fmt, ...)
 	va_list args;
 	if (_debug) {
 		va_start(args, fmt);
+		fputs("AGENT.DLL DEBUG: ", stderr);
 		vfprintf(stderr, fmt, args);
 		va_end(args);
 	}
 }
 
+int
+d_msg_count(intptr_t addr, int size)
+{
+	struct ftetw_blob *ft = (struct ftetw_blob *) addr;
+	ftetw_msg_t *tmp = addr, *tmpr;
+	int samp = size, j = 0;
+	int evco = 0;
+
+	while (samp >= (int) sizeof (ftetw_msg_t)) {
+		evco++;
+		tmpr = tmp;
+		tmp = &(tmp->stack[tmp->stacksz + 1]);
+		samp -= ((char *)tmp - (char *)tmpr);
+	}
+
+	return evco;
+}
+
+static int _malloc = 0, spin = 0;
+static struct Tls *freelist = NULL, *hotlist = NULL;
+void
+init_alloc()
+{
+	int i;
+	struct Tls *tmp = malloc(sizeof(struct Tls) * MAX_THREADS);
+	freelist = tmp;
+	for (i = 0; i < MAX_THREADS - 1; i++) {
+		tmp[i].next = &tmp[i + 1];
+	}
+	tmp[i].next = NULL;
+}
+
 /* lookup thread data, for the current thread */
 static struct Tls *
-lookup_tid()
+lookup_tid(DWORD tid)
 {
-	DWORD id = GetCurrentThreadId(), ind, inc;
+	DWORD ind, inc;
+	struct Tls *tmp = NULL, *prev = NULL;
 
-	for (int i = 0; i < tlsmax; i++) {
-		if (tidtls[i].tid == id) {
-			return (&tidtls[i]);
+	for (tmp = hotlist; tmp != NULL; tmp = tmp->next) {
+		if (tmp->tid == tid) {
+			return tmp;
 		}
 	}
+	///while (InterlockedCompareExchange(&_malloc, 1, 0) != 0)
+	///   spin++;
 
-	do {
-		ind = tlsmax;
-		inc = ind+1;
-	} while (InterlockedCompareExchange(&tlsmax, inc, ind) != ind);
-
-	if (ind >= MAX_THREAD) {
-		dprintf("agent: threads > MAX_THREAD?\n");
-		return (NULL);
+	for (tmp = hotlist; tmp != NULL; tmp = tmp->next) {
+		if (InterlockedCompareExchange(&tmp->tid, tid, 0) == 0) {
+			//if (tmp->tid == 0) {
+			tmp->tid = tid;
+			///InterlockedExchange(&_malloc, 0);
+			return tmp;
+		}
+		prev = tmp;
 	}
 
-	tidtls[ind].tid = id;
+	assert(freelist != NULL);
 
-	return (&tidtls[ind]);
+	do {
+		tmp = freelist;
+		//freelist = tmp->next;
+	} while (InterlockedCompareExchangePointer(&freelist, tmp->next, tmp) != tmp);
+	tmp->tid = tid;
+	tmp->in = 0;
+	tmp->next = NULL;
+	if (prev == NULL)
+		hotlist = tmp;
+	else
+		prev->next = tmp;
+
+	lllen++;
+
+	return tmp;
+
+	/*
+	    for (int i = 0; i < tlsmax; i++) {
+	        if (tidtls[i].tid == tid) {
+	            return (&tidtls[i]);
+	        }
+	    }
+
+	    do {
+	        ind = tlsmax;
+	        inc = ind + 1;
+	    } while (InterlockedCompareExchange(&tlsmax, inc, ind) != ind);
+
+	    if (ind >= MAX_THREADS) {
+	        dprintf("agent: threads > MAX_THREADS?\n");
+	        return (NULL);
+	    }
+
+	    tidtls[ind].tid = tid;
+
+	    return (&tidtls[ind]);
+	*/
 }
 
 /*
@@ -126,7 +201,7 @@ gethrtime()
 
 	if (frequency == 0) {
 		QueryPerformanceFrequency(&Frequency);
-		frequency = NANOSEC/Frequency.QuadPart;
+		frequency = NANOSEC / Frequency.QuadPart;
 	}
 	QueryPerformanceCounter(&StartingTime);
 	ret = StartingTime.QuadPart * frequency;
@@ -202,6 +277,7 @@ ag_init_evarc()
 	etw_evarc_t *tmp = NULL;
 
 	etw_mutex_init(&agent_add_lock);
+	etw_mutex_init(&test_lock);
 	tmp = (etw_evarc_t *) ag_zalloc(sizeof (etw_evarc_t));
 	tmp->end = &tmp->addr[MAX_SIZE];
 	tmp->off = &tmp->addr[0];
@@ -225,6 +301,8 @@ ag_init()
 	dt_pipe_t *pipe;
 	HANDLE td;
 	MH_STATUS st;
+
+	_debug = getenv("AGENT_DEBUG") != NULL;
 
 	status = EventRegister(
 	    &ProviderGuid,	/* GUID that identifies the provider */
@@ -253,7 +331,7 @@ ag_init()
 	_agent_tid = GetThreadId(td);
 	_proc_pid = GetCurrentProcessId();
 	ag_init_evarc();
-
+	init_alloc();
 	return (TRUE);
 }
 
@@ -262,24 +340,10 @@ swap_evarc(etw_evarc_t *add_list, uintptr_t offset)
 {
 	etw_evarc_t *temp;
 
-	etw_mutex_enter(&agent_add_lock);
-	if (add_list == event_passive_list || event_add_list->off < offset ||
-	    add_list != event_add_list) {
-		etw_mutex_exit(&agent_add_lock);
-		return (0);
-	}
-
-	temp = event_add_list;
-
-	temp->next = NULL;
-	send_events(temp);
-
-	InterlockedExchangePointer(&event_add_list, event_passive_list);
-	temp->co = 0;
-	temp->off = &temp->addr[0];
-
-	InterlockedExchangePointer(&event_add_list, temp);
-	etw_mutex_exit(&agent_add_lock);
+	send_events(event_add_list);
+	memset(event_add_list->addr, 0, sizeof(event_add_list->addr));
+	event_add_list->co = 0;
+	event_add_list->off = &event_add_list->addr[0];
 
 	return (0);
 }
@@ -296,23 +360,22 @@ static int
 send_events(etw_evarc_t *send)
 {
 	EVENT_DATA_DESCRIPTOR Descriptors[MAX_PAYLOAD_DESCRIPTORS0];
-	int size =  send->off - (uetwptr_t) &send->addr[0];
+	int size =  send->off - (uint64_t) &send->addr[0];
 	ULONG st = 0, co = 0;
 
-	/* wait for all threads to finish copying to the queue */
-	while (send->blked != 0 && co < 10) {
-		Sleep(0);
-		co++;
-	}
 	EventDataDescCreate(&Descriptors[0], &send->co, sizeof (UINT32));
 	EventDataDescCreate(&Descriptors[1], &size, sizeof (UINT32));
 	EventDataDescCreate(&Descriptors[2], send->addr, size);
 
 	st = EventWrite(RegHandle, &Events, 3, Descriptors);
 
-	if (st != ERROR_SUCCESS) {
-		dropped++; 		/* diagnostics */
-		return (-1);
+	if (_debug) {
+		if (st != ERROR_SUCCESS) {
+			dropped++; 		/* diagnostics */
+			return (-1);
+		}
+		blobsent++;
+		blobevents += d_msg_count(send->addr, size);
 	}
 
 	return (0);
@@ -321,61 +384,65 @@ send_events(etw_evarc_t *send)
 static int
 ev_addarc(uintptr_t paddr, uint32_t id, uintptr_t arg0,
     uintptr_t arg1, uintptr_t arg2, uintptr_t arg3,
-    uintptr_t arg4, uintptr_t ax, uetwptr_t *stack, int stsz)
+    uintptr_t arg4, uintptr_t ax, int32_t tid, int32_t cpuno, hrtime_t time,
+    uint64_t *stack,
+    int stsz, int type)
 {
 	int noff = 0, i;
 	etw_evarc_t *temp;
-	uetwptr_t *addr, *tmp, noffp;
-	etw_event_t *ev;
+	uint64_t *addr, *tmp, noffp;
+	ftetw_msg_t *ev;
 	LARGE_INTEGER  Time;
 
-	noff = (stsz + FT_ETW_EVENT_SIZE) * sizeof (uetwptr_t);
-
+	//noff = (stsz + FT_ETW_EVENT_SIZE) * sizeof (uint64_t);
+	//stsz += type;
+	noff = (stsz + type) * sizeof (uint64_t) + sizeof(ftetw_msg_t);
+	while (InterlockedCompareExchange(&thread_lock, 1, 0) != 0)
+		;
+	//etw_mutex_enter(&test_lock);
 	while (1) {
-		InterlockedExchangePointer(&temp, event_add_list);
 
-		addr = temp->off;
-		noffp = (uetwptr_t) addr+noff;
-		if (noffp >= temp->end) {
-			if (swap_evarc(temp, addr) < 0) {
+		addr = event_add_list->off;
+		noffp = (uint64_t) addr + noff;
+		if (noffp >= event_add_list->end) {
+			if (swap_evarc(event_add_list, addr) < 0) {
 				return (-1);
 			}
 			continue;
 		}
-		if (InterlockedCompareExchangePointer(&temp->off, noffp, addr) ==
-		    addr) {
-			break;
-		}
+
+		event_add_list->off = noffp;
+		break;
 	}
 
-	InterlockedIncrement(&temp->blked);
-	InterlockedIncrement(&temp->co);
-	InterlockedIncrement(&total);	/* diagnostics */
-
-	QueryPerformanceCounter(&Time);
-
 	ev = addr;
-	ev->time = Time.QuadPart;
+	ev->type = type;
+	ev->time = time;
 	ev->addr = paddr;
 	ev->pid = _proc_pid;
-	ev->tid = GetCurrentThreadId();
-	ev->cpuno = GetCurrentProcessorNumber();
-	ev->stacksz = stsz;
-	ev->arg0 = arg0;
-	ev->arg1 = arg1;
-	ev->arg2 = arg2;
-	ev->arg3 = arg3;
-	ev->arg4 = arg4;
-	ev->ax = ax;
-	tmp = &ev->stack[0];
+	ev->tid = tid;
+	ev->cpuno = cpuno;
+	ev->stacksz = stsz + type;
+	if (type == INJ_ENTRY_TYPE) {
+		ev->stack[0] = arg0;
+		ev->stack[1] = arg1;
+		ev->stack[2] = arg2;
+		ev->stack[3] = arg3;
+		ev->stack[4] = arg4;
+	} else {
+		ev->stack[0] = ax;
+	}
+
+	tmp = &ev->stack[type];
 
 	for (i = 0; i < stsz; i++) {
 		tmp[i] = stack[i];
 	}
 	tmp[i] = 0;
 
-	InterlockedDecrement(&temp->blked);
-
+	event_add_list->co++;
+	//etw_mutex_exit(&test_lock);
+	InterlockedExchange(&thread_lock, 0);
 	return (0);
 }
 
@@ -385,7 +452,7 @@ ev_addarc(uintptr_t paddr, uint32_t id, uintptr_t arg0,
 #define	UNW_FLAG_NHANDLER 0x0
 
 static int
-StackTrace(uetwptr_t *pcstack, uintptr_t ip, uintptr_t sp,
+StackTrace(uint64_t *pcstack, uintptr_t ip, uintptr_t sp,
     int limit, int aframes)
 {
 	CONTEXT Context;
@@ -425,7 +492,7 @@ StackTrace(uetwptr_t *pcstack, uintptr_t ip, uintptr_t sp,
 			 */
 			__try {
 				Context.Rip  =
-				    (ULONG64)(*(PULONG64)Context.Rsp);
+				(ULONG64)(*(PULONG64)Context.Rsp);
 			} __except(EXCEPTION_EXECUTE_HANDLER) {
 				return (depth);
 			}
@@ -467,7 +534,7 @@ struct frame {
 };
 
 static int
-StackTrace(uetwptr_t *pcstack, uintptr_t ip, uintptr_t sp,
+StackTrace(uint64_t *pcstack, uintptr_t ip, uintptr_t sp,
     int limit, int aframes)
 {
 	CONTEXT Context;
@@ -505,19 +572,24 @@ StackTrace(uetwptr_t *pcstack, uintptr_t ip, uintptr_t sp,
  * http://win32easy.blogspot.com/2011/03/rtlcapturestackbacktrace-in-managed.html
  */
 
-#define	STACKSIZE 256
+enum {
+	STACKSIZE = 256,
+};
+
 void
-PrologEtw64(void* funcaddr, Context* ct, unsigned a_ContextSize)
+Etw(void* funcaddr, Context* ct, unsigned a_ContextSize, int type)
 {
-	struct Tls *tls;
+	struct Tls *tls = NULL;
 	EVENT_DATA_DESCRIPTOR Descriptors[MAX_PAYLOAD_DESCRIPTORS];
 	DWORD id = 0, n = 0, size = 0, st;
-	uetwptr_t stacks[STACKSIZE], s5 = 0;
+	uint64_t stacks[STACKSIZE], s5 = 0;
 	static hrtime_t ts = 0;
 	hrtime_t ts0;
+	int32_t cpuno;
+	LARGE_INTEGER Time;
+	DWORD tid = GetCurrentThreadId();
 
-	if ((tls = lookup_tid()) == NULL ||
-	    tls->tid == _agent_tid || tls->in) {
+	if (tid == _agent_tid ||  (tls = lookup_tid(tid)) == NULL || tls->in) {
 		return;
 	}
 
@@ -531,76 +603,93 @@ PrologEtw64(void* funcaddr, Context* ct, unsigned a_ContextSize)
 		ts = ts0;
 	}
 
-	InterlockedIncrement(&entry);	/* diagnostics */
-
 	if (_stackon) {
+#if defined(_M_X64) || defined(__x86_64__)
+		n = StackTrace(stacks, funcaddr, &ct->m_RET, STACKSIZE, 3);
+#else
 		n = StackTrace(stacks, funcaddr, &ct->m_RET, STACKSIZE, 2);
+#endif
 	}
 	size = n * sizeof (uintptr_t);
 
 #if defined(_M_X64) || defined(__x86_64__)
 	if (ETWTYPE == 1) {
-		EventDataDescCreate(&Descriptors[0], &funcaddr,
-		    sizeof (uetwptr_t));
-		EventDataDescCreate(&Descriptors[1], &ct->m_RCX,
-		    sizeof (uetwptr_t));
-		EventDataDescCreate(&Descriptors[2], &ct->m_RDX,
-		    sizeof (uetwptr_t));
-		EventDataDescCreate(&Descriptors[3], &ct->m_R8,
-		    sizeof (uetwptr_t));
-		EventDataDescCreate(&Descriptors[4], &ct->m_R9,
-		    sizeof (uetwptr_t));
-		EventDataDescCreate(&Descriptors[5], &s5, sizeof (uetwptr_t));
-		EventDataDescCreate(&Descriptors[6], &ct->m_RAX,
-		    sizeof (uetwptr_t));
-		EventDataDescCreate(&Descriptors[7], &size, sizeof (UINT32));
-		EventDataDescCreate(&Descriptors[8], stacks, size);
-
-		st = EventWrite(RegHandle, &Entry, 9, Descriptors);
+		if (type == INJ_ENTRY_TYPE) {
+			EventDataDescCreate(&Descriptors[0], &size, sizeof (UINT32));
+			EventDataDescCreate(&Descriptors[1], &funcaddr, sizeof (uint64_t));
+			EventDataDescCreate(&Descriptors[2], &ct->m_RCX, sizeof (uint64_t));
+			EventDataDescCreate(&Descriptors[3], &ct->m_RDX, sizeof (uint64_t));
+			EventDataDescCreate(&Descriptors[4], &ct->m_R8, sizeof (uint64_t));
+			EventDataDescCreate(&Descriptors[5], &ct->m_R9, sizeof (uint64_t));
+			EventDataDescCreate(&Descriptors[6], &s5, sizeof (uint64_t));
+			EventDataDescCreate(&Descriptors[7], stacks, size);
+			st = EventWrite(RegHandle, &Entry, 8, Descriptors);
+		} else {
+			EventDataDescCreate(&Descriptors[0], &size, sizeof (UINT32));
+			EventDataDescCreate(&Descriptors[1], &funcaddr, sizeof (uint64_t));
+			EventDataDescCreate(&Descriptors[2], &ct->m_RAX, sizeof (uint64_t));
+			EventDataDescCreate(&Descriptors[3], stacks, size);
+			st = EventWrite(RegHandle, &Return, 4, Descriptors);
+		}
+		DIAG(st)
 	} else {
+		QueryPerformanceCounter(&Time);
+		cpuno = GetCurrentProcessorNumber();
+
 		ev_addarc((uintptr_t) funcaddr, id, ct->m_RCX,
-		    ct->m_RDX, ct->m_R8, ct->m_R9, s5, ct->m_RAX, stacks, n);
+		    ct->m_RDX, ct->m_R8, ct->m_R9, s5, ct->m_RAX, tid, cpuno, Time.QuadPart, stacks,
+		    n, type);
 	}
 #else
 	uint32_t *stack = (uint32_t *) &ct->m_RET;
-	uetwptr_t tmp[10];
 
 	if (ETWTYPE == 1) {
-		tmp[0] = funcaddr;
-		EventDataDescCreate(&Descriptors[0], &tmp[0],
-		    sizeof (uetwptr_t));
-		tmp[1] = stack[1];
-		EventDataDescCreate(&Descriptors[1], &tmp[1],
-		    sizeof (uetwptr_t));
-		tmp[2] = stack[2];
-		EventDataDescCreate(&Descriptors[2], &tmp[2],
-		    sizeof (uetwptr_t));
-		tmp[3] = stack[3];
-		EventDataDescCreate(&Descriptors[3], &tmp[3],
-		    sizeof (uetwptr_t));
-		tmp[4] = stack[4];
-		EventDataDescCreate(&Descriptors[4], &tmp[4],
-		    sizeof (uetwptr_t));
-		tmp[5] = stack[5];
-		EventDataDescCreate(&Descriptors[5], &tmp[5],
-		    sizeof (uetwptr_t));
-		tmp[6] = ct->m_EAX;
-		EventDataDescCreate(&Descriptors[6], &tmp[6],
-		    sizeof (uetwptr_t));
-		EventDataDescCreate(&Descriptors[7], &size, sizeof (UINT32));
-		EventDataDescCreate(&Descriptors[8], stacks, size);
+		if (type == INJ_ENTRY_TYPE) {
+			EventDataDescCreate(&Descriptors[0], &size, sizeof (UINT32));
+			EventDataDescCreate(&Descriptors[1], &funcaddr, sizeof (uint64_t));
+			EventDataDescCreate(&Descriptors[2], &stack[1], sizeof (uint64_t));
+			EventDataDescCreate(&Descriptors[3], &stack[2], sizeof (uint64_t));
+			EventDataDescCreate(&Descriptors[4], &stack[3], sizeof (uint64_t));
+			EventDataDescCreate(&Descriptors[5], &stack[4], sizeof (uint64_t));
+			EventDataDescCreate(&Descriptors[6], &stack[5], sizeof (uint64_t));
+			EventDataDescCreate(&Descriptors[7], stacks, size);
 
-		st = EventWrite(RegHandle, &Entry, 9, Descriptors);
+			st = EventWrite(RegHandle, &Entry, 8, Descriptors);
+		} else {
+			EventDataDescCreate(&Descriptors[0], &size, sizeof (UINT32));
+			EventDataDescCreate(&Descriptors[1], &funcaddr, sizeof (uint64_t));
+			EventDataDescCreate(&Descriptors[2], &(ct->m_EAX), sizeof (uint64_t));
+			EventDataDescCreate(&Descriptors[3], stacks, size);
+
+			st = EventWrite(RegHandle, &Return, 9, Descriptors);
+		}
+
+		DIAG(st)
 	} else {
-		ev_addarc((uintptr_t) funcaddr, id, stack[1],
+
+		QueryPerformanceCounter(&Time);
+		cpuno = GetCurrentProcessorNumber();
+		ev_addarc((uintptr_t) funcaddr, id, stack[1], 
 		    stack[2], stack[3], stack[4], stack[5],
-		    ct->m_EAX, stacks, n);
+		    ct->m_EAX, tid, cpuno, Time.QuadPart, stacks, n, type);
 	}
 #endif
 
 	tls->in = 0;
+	tls->tid = 0;
 }
 
+void
+PrologEtw(void* funcaddr, Context* ct, unsigned a_ContextSize)
+{
+	Etw(funcaddr, ct, a_ContextSize, INJ_ENTRY_TYPE);
+}
+
+void
+EpilogEtw(void* funcaddr, Context* ct, unsigned a_ContextSize)
+{
+	Etw(funcaddr, ct, a_ContextSize, INJ_RETURN_TYPE);
+}
 
 dt_pipe_t *
 proc_func(dt_pipe_t *pipe)
@@ -619,10 +708,10 @@ proc_func(dt_pipe_t *pipe)
 
 		if (f->type == PIPE_FUNC_ENTER) {
 			st = MH_Orbit_CreateHookPrologEpilog((LPVOID) f->addr,
-			    f->faddr, PrologEtw64, NULL, NULL, 0);
+			    f->faddr, PrologEtw, NULL, NULL, 0);
 		} else {
 			st = MH_Orbit_CreateHookPrologEpilog((LPVOID) f->addr,
-			    f->faddr, PrologEtw64 /* EpilogEtw64 */,
+			    f->faddr, EpilogEtw /* EpilogEtw64 */,
 			    NULL, NULL, 0);
 		}
 		break;
@@ -686,11 +775,12 @@ DllMain(HMODULE DllHandle, DWORD Reason, PVOID Reserved)
 
 		if (ETWTYPE == 0)
 			purge_events();
+
 		EventDataDescCreate(&Descriptors[0], &status, sizeof (UINT32));
 		EventWrite(RegHandle, &Status, 1, Descriptors);
 		EventUnregister(RegHandle);
-		dprintf("Diagnostics: entry %d added %d pkts dropped %d\n",
-		    entry, total, dropped);
+		dprintf("Events (%d) Packets (%d) Dropped (%d) linked list length (%d)\n",
+		    blobevents + events, blobsent + eventsent, dropped, lllen);
 
 		return (TRUE);
 	} else {

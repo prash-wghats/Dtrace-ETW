@@ -1,13 +1,13 @@
 /*
- * Permission to use, copy, modify, and/or distribute this software for 
+ * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted.
  *
- * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES 
- * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF 
- * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE 
- * FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY 
- * DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER 
- * IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING 
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE
+ * FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY
+ * DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER
+ * IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING
  * OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
@@ -70,14 +70,14 @@ struct Etw_ClrRD_Module_154 {	//PerfTrackRundownKeyword, LoaderRundownKeyword
 };
 
 struct Etw_ClrRD_Module_152 {	//LoaderRundownKeyword
-uint64_t ModuleID;
-uint64_t AssemblyID;
-uint64_t AppDomainID;
-uint32_t ModuleFlags;
-uint32_t Reserved1;
-wchar_t *ModuleILPath;
-wchar_t *ModuleNativePath;	//V0
-uint16_t ClrInstanceID;		//V1
+	uint64_t ModuleID;
+	uint64_t AssemblyID;
+	uint64_t AppDomainID;
+	uint32_t ModuleFlags;
+	uint32_t Reserved1;
+	wchar_t *ModuleILPath;
+	wchar_t *ModuleNativePath;	//V0
+	uint16_t ClrInstanceID;		//V1
 };
 
 struct ETWStackWalk {
@@ -94,6 +94,11 @@ struct SampledProfile {
 	uetwptr_t InstructionPointer;
 	uint32_t ThreadId;
 	uint16_t Count;
+};
+//48
+struct CounterProfilev2 {
+	uint32_t CounterCount;
+	wchar_t *CounterName;
 };
 
 //73
@@ -119,7 +124,7 @@ struct Process_V4_TypeGroup1 {
 	wchar_t * CommandLine;
 	wchar_t * PackageFullName;
 	wchar_t * ApplicationId;
-	//uint64_t ExitTime //Defunct 39
+	//uint64_t ExitTime // Process_V5_TypeGroup1
 };
 
 struct Process_V3_TypeGroup1 {
@@ -291,6 +296,13 @@ struct SysCallEnter {
 	uetwptr_t SysCallAddress;
 };
 
+struct PMC_v2 {
+	uetwptr_t Ip;
+	uint32_t Tid;
+	uint16_t Srcid;
+	uint16_t Nused;
+};
+
 //[EventType{52}, EventTypeName{"SysClExit"}]
 struct  SysCallExit {
 	uint32_t SysCallNtStatus;
@@ -326,8 +338,7 @@ struct Image_V0 {
 };
 // DiskIO
 //[EventType{10,11}, EventTypeName{"Read","Write"}]
-struct DiskIo_TypeGroup1
-{
+struct DiskIo_TypeGroup1 {
 	uint32_t DiskNumber;
 	uint32_t IrpFlags;
 	uint32_t TransferSize;
@@ -340,15 +351,13 @@ struct DiskIo_TypeGroup1
 };
 
 // [EventType{12, 13, 15}, EventTypeName{"ReadInit", "WriteInit", "FlushInit"}]
-struct DiskIo_TypeGroup2
-{
+struct DiskIo_TypeGroup2 {
 	uetwptr_t Irp;
 	uint32_t IssuingThreadId;
 };
 
 // This struct is the event type struct for disk I/O flush events.
-struct DiskIo_TypeGroup3
-{
+struct DiskIo_TypeGroup3 {
 	uint32_t DiskNumber;
 	uint32_t IrpFlags;
 	uint64_t HighResResponseTime; /*The time between I/O initiation and completion as
@@ -359,19 +368,17 @@ struct DiskIo_TypeGroup3
 
 //FileIO FileIo_Name
 //[EventType{0, 32, 35, 36}, EventTypeName{"Name", "FileCreate", "FileDelete", "FileRundown"}]
-struct FileIo_Name
-{
+struct FileIo_Name {
 	uetwptr_t FileObject;
 	wchar_t *FileName;
 };
 
 //64 "Create"
-struct FileIo_Create
-{
+struct FileIo_Create {
 	uetwptr_t IrpPtr;
-	//uint32_t TTID; //version 2
+	//uetwptr_t TTID; //version 2
 	uetwptr_t FileObject;
-	uint32_t TTID; //version 3
+	uetwptr_t TTID; //version 3
 	uint32_t CreateOptions;
 	uint32_t FileAttributes;
 	uint32_t ShareAccess;
@@ -379,53 +386,48 @@ struct FileIo_Create
 };
 
 //[EventType{69, 70, 71, 74, 75}, EventTypeName{"SetInfo", "Delete", "Rename", "QueryInfo", "FSControl"}]
-struct FileIo_Info
-{
+struct FileIo_Info {
 	uetwptr_t IrpPtr;
-	//uint32_t TTID; Version 2 ???
+	//uetwptr_t TTID; Version 2 ???
 	uetwptr_t FileObject; // == FileObject between create and close events.
 	uetwptr_t FileKey;	// == FileObject property of a FileIo_Name
 	uetwptr_t ExtraInfo;
-	uint32_t TTID;	//Version 3
+	uetwptr_t TTID;	//Version 3
 	uint32_t InfoClass;
 };
 
 //[EventType{76}, EventTypeName{"OperationEnd"}]
-struct FileIo_OpEnd
-{
+struct FileIo_OpEnd {
 	uetwptr_t IrpPtr;
 	uetwptr_t ExtraInfo;
 	uint32_t NtStatus;
 };
 
 //[EventType{65, 66, 73}, EventTypeName{"Cleanup", "Close", "Flush"}]
-struct FileIo_SimpleOp
-{
+struct FileIo_SimpleOp {
 	uetwptr_t IrpPtr;
-	//uint32_t TTID; Version 2
+	//uetwptr_t TTID; Version 2
 	uetwptr_t FileObject;
 	uetwptr_t FileKey;
-	uint32_t TTID; //Version 3
+	uetwptr_t TTID; //Version 3
 };
 
 //[EventType{67, 68}, EventTypeName{"Read", "Write"}]
-struct FileIo_ReadWrite
-{
+struct FileIo_ReadWrite {
 	uint64_t Offset;
 	uetwptr_t IrpPtr;
-	//uint32_t TTID;	//version 2
+	//uetwptr_t TTID;	//version 2
 	uetwptr_t FileObject;
 	uetwptr_t FileKey;
-	uint32_t TTID;  //version 3 ??
+	uetwptr_t TTID;  //version 3 ??
 	uint32_t IoSize;
 	uint32_t IoFlags;
 };
 
 //[EventType{72, 77}, EventTypeName{"DirEnum", "DirNotify"}]
-struct FileIo_DirEnum
-{
+struct FileIo_DirEnum {
 	uetwptr_t IrpPtr;
-	uint32_t TTID;
+	uetwptr_t TTID;
 	uetwptr_t FileObject;
 	uetwptr_t FileKey;
 	uint32_t Length;
@@ -436,8 +438,7 @@ struct FileIo_DirEnum
 
 // Network
 //[EventType{11, 13, 14, 16, 18}, EventTypeName{"RecvIPV4", "DisconnectIPV4", "RetransmitIPV4", "ReconnectIPV4", "TCPCopyIPV4"}]
-struct TcpIp_TypeGroup1
-{
+struct TcpIp_TypeGroup1 {
 	uint32_t PID;
 	uint32_t size;
 	ipaddr_t daddr;
@@ -449,8 +450,7 @@ struct TcpIp_TypeGroup1
 };
 
 //[EventType{12, 15}, EventTypeName{"ConnectIPV4", "AcceptIPV4"}]
-struct TcpIp_TypeGroup2
-{
+struct TcpIp_TypeGroup2 {
 	uint32_t PID;
 	uint32_t size;
 	ipaddr_t daddr;
@@ -469,8 +469,7 @@ struct TcpIp_TypeGroup2
 };
 
 //[EventType{27, 29, 30, 32, 34}, EventTypeName{"RecvIPV6", "DisconnectIPV6", "RetransmitIPV6", "ReconnectIPV6", "TCPCopyIPV6"}]
-struct TcpIp_TypeGroup3
-{
+struct TcpIp_TypeGroup3 {
 	uint32_t PID;
 	uint32_t size;
 	struct in6_addr daddr;
@@ -481,8 +480,7 @@ struct TcpIp_TypeGroup3
 	uint32_t connid;
 };
 //[EventType{28, 31}, EventTypeName{"ConnectIPV6", "AcceptIPV6"}]
-struct TcpIp_TypeGroup4
-{
+struct TcpIp_TypeGroup4 {
 	uint32_t PID;
 	uint32_t size;
 	struct in6_addr daddr;
@@ -501,8 +499,7 @@ struct TcpIp_TypeGroup4
 };
 
 //[EventType{10, 11, 12, 13, 14, 15}, EventTypeName{"Send", "Recv", "Connect", "Disconnect", "Retransmit", "Accept"}]
-struct TcpIp_V0_TypeGroup1
-{
+struct TcpIp_V0_TypeGroup1 {
 	ipaddr_t daddr;
 	ipaddr_t saddr;
 	uint16_t dport;
@@ -511,8 +508,7 @@ struct TcpIp_V0_TypeGroup1
 	uint32_t PID;
 };
 //[EventType{10, 11, 12, 13, 14, 15, 16}, EventTypeName{"Send", "Recv", "Connect", "Disconnect", "Retransmit", "Accept", "Reconnect"}]
-struct TcpIp_V1_TypeGroup1
-{
+struct TcpIp_V1_TypeGroup1 {
 	uint32_t PID;
 	uint32_t size;
 	ipaddr_t daddr;
@@ -522,15 +518,13 @@ struct TcpIp_V1_TypeGroup1
 };
 
 //[EventType{17}, EventTypeName{"Fail"}]
-struct TcpIp_Fail
-{
+struct TcpIp_Fail {
 	uint16_t Proto;
 	uint16_t FailureCode;
 };
 
 //[EventType{10}, EventTypeName{"SendIPV4"}]
-struct TcpIp_SendIPV4
-{
+struct TcpIp_SendIPV4 {
 	uint32_t PID;
 	uint32_t size;
 	ipaddr_t daddr;
@@ -544,8 +538,7 @@ struct TcpIp_SendIPV4
 };
 
 //[EventType{26}, EventTypeName{"SendIPV6"}]
-struct TcpIp_SendIPV6
-{
+struct TcpIp_SendIPV6 {
 	uint32_t PID;
 	uint32_t size;
 	struct in6_addr daddr;
@@ -559,15 +552,13 @@ struct TcpIp_SendIPV6
 };
 
 //[EventType{17}, EventTypeName{"Fail"}]
-struct UdpIp_Fail
-{
+struct UdpIp_Fail {
 	uint16_t Proto;
 	uint16_t FailureCode;
 };
 
 //[EventType{10, 11}, EventTypeName{"SendIPV4", "RecvIPV4"}]
-struct UdpIp_TypeGroup1
-{
+struct UdpIp_TypeGroup1 {
 	uint32_t PID;
 	uint32_t size;
 	ipaddr_t daddr;
@@ -579,8 +570,7 @@ struct UdpIp_TypeGroup1
 };
 
 //[EventType{26, 27}, EventTypeName{"SendIPV6", "RecvIPV6"}]
-struct UdpIp_TypeGroup2
-{
+struct UdpIp_TypeGroup2 {
 	uint32_t PID;
 	uint32_t size;
 	struct in6_addr daddr;
@@ -592,8 +582,7 @@ struct UdpIp_TypeGroup2
 };
 
 //[EventType{10, 11}, EventTypeName{"Send", "Recv"}]
-struct UdpIp_V0_TypeGroup1
-{
+struct UdpIp_V0_TypeGroup1 {
 	uint32_t context; //pid
 	ipaddr_t saddr;
 	uint32_t sport;
@@ -604,8 +593,7 @@ struct UdpIp_V0_TypeGroup1
 };
 
 //[EventType{10, 11}, EventTypeName{"Send", "Recv"}]
-struct UdpIp_V1_TypeGroup1
-{
+struct UdpIp_V1_TypeGroup1 {
 	uint32_t PID;
 	uint32_t size;
 	ipaddr_t daddr;
@@ -619,9 +607,8 @@ struct UdpIp_V1_TypeGroup1
 
 //version 2
 //[EventType{32}, EventTypeName{"HardFault"}]
-struct PageFault_HardFault
-{
-	uint32_t InitialTime;
+struct PageFault_HardFault {
+	uint64_t InitialTime;
 	uint64_t ReadOffset;
 	uetwptr_t VirtualAddress;
 	uetwptr_t FileObject;
@@ -630,8 +617,7 @@ struct PageFault_HardFault
 };
 
 //[EventType{105}, EventTypeName{"ImageLoadBacked"}]
-struct PageFault_ImageLoadBacked
-{
+struct PageFault_ImageLoadBacked {
 	uetwptr_t FileObject;
 	uint32_t DeviceChar;
 	uint16_t FileChar;
@@ -639,22 +625,19 @@ struct PageFault_ImageLoadBacked
 };
 
 //[EventType{10, 11, 12, 13, 14}, EventTypeName{"TransitionFault", "DemandZeroFault", "CopyOnWrite", "GuardPageFault", "HardPageFault"}]
-struct PageFault_TransitionFault
-{
+struct PageFault_TransitionFault {
 	uetwptr_t VirtualAddress;
 	uetwptr_t ProgramCounter;
 };
 
 //[EventType{10, 11, 12, 13, 14, 15}, EventTypeName{"TransitionFault", "DemandZeroFault", "CopyOnWrite", "GuardPageFault", "HardPageFault", "AccessViolation"}]
-struct PageFault_TypeGroup1
-{
+struct PageFault_TypeGroup1 {
 	uetwptr_t VirtualAddress;
 	uetwptr_t ProgramCounter;
 };
 
 //[EventType{98, 99}, EventTypeName{"VirtualAlloc", "VirtualFree"}]
-struct PageFault_VirtualAlloc
-{
+struct PageFault_VirtualAlloc {
 	uetwptr_t BaseAddress;
 	SIZE_T RegionSize;
 	uint32_t ProcessId;
@@ -664,8 +647,7 @@ struct PageFault_VirtualAlloc
 //Registry
 //version 2
 //[EventType{10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27}, EventTypeName{"Create", "Open", "Delete", "Query", "SetValue", "DeleteValue", "QueryValue", "EnumerateKey", "EnumerateValueKey", "QueryMultipleValue", "SetInformation", "Flush", "KCBCreate", "KCBDelete", "KCBRundownBegin", "KCBRundownEnd", "Virtualize", "Close"}]
-struct Registry_TypeGroup1
-{
+struct Registry_TypeGroup1 {
 	int64_t InitialTime;
 	uint32_t Status;
 	uint32_t Index;
@@ -675,8 +657,7 @@ struct Registry_TypeGroup1
 
 //version 0
 //[EventType{10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21}, EventTypeName{"Create", "Open", "Delete", "Query", "SetValue", "DeleteValue", "QueryValue", "EnumerateKey", "EnumerateValueKey", "QueryMultipleValue", "SetInformation", "Flush"}]
-struct Registry_V0_TypeGroup1
-{
+struct Registry_V0_TypeGroup1 {
 	uint32_t Status;
 	uetwptr_t KeyHandle;
 	int64_t ElapsedTime;
@@ -685,8 +666,7 @@ struct Registry_V0_TypeGroup1
 
 //verion 1
 //[EventType{10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22}, EventTypeName{"Create", "Open", "Delete", "Query", "SetValue", "DeleteValue", "QueryValue", "EnumerateKey", "EnumerateValueKey", "QueryMultipleValue", "SetInformation", "Flush", "RunDown"}]
-struct Registry_V1_TypeGroup1
-{
+struct Registry_V1_TypeGroup1 {
 	uint32_t Status;
 	uetwptr_t KeyHandle;
 	int64_t ElapsedTime;
@@ -697,7 +677,7 @@ struct Registry_V1_TypeGroup1
 // xperf image events
 //opcode 36
 struct DbgID_RSDS {
-	uint64_t base;
+	uetwptr_t base;
 	int pid;
 	GUID sig;
 	int age;
@@ -705,7 +685,7 @@ struct DbgID_RSDS {
 };
 //opcode 37
 struct DbgID_ILRSDS {
-	uint64_t base;
+	uetwptr_t base;
 	int pid;
 	GUID sig;
 	int age;
@@ -714,12 +694,19 @@ struct DbgID_ILRSDS {
 
 //opcode 0 = Image ID ???
 struct DbgImageID {
-	uint64_t base;
+	uetwptr_t base;
 	long size;
 	int pid;
 	int timedatestamp;
 	int BuildTime;
 	wchar_t *OrgFileName;
+};
+
+struct netstack82 {
+	uint16_t clr_instid;
+	uint8_t r0, r1;
+	uint32_t clr_frmco;
+	uetwptr_t stack;
 };
 
 /*
@@ -950,6 +937,26 @@ struct SystemConfig_PnP
   string DeviceDescription;
   string FriendlyName;
 };
+*/
+struct SystemConfig_PnP {
+	/*
+	uint32_t lenDeviceID, lenDeviceDescription, lenFriendlyName;
+	*/	// < v4
+	/*GUID ClassGuid;
+	wchar_t *upperFilterCount;
+	wchar_t *lowerFilterCount;*/ //v4
+	/*uint32_t DevStatus;
+	uint32_t DevProblem;*/	//+v5
+	wchar_t *DeviceID;
+	wchar_t *DeviceDescription;
+	wchar_t *FriendlyName;
+	wchar_t *PdoName; // >v3
+	wchar_t *ServiceName;
+	wchar_t *UpperFilters;
+	wchar_t *LowerFilters;
+};
+
+/*
 [EventType(16), EventTypeName("Power")]
 struct SystemConfig_Power
 {

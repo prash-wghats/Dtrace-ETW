@@ -156,7 +156,7 @@ dtrace_getpcstack(pc_t *pcstack, int pcstack_limit, int aframes,
 		goto zerok;
 	}
 
-zerok:
+	zerok:
 	for (; depth < pcstack_limit; depth++) {
 		pcstack[depth] = 0;
 	}
@@ -275,17 +275,10 @@ dtrace_getupcstack(uint64_t *pcstack, int pcstack_limit)
 	if (pcstack_limit <= 0)
 		return;
 
-	if ((n = dtrace_etw_get_stack(pcstack+1, --pcstack_limit, 1)) > 0) {
-		*pcstack++ = (uint64_t)p->pid;
-		pcstack_limit -= n;
-		pcstack += n;
-		goto zero;
-	}
-
 	/*
 	 * If there's no user context we still need to zero the stack.
 	 */
-	if (p == NULL || (tf = td->tf) == NULL)
+	if (p == NULL)
 		goto zero;
 
 	*pcstack++ = (uint64_t)p->pid;
@@ -293,6 +286,14 @@ dtrace_getupcstack(uint64_t *pcstack, int pcstack_limit)
 
 	if (pcstack_limit <= 0)
 		return;
+
+	if ((tf = td->tf) == NULL) {
+		if ((n = dtrace_etw_get_stack(pcstack, pcstack_limit, 1)) > 0) {
+			pcstack_limit -= n;
+			pcstack += n;
+		}
+		goto zero;
+	}
 
 #ifdef __amd64
 	if (p->model == DATAMODEL_NATIVE && td->context) {
@@ -529,11 +530,11 @@ dtrace_getstackdepth(int aframes)
 #if defined(windows)
 	int pcstack_limit = 100;
 	uint64_t pcstack[100];
-#endif
 
-	if ((depth = dtrace_etw_get_stack(pcstack, pcstack_limit, 0)) > 0) {
-		return (depth);
-	}
+	depth = dtrace_etw_get_stack(pcstack, pcstack_limit, 0);
+	
+	return (depth);
+#else
 	ebp = td->ebp;
 	frame = (struct frame *)ebp;
 	depth++;
@@ -545,8 +546,8 @@ dtrace_getstackdepth(int aframes)
 	for (;;) {
 		if ((uintptr_t)frame < td->klimit ||
 		    (uintptr_t)((char *) frame - sizeof (struct frame)) >=
-		    td->kbase)
-			break;
+			    td->kbase)
+				break;
 		depth++;
 		callpc = frame->f_retaddr;
 
@@ -560,6 +561,7 @@ dtrace_getstackdepth(int aframes)
 		return (0);
 	else
 		return (depth - aframes);
+#endif
 }
 
 uint64_t
@@ -601,7 +603,7 @@ void
 dtrace_copyoutstr(uintptr_t kaddr, uintptr_t uaddr, size_t size,
     volatile uint16_t *flags)
 {
-	int len = strlen(kaddr)+1;
+	int len = strlen(kaddr) + 1;
 
 	if (len > size || pcopyout(kaddr, uaddr, len)) {
 		*flags |= CPU_DTRACE_FAULT;

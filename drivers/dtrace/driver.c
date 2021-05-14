@@ -82,12 +82,11 @@ DtraceIoctl(HANDLE DevObj, int val, void *data)
 	 * dtrace_state_go()
 	 */
 	if (dtrace_etw_handle && val == DTRACEIOC_GO)
-		dtrace_etwfile_start(dtrace_etw_handle);
+		return dtrace_etwfile_start(dtrace_etw_handle) == 0 ? -1 : 0;
 
 	return (t);
 }
 
-extern int _wait;
 NTSTATUS
 DtraceClose(HANDLE DevObj)
 {
@@ -99,7 +98,7 @@ DtraceClose(HANDLE DevObj)
 }
 
 int
-DtraceETWInit(char *etl)
+DtraceETWInit(char *etl, int flags)
 {
 	wchar_t *etlfile = NULL;
 
@@ -109,8 +108,8 @@ DtraceETWInit(char *etl)
 	}
 
 	if ((dtrace_etw_handle = etl ?
-	    dtrace_etwfile_init(dtrace_probe, DtraceIoctl, etlfile):
-	    dtrace_etw_init(dtrace_probe, DtraceIoctl)) == 0) {
+	    dtrace_etwfile_init(dtrace_probe, DtraceIoctl, etlfile, flags):
+	    dtrace_etw_init(dtrace_probe, DtraceIoctl, NULL, flags)) == 0) {
 		fprintf(stderr, "dtrace: failed to initialize etw\n");
 		return (-1);
 	}

@@ -14,6 +14,7 @@ EXPORTS
 	dtrace_etw_td_find
 	dtrace_etw_proc_find
 	dtrace_etw_probe
+	dtrace_etw_probe_sdt
 	dtrace_etw_stop
 	dtrace_etw_get_stack
 	dtrace_etw_set_cur
@@ -38,3 +39,13 @@ EXPORTS
 	dtrace_etw_objname
 	dtrace_etw_get_fname
 	dtrace_etw_current_cpu
+	dtrace_sdtmem_alloc
+	dtrace_sdtmem_free
+	dtrace_etw_pmc_info
+	dtrace_etw_pmc_samples
+	dtrace_etw_pmc_counters
+	dtrace_etw_prov_enable_gm
+	dtrace_stack_func
+	dtrace_etwloadinfo
+	dtrace_dnet_stack_func
+	

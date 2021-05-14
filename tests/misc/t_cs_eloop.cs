@@ -6,7 +6,17 @@ using System.Threading;
 ////csc /platform:x64 /target:exe /debug+ /debug:full  /optimize- /out:loopscs.exe ..\..\internal\loops.cs
 // csc /platform:x86 /target:exe /debug+ /debug:full  /optimize- /out:loopscs32.exe ..\..\internal\loops.cs
 public class GFG {
-	public static int LOOPS = 1000;
+	public static int LOOPS = 1000, MAXTHREADS = 200;
+	public static void Func()
+	{
+		int i = LOOPS;
+		while (i > 0) {
+			call_1(0);
+			call_2();
+			call_3();
+			i--;
+		}
+	}
 	public static int
 	call_1(int d)
 	{
@@ -43,6 +53,11 @@ public class GFG {
 	{
 
 		int i = LOOPS;
+		Thread[] thrs = new Thread[MAXTHREADS];
+		for (int j = 0; j < MAXTHREADS; j++) {
+			thrs[j] = new Thread(Func);
+			thrs[j].Start();
+		}
 		while(i > 0) {
 			call_1(1);
 			//Sleep(1000);
@@ -51,6 +66,9 @@ public class GFG {
 			call_3();
 			//Sleep(1000);
 			i--;
+		}
+		for (int j = 0; j < MAXTHREADS; j++) {
+			thrs[j].Join();
 		}
 	}
 }

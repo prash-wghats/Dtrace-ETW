@@ -236,7 +236,7 @@ profile_fire(void *arg)
 	pcpu->profc_expected += pcpu->profc_interval;
 
 	dtrace_etw_probe(prof->prof_id, cpu->cpu_profile_pc,
-	    cpu->cpu_profile_upc, late, 0, 0, TRUE);
+	    cpu->cpu_profile_upc, late, 0, 0);
 }
 
 static void
@@ -246,7 +246,7 @@ profile_tick(void *arg)
 	cpu_data_t *cpu = &CPU[curcpu];
 
 	dtrace_etw_probe(prof->prof_id, cpu->cpu_profile_pc,
-	    cpu->cpu_profile_upc, 0, 0, 0, TRUE);
+	    cpu->cpu_profile_upc, 0, 0, 0);
 }
 
 static void
@@ -502,7 +502,7 @@ profile_enable(void *arg, dtrace_id_t id, void *parg, int stackon)
 #if defined(sun)
 		when.cyt_when = gethrtime() + when.cyt_interval;
 #else
-		when.cyt_when = dtrace_etw_gethrtime();
+		when.cyt_when = 0;//dtrace_etw_gethrtime();
 
 #endif
 	} else {

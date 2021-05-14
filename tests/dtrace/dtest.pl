@@ -583,7 +583,7 @@ if ($opt_j || $opt_n || $opt_i) {
 	push(@dtrace_cmds, $jdtrace_path) if ($opt_j);
 	push(@dtrace_cmds, "/usr/sbin/$opt_i/dtrace") if ($opt_i);
 } else {
-	@dtrace_cmds = ($dtrace_path, $jdtrace_path);
+	@dtrace_cmds = ($dtrace_path);
 }
 
 if ($opt_d) {

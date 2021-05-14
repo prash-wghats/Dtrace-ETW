@@ -14,10 +14,10 @@ DEF=libetw.def
 EXP=libetw.exp
 PDB=libetw.pdb
 
-OBJS = $(ODIR)/etw.obj  $(ODIR)/etw_common.obj
-OBJSA = $(ODIR)/etw.obj
+OBJS = $(ODIR)/etw.obj    $(ODIR)/relog.obj
+OBJSA = $(ODIR)/etw.obj $(ODIR)/relog.obj
 COMMONDIR = ../../libs/common
-CFLAGS = $(CFLAGS) -DUNICODE
+CFLAGS = $(CFLAGS) -DUNICODE -I$(ROOT)\inc\extra
 
 all: setup $(INST_LIB_DIR)/$(STATICLIB) $(INST_EXE_DIR)/$(SHAREDLIB) $(INST_LIB_DIR)/$(IMPLIB)
 dynamic: setup $(INST_EXE_DIR)/$(SHAREDLIB) $(INST_LIB_DIR)/$(IMPLIB)
@@ -30,9 +30,12 @@ $(INST_LIB_DIR)/$(IMPLIB): $(INST_EXE_DIR)/$(SHAREDLIB)
 
 $(INST_EXE_DIR)/$(SHAREDLIB): $(OBJS) 
 	$(LD) $(LDFLAGS)  -def:$(DEF) -dll -implib:$(INST_LIB_DIR)/$(IMPLIB) \
-	  -out:$@  $(OBJS)  dbghelp.lib advapi32.lib ole32.lib rpcrt4.lib \
+	  -out:$@  $(OBJS)  libcommon.lib dbghelp.lib advapi32.lib ole32.lib rpcrt4.lib \
 		Shlwapi.lib tdh.lib
-	  
+	del $(ODIR)\etw_common.obj
+
+$(OBJS) : etw.h etw_private.h etw_struct.h
+
 {$(TOP)}.cpp.obj:
 	$(CC)  $(ARCH_FLAGS) $(CFLAGS) /Fo$(ODIR)\  /c $<
 

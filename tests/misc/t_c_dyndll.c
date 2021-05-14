@@ -15,29 +15,22 @@
 #define LOOPS 1000
 #define MAX_THREADS 4
 
-
 int  loopsdll_1(int d)
 {
 	int i;
 	i = 1000;
-	//Sleep(i);
 
-	//printf("call_10\n");
 	return 0;
 }
 
 void call_2(void)
 {
-
-	//Sleep(1030);
 	int i = 9;
 	i = i + 6;
-	//printf("call_2\n");
 }
+
 void call_3(void)
 {
-	//Sleep(100);
-	//printf("call_3\n");
 	int i = 9;
 	i = i + 6;
 
@@ -73,8 +66,6 @@ DWORD WINAPI MyThreadFunction( LPVOID lpParam )
 		}
 	return 0;
 }
-
-
 
 int main()
 {
@@ -131,7 +122,7 @@ __declspec(dllexport) int loopsdll1()
 {
 	int a = 0, b = 1;
 	a = b + 4;
-	
+
 	return a;
 }
 

@@ -280,7 +280,7 @@ typedef struct reginfo {
 } reginfo_t;
 
 typedef struct vminfo {
-	uint32_t time;			/*	Inital time */
+	uint64_t time;			/*	Inital time */
 	uint64_t rdoffset;		/* File offset from which data was read to satisfy fault. */
 	uint32_t nbyte;			/* Amount of data read from ReadOffset to satisfy the fault. */
 	uintptr_t va;		/* Virtual address of the page that caused the page fault. */
@@ -308,8 +308,8 @@ typedef struct proc {
 	int flags;			/* ETW flags */
 	int sessid;			/* session id */
 	int exitval;			/* exit status */
-	uintptr_t addr;		/* address of the process object in the kernel */
-	uintptr_t pageaddr;	/* physical address of the page table of the process */
+	uint64_t addr;		/* address of the process object in the kernel */
+	uint64_t pageaddr;	/* physical address of the page table of the process */
 
 	HANDLE handle;
 	HANDLE symhandle;
@@ -651,12 +651,8 @@ void DtraceWinOSFbtStack(thread_t *td, uintptr_t *stack);
 #define DDI_PROP_SUCCESS 1
 #define DDI_PROP_FAILURE 0
 
-/*#define wcstombs_d(dest, src, size) \
-	__try {	\
-		WideCharToMultiByte(CP_UTF8, 0, (src), -1, (dest), (size), NULL, NULL ) \
-	} __except(EXCEPTION_EXECUTE_HANDLER) { \
-		*flags |= CPU_DTRACE_FAULT; \
-	} */
+#define wcstombs_d(dest, src, size) WideCharToMultiByte(CP_UTF8, 0, (src), -1, (dest), (size), NULL, NULL ); 
+	
 int dtrace_wcstombs(char * dest, wchar_t *src, int size);
 size_t dtrace_wstrlen(const wchar_t *s, size_t lim);
 

@@ -32,10 +32,12 @@ $(INST_LIB_DIR)/$(IMPLIB): $(INST_EXE_DIR)/$(SHAREDLIB)
 $(INST_EXE_DIR)/$(SHAREDLIB): $(OBJS) $(OBJA)
 	$(LD) $(LDFLAGS)  -def:$(DEF) -dll -implib:$(INST_LIB_DIR)/$(IMPLIB) \
 	  -out:$@  $(OBJS) $(OBJA) libetwdll.lib libdtracesysdll.lib 
-	  
+
+$(OBJS) : fasttrap_win32.h ../inject/ftetw.h ../inject/inject.h
+
 {$(TOP)}.c.obj:
 	$(CC)  $(ARCH_FLAGS) $(CFLAGS) /Fo$(ODIR)\  /c $<
-$(ODIR)/ft_inject.obj: ../inject/inject.c
+$(ODIR)/ft_inject.obj: ../inject/inject.c ../inject/inject.h
 	$(CC)  $(ARCH_FLAGS) $(CFLAGS) /Fo$@  /c ../inject/inject.c
 {$(TOP)}.cc.obj:
 	$(CC)  $(ARCH_FLAGS) $(CFLAGS) /Fo$(ODIR)\  /c $<

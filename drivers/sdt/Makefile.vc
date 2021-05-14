@@ -14,8 +14,9 @@ EXP=sdt.exp
 PDB=sdt.pdb
 
 
-OBJS = $(ODIR)/sdt.obj $(ODIR)/sdt_subr.obj
+OBJS = $(ODIR)/sdt.obj $(ODIR)/sdt_subr.obj $(ODIR)/sdt_probes.obj $(ODIR)/etw_common.obj
 OBJA =
+COMMONDIR = ../../libs/common
 
 all: setup $(INST_LIB_DIR)/$(STATICLIB) $(INST_EXE_DIR)/$(SHAREDLIB) $(INST_LIB_DIR)/$(IMPLIB)
 dynamic: setup $(INST_EXE_DIR)/$(SHAREDLIB) $(INST_LIB_DIR)/$(IMPLIB)
@@ -29,12 +30,16 @@ $(INST_LIB_DIR)/$(IMPLIB): $(INST_EXE_DIR)/$(SHAREDLIB)
 $(INST_EXE_DIR)/$(SHAREDLIB): $(OBJS) $(OBJA)
 	$(LD) $(LDFLAGS)  -dll  \
 	  -out:$@  $(OBJS) $(OBJA) tdh.lib libetwdll.lib libdtracesysdll.lib
-	  
+	del $(ODIR)\etw_common.obj
+
+$(OBJS): sdt.h ../etw/etw.h
+
 {$(TOP)}.c.obj:
 	$(CC)  $(ARCH_FLAGS) $(CFLAGS) /Fo$(ODIR)\  /c $<
 
-{$(TOP)}.cc.obj:
-	$(CC)  $(ARCH_FLAGS) $(CFLAGS) /Fo$(ODIR)\  /c $<
+$(ODIR)/etw_common.obj: $(COMMONDIR)/common.c $(COMMONDIR)/common.h
+	$(CC) -c $(ARCH_FLAGS) $(CFLAGS)  /DC_DEBUG  /Fo$@ /c $(COMMONDIR)/common.c
+
 
 setup:
 	-@ if NOT EXIST $(ODIR) mkdir $(ODIR)

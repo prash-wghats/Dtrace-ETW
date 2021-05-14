@@ -78,7 +78,7 @@ typedef struct dtrace_cmd {
 #define	E_USAGE		2
 
 static const char DTRACE_OPTSTR[] =
-	"3:6:aAb:Bc:CD:eE:f:FGhHi:I:lL:m:n:o:p:P:qs:SU:vVwx:X:Z";
+	"3:6:aAb:Bc:CD:eE:f:FgGhHi:I:lL:m:n:o:p:P:qs:SU:vVwx:X:Z";
 
 static char **g_argv;
 static int g_argc;
@@ -152,9 +152,11 @@ usage(FILE *fp)
 	    "\t-C  run cpp(1) preprocessor on script files\n"
 	    "\t-D  define symbol when invoking preprocessor\n"
 	    "\t-e  exit after compiling request but prior to enabling probes\n"
-		"\t-E  enable probes on the specified xperf (perfview) etl trace file\n"
+		"\t-E <etlfile> If <etlfile> exists enable probes on this etl file,\n"
+		"\t\t else enable probes in real time and log to <etlfile>\n"
 	    "\t-f  enable or list probes matching the specified function name\n"
 	    "\t-F  coalesce trace output by function\n"
+		"\t-g  enable all etw probes in real time, while logging to file\n"
 	    "\t-G  generate an ELF file containing embedded dtrace program\n"
 	    "\t-h  generate a header file with definitions for static probes\n"
 	    "\t-H  print included files when invoking preprocessor\n"
@@ -1235,7 +1237,6 @@ main(int argc, char *argv[])
 	pid_t pid;
 #if defined(windows)
 	char *l_etwfile = NULL;
-	int l_etw = 0;
 #endif
 	g_ofp = stdout;
 	g_pname = basename(argv[0]);
@@ -1301,9 +1302,12 @@ main(int argc, char *argv[])
 				break;
 #if defined(windows)
 			case 'E':
-				l_etw = 1;
 				l_etwfile = optarg;
 				g_oflags |= DTRACE_O_FETW;
+				break;
+
+			case 'g':
+				g_oflags |= DTRACE_O_ALLFETW;
 				break;
 #endif
 			case 'h':
@@ -1435,7 +1439,7 @@ main(int argc, char *argv[])
 	 */
 #if defined(windows)
 	while ((g_dtp = dtrace_vopen(DTRACE_VERSION, g_oflags, 
-	    &err, NULL, l_etw ? l_etwfile: NULL)) == NULL) {
+	    &err, NULL, g_oflags & DTRACE_O_FETW ? l_etwfile: NULL)) == NULL) {
 #else
 	while ((g_dtp = dtrace_open(DTRACE_VERSION, g_oflags, &err)) == NULL) {
 #endif

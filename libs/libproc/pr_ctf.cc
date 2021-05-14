@@ -619,7 +619,7 @@ ctf_win_func_args(ctf_file_t *fp, ULONG typeindex, uint_t argc,
 	int i;
 	ctf_id_t id;
 
-	if (SymGetTypeInfo(h, base, typeindex, TI_GET_CHILDRENCOUNT, &count) == 0)
+	if (SymGetTypeInfo(h, base, typeindex, TI_GET_CHILDRENCOUNT, &count) == 0 || count <= 0)
 		return (-1);
 	args = (TI_FINDCHILDREN_PARAMS *)
 	    malloc(sizeof(TI_FINDCHILDREN_PARAMS) + sizeof(ULONG) * (count - 1));

@@ -6,3 +6,7 @@
 *.pdb
 *.ilk
 *.lib
+tests/dtrace/tst/common/uctf/tst.printtype.exe
+tests/dtrace/tst/common/uctf/tst.chasestrings.exe
+tests/dtrace/tst/common/uctf/tst.libtype.exe
+tests/dtrace/tst/common/uctf/tst.aouttype.exe

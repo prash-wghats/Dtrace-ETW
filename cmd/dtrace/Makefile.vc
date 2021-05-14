@@ -17,7 +17,7 @@ DLIB = library.d
 DBASE = $(ROOT)\libs\scripts
 DLIB_SRC = $(DBASE)\types.d $(DBASE)\unistd.d $(DBASE)\windows.d \
 	$(DBASE)\psinfo.d $(DBASE)\io.d $(DBASE)\sched.d \
-	$(DBASE)\tcpip.d $(DBASE)\registry.d
+	$(DBASE)\tcpip.d $(DBASE)\registry.d $(DBASE)\dnet.d
 
 !IF "$(PROCESSOR_ARCHITECTURE)" == "x86"
 BDLL = $(ROOT)\libs\i386
@@ -29,9 +29,9 @@ EXE=dtrace.exe
 PDB=dtrace.pdb
 !endif
 
-DLLSBASE = $(BDLL)\dbghelp.dll $(BDLL)\pthreadVC2.dll $(BDLL)\symsrv.dll
+DLLSBASE = $(BDLL)\dbghelp.dll $(BDLL)\pthreadVC2.dll $(BDLL)\symsrv.dll $(BDLL)\kerneltracecontrol.dll
 
-DLLS = $(INST_EXE_DIR)/dbghelp.dll $(INST_EXE_DIR)/pthreadVC2.dll $(INST_EXE_DIR)/symsrv.dll
+DLLS = $(INST_EXE_DIR)/dbghelp.dll $(INST_EXE_DIR)/pthreadVC2.dll $(INST_EXE_DIR)/symsrv.dll $(INST_EXE_DIR)/kerneltracecontrol.dll
 STATIC_LIBS =  libproc.lib libctf.lib libdtrace.lib libpe.lib libcommon.lib
 DYNAMIC_LIBS = libprocdll.lib libctfdll.lib libdtracedll.lib
 STATIC_SYS_LIBS = libdtracesys.lib fasttrap.lib libetw.lib profile.lib sdt.lib ole32.lib \
@@ -47,10 +47,11 @@ LIBS = $(DYNAMIC_LIBS) $(DYNAMIC_SYS_LIBS)
 
 all: setup $(INST_EXE_DIR)/$(EXE) $(INST_EXE_DIR)/$(DLIB)
 dynamic: setup $(INST_EXE_DIR)/$(EXE) $(INST_EXE_DIR)/$(DLIB)
-static: setup $(INST_EXE_DIR)/$(EXE) $(INST_EXE_DIR)/$(DLIB) $(INST_LIB_DIR)/libdtrace.lib \
+static: setup remake $(INST_EXE_DIR)/$(EXE) $(INST_EXE_DIR)/$(DLIB) $(INST_LIB_DIR)/libdtrace.lib \
 	$(INST_LIB_DIR)/libproc.lib $(INST_LIB_DIR)/libctf.lib
 
-$(INST_EXE_DIR)/$(EXE): $(OBJS) 
+
+$(INST_EXE_DIR)/$(EXE): $(OBJS) $(DLIB_SRC)
 	$(LD) $(LDFLAGS) /out:$(INST_EXE_DIR)/$(EXE) $(OBJS)  $(LIBS) dbghelp.lib psapi.lib advapi32.lib \
 		pthreadVC2.lib zlib.lib corguids.lib mscoree.lib Shlwapi.lib
 	xcopy /y $(BDLL)\*.dll $(INST_EXE_DIR)\*
@@ -65,6 +66,9 @@ $(INST_EXE_DIR)/$(DLIB): $(SCR_DLIB)
 
 setup:
 	-@ if NOT EXIST $(ODIR) mkdir $(ODIR)
+
+remake:
+	del $(INST_EXE_DIR)\$(EXE)
 
 clean:
 	-del $(INST_EXE_DIR)\$(EXE)

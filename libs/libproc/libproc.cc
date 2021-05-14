@@ -71,7 +71,7 @@ Pxcreate(const char * exe, char *const *args,
 	int arch = 0;
 
 	if ((ps = (struct ps_prochandle *)
-	            malloc(sizeof(struct ps_prochandle))) == NULL) {
+	    malloc(sizeof(struct ps_prochandle))) == NULL) {
 			return NULL;
 		}
 
@@ -88,7 +88,7 @@ Pxcreate(const char * exe, char *const *args,
 	if (isnetmodule(exe, &arch) > 0) {
 		if (dtnetarch(arch) == 0) {
 			fprintf(stderr, "dtrace: can't trace %s .net process with %s version\n",
-			    arch ? "x86":"x64", arch ? "x64":"x86");
+			    arch ? "x86" : "x64", arch ? "x64" : "x86");
 			pthread_mutex_destroy(&ps->mutex);
 			pthread_cond_destroy(&ps->cond);
 			free(ps);
@@ -127,7 +127,7 @@ common_loop(struct ps_prochandle *P)
 {
 	DWORD dbgstatus, excep, size = 0;
 	BOOL wow = 0;
-	TCHAR pszFilename[MAX_PATH+1];
+	TCHAR pszFilename[MAX_PATH + 1];
 	DEBUG_EVENT  dbg;
 	int excep_count = 0, busy = 0;
 	char *s;
@@ -172,12 +172,13 @@ common_loop(struct ps_prochandle *P)
 			    dbg.u.CreateProcessInfo.lpBaseOfImage,
 			    PE_TYPE_EXE, P->dll_load_order);
 
-			if ((size = GetFileSize(dbg.u.CreateProcessInfo.hFile, NULL)) == INVALID_FILE_SIZE) {
+			if ((size = GetFileSize(dbg.u.CreateProcessInfo.hFile,
+			    NULL)) == INVALID_FILE_SIZE) {
 				size = 0;
 			}
 
 			if (SymLoadModuleEx(P->phandle, dbg.u.CreateProcessInfo.hFile, s, NULL,
-			        (ULONG_PTR) dbg.u.CreateProcessInfo.lpBaseOfImage, size, NULL, 0) == 0) {
+			    (ULONG_PTR) dbg.u.CreateProcessInfo.lpBaseOfImage, size, NULL, 0) == 0) {
 				dprintf("SymLoadModule64 failed for (%s):(%d)\n", s, GetLastError());
 				break;
 			}
@@ -226,7 +227,7 @@ common_loop(struct ps_prochandle *P)
 			}
 #endif
 			if (SymLoadModuleEx(P->phandle, dbg.u.LoadDll.hFile, s, NULL,
-			        (ULONG_PTR) dbg.u.LoadDll.lpBaseOfDll, size, NULL, 0) == FALSE) {
+			    (ULONG_PTR) dbg.u.LoadDll.lpBaseOfDll, size, NULL, 0) == FALSE) {
 				dprintf("SymLoadModule64 dailed for %s:%d\n", s, GetLastError());
 				break;
 			}
@@ -284,7 +285,8 @@ common_loop(struct ps_prochandle *P)
 			 * If any traced dll is unloaded and loaded then no further trace will
 			 * take place.
 			 */
-			if (SymUnloadModule64(P->phandle, (ULONG_PTR) dbg.u.UnloadDll.lpBaseOfDll) ==  FALSE) {
+			if (SymUnloadModule64(P->phandle,
+			    (ULONG_PTR) dbg.u.UnloadDll.lpBaseOfDll) ==  FALSE) {
 				dprintf("SymUnloadModule64 failed-Imagebase %p:%d\n",
 				    dbg.u.UnloadDll.lpBaseOfDll, GetLastError());
 				break;
@@ -320,7 +322,7 @@ common_loop(struct ps_prochandle *P)
 				 */
 				if (P->attached == 0 &&
 				    ((excep == EXCEPTION_BREAKPOINT && excep_count == 0 && wow == 0) ||
-				        (excep == 0x4000001F && excep_count == 0 && wow == 1)) ) {
+				    (excep == 0x4000001F && excep_count == 0 && wow == 1)) ) {
 					GElf_Sym sym;
 
 					if (Pxlookup_by_name(P, LM_ID_BASE, "a.out", "main", &sym, NULL) != 0 &&
@@ -440,7 +442,7 @@ common_loop(struct ps_prochandle *P)
 		 */
 		if ((P->fpid == 1) &&
 		    ((P->attached == 0 && excep_count == 2) ||
-		        (P->attached && excep_count == 1))) {
+		    (P->attached && excep_count == 1))) {
 			excep_count = 3;
 			P->busyloop = 1;
 			P->skip = 1;
@@ -459,7 +461,7 @@ common_loop(struct ps_prochandle *P)
 		 */
 		if ((P->fpid != 1)  &&
 		    ((P->attached == 0 && excep_count == 2) ||
-		        (P->attached && excep_count == 1))) {
+		    (P->attached && excep_count == 1))) {
 			excep_count = 3;
 			if (P->fthelper)
 				P->fthelper(P->pid, -1, PSYS_SYM_HANDLE, P->phandle);
@@ -498,15 +500,15 @@ Ploopcreate(LPVOID args)
 	ZeroMemory( &pi, sizeof(pi) );
 
 	if(!CreateProcess( NULL,   //  module name
-	        targs,        // Command line
-	        NULL,           // Process handle not inheritable
-	        NULL,           // Thread handle not inheritable
-	        FALSE,          // Set handle inheritance to FALSE
-	        DEBUG_ONLY_THIS_PROCESS,              // No creation flags
-	        NULL,           // Use parent's environment block
-	        NULL,           // Use parent's starting directory
-	        &si,            // Pointer to STARTUPINFO structure
-	        &pi )           // Pointer to PROCESS_INFORMATION structure
+	    targs,        // Command line
+	    NULL,           // Process handle not inheritable
+	    NULL,           // Thread handle not inheritable
+	    FALSE,          // Set handle inheritance to FALSE
+	    DEBUG_ONLY_THIS_PROCESS,              // No creation flags
+	    NULL,           // Use parent's environment block
+	    NULL,           // Use parent's starting directory
+	    &si,            // Pointer to STARTUPINFO structure
+	    &pi )           // Pointer to PROCESS_INFORMATION structure
 	) {
 		pthread_mutex_lock(&P->mutex);
 		P->status = PS_STOP;
@@ -519,7 +521,7 @@ Ploopcreate(LPVOID args)
 	P->tid = pi.dwThreadId;
 	P->wstat = 0;
 	P->exitcode = 0;
-	P->event = CreateEvent(NULL,FALSE,FALSE,NULL);
+	P->event = CreateEvent(NULL, FALSE, FALSE, NULL);
 	P->dll_load_order = 1;
 
 	SymSetOptions(symopt | SYMOPT_INCLUDE_32BIT_MODULES |
@@ -543,7 +545,7 @@ struct ps_prochandle *Pgrab(pid_t pid, int flags, int *perr)
 	}
 
 	if ((ps = (struct ps_prochandle *)
-	            malloc(sizeof(struct ps_prochandle))) == NULL) {
+	    malloc(sizeof(struct ps_prochandle))) == NULL) {
 			return NULL;
 		}
 
@@ -566,26 +568,27 @@ struct ps_prochandle *Pgrab(pid_t pid, int flags, int *perr)
 	if (flags & PGRAB_RDONLY) {
 		DWORD Options = SymGetOptions();
 		HANDLE hprocess = NULL;
-	
+
 		if (hprocess == NULL) {
 			dprintf("failed to open process %d: %d\n", pid, GetLastError());
 			etw_proc_module_t *hprocess = dtrace_etw_pid_symhandle(pid);
 			if (hprocess != NULL) {
-				
-			ps->etwmods = hprocess;
-			ps->isetw = 1;
-			return ps;
+
+				ps->etwmods = hprocess;
+				ps->isetw = 1;
+				return ps;
 			}
 		}
-			if (flags & PGRAB_FORCE) {
+		if (flags & PGRAB_FORCE) {
 			hprocess =  OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
-			        FALSE, pid);
+			    FALSE, pid);
 		}
 		if (hprocess == NULL) {
 			free(ps);
 			return NULL;
 		}
-		SymSetOptions(Options|SYMOPT_INCLUDE_32BIT_MODULES|SYMOPT_DEFERRED_LOADS|SYMOPT_DEBUG);
+		SymSetOptions(Options | SYMOPT_INCLUDE_32BIT_MODULES | SYMOPT_DEFERRED_LOADS |
+		    SYMOPT_DEBUG);
 
 		if (init_symbols(hprocess, TRUE, NULL) == NULL)
 			;
@@ -603,7 +606,7 @@ struct ps_prochandle *Pgrab(pid_t pid, int flags, int *perr)
 	if (exe && isnetmodule(exe, &arch) > 0) {
 		if (dtnetarch(arch) == 0) {
 			fprintf(stderr, "dtrace: can't trace %s .net process with %s version\n",
-			    arch ? "x86":"x64", arch ? "x64":"x86");
+			    arch ? "x86" : "x64", arch ? "x64" : "x86");
 			pthread_mutex_destroy(&ps->mutex);
 			pthread_cond_destroy(&ps->cond);
 			free(ps);
@@ -663,9 +666,10 @@ Ploopgrab(LPVOID args)
 
 	P->wstat = 0;
 	P->exitcode = 0;
-	P->event = CreateEvent(NULL,FALSE,FALSE,NULL);
+	P->event = CreateEvent(NULL, FALSE, FALSE, NULL);
 	P->dll_load_order = 1;
-	SymSetOptions(Options|SYMOPT_INCLUDE_32BIT_MODULES|SYMOPT_DEFERRED_LOADS|SYMOPT_DEBUG);
+	SymSetOptions(Options | SYMOPT_INCLUDE_32BIT_MODULES | SYMOPT_DEFERRED_LOADS |
+	    SYMOPT_DEBUG);
 
 	common_loop(P);
 	return NULL;
@@ -680,8 +684,8 @@ Pstopstatus(struct ps_prochandle *P)
 		 * ctrl C is not caught by traced exe when grabbed.????
 		 * So will not known when to quit */
 		ret = WaitForSingleObject(P->event, ms);
-		
-			
+
+
 		if (ret == WAIT_OBJECT_0) {
 			return 0;
 		} else {
@@ -956,7 +960,7 @@ cmpmodname(const char *oname, const char *mname, int isexemname)
 		if (mlen == olen)
 			return (1);	//exact match
 		/* check next module character in '.', and the last one */
-		if (mtmp[olen] == '.' && strchr(&mtmp[olen+1], '.') == NULL)
+		if (mtmp[olen] == '.' && strchr(&mtmp[olen + 1], '.') == NULL)
 			return (1);
 	}
 
@@ -1018,11 +1022,11 @@ MyEnumerateModulesProc1(PCTSTR ModuleName, DWORD64 BaseOfDll, PVOID UserContext)
 			fnd = 1;
 		}
 	}
-	if (fnd == 0) {
+	/*if (fnd == 0) {
 		map.pr_vaddr = BaseOfDll;
 		map.pr_mflags = MA_READ;
 		data->f(data->cd, &map, name);
-	}
+	}*/
 	return TRUE;
 }
 
@@ -1041,7 +1045,8 @@ Pobject_iter(struct ps_prochandle *P, proc_map_f *func, void *cd)
 	uc.cd = cd;
 	uc.proc = P;
 
-	if ((SymEnumerateModules64(P->phandle, MyEnumerateModulesProc1, &uc)) == FALSE) {
+	if ((SymEnumerateModules64(P->phandle, MyEnumerateModulesProc1,
+	    &uc)) == FALSE) {
 		dprintf("Pobject_iter: SymEnumerateModules64 failed %d: %d\n",
 		    P->pid, GetLastError());
 		return -1;
@@ -1051,7 +1056,8 @@ Pobject_iter(struct ps_prochandle *P, proc_map_f *func, void *cd)
 }
 
 int
-Pnormobjname(struct ps_prochandle *P, const char *cname, char *buffer, size_t bufsize)
+Pnormobjname(struct ps_prochandle *P, const char *cname, char *buffer,
+	    size_t bufsize)
 {
 	proc_mod_t *mod;
 
@@ -1063,7 +1069,7 @@ Pnormobjname(struct ps_prochandle *P, const char *cname, char *buffer, size_t bu
 		for(; mod != NULL; mod = mod->nm_next) {
 			if (cmpmodname(cname, mod->nm_name, P->nexe_module == mod)) {
 				strncpy(buffer, mod->nm_name, bufsize);
-				buffer[bufsize-1] = 0;
+				buffer[bufsize - 1] = 0;
 				return 1;
 			}
 		}
@@ -1077,7 +1083,7 @@ Pnormobjname(struct ps_prochandle *P, const char *cname, char *buffer, size_t bu
 	}
 	strncpy(buffer, mod->name, bufsize);
 
-	buffer[bufsize-1] = 0;
+	buffer[bufsize - 1] = 0;
 	return 1;
 }
 
@@ -1137,7 +1143,7 @@ char *
 Pobjname(struct ps_prochandle *P, uint64_t addr, char *buffer, size_t bufsize)
 {
 	IMAGEHLP_MODULE64 info;
-	char *r, ext[8]= {0};
+	char *r, ext[8] = {0};
 	proc_mod_t *mod;
 
 	if (P->isetw) {
@@ -1172,7 +1178,7 @@ Pobjname(struct ps_prochandle *P, uint64_t addr, char *buffer, size_t bufsize)
 
 	strncpy(buffer, mod->name, bufsize);*/
 
-	buffer[bufsize-1] = 0;
+	buffer[bufsize - 1] = 0;
 	return buffer;
 }
 
@@ -1277,7 +1283,7 @@ dw_lookup_by_name(struct ps_prochandle *P, const char *oname,
 	if (mod == NULL)
 		return -1;
 
-	fd = _open(mod->fullname, _O_RDONLY|_O_BINARY, 0);
+	fd = _open(mod->fullname, _O_RDONLY | _O_BINARY, 0);
 
 	if (fd != -1 && (pe = pe_init(fd)) != NULL) {
 		char s[MAX_SYM_NAME];
@@ -1350,7 +1356,7 @@ Plookup_by_addr(struct ps_prochandle *P, uint64_t addr,
 		}
 	}
 
-	s = (SYMBOL_INFO *) malloc(sizeof(SYMBOL_INFO) + size-1);
+	s = (SYMBOL_INFO *) malloc(sizeof(SYMBOL_INFO) + size - 1);
 	if (s == NULL)
 		return -1;
 
@@ -1388,7 +1394,7 @@ dw_lookup_by_addr(struct ps_prochandle *P, uint64_t addr,
 	if (mod == NULL)
 		return -1;
 
-	fd = _open(mod->fullname, _O_RDONLY|_O_BINARY, 0);
+	fd = _open(mod->fullname, _O_RDONLY | _O_BINARY, 0);
 
 	if (fd == -1 )
 		return -1;
@@ -1402,7 +1408,7 @@ dw_lookup_by_addr(struct ps_prochandle *P, uint64_t addr,
 		if (Sym == NULL)
 			goto end;
 
-		if ((secno = pe_getsecnofromaddr(pe, addr - mod->imgbase))== 0)
+		if ((secno = pe_getsecnofromaddr(pe, addr - mod->imgbase)) == 0)
 			goto end;
 
 		va = pe_getsecva(pe, secno);
@@ -1461,10 +1467,10 @@ SymEnumSymbolsProc(PSYMBOL_INFO s, ULONG SymbolSize, PVOID UserContext)
 
 	if (s != NULL) {
 		if (tmp->ps->fpid && (strstr(s->Name, "Mrdata") != NULL ||
-		        strstr(s->Name, "SRWLock") != NULL ||
-		        strstr(s->Name, "FunctionTable") != NULL ||
-		        strstr(s->Name, "__security_check_cookie") != NULL ||
-		        strstr(s->Name, "_chkstk") != NULL)) {
+		    strstr(s->Name, "SRWLock") != NULL ||
+		    strstr(s->Name, "FunctionTable") != NULL ||
+		    strstr(s->Name, "__security_check_cookie") != NULL ||
+		    strstr(s->Name, "_chkstk") != NULL)) {
 			return TRUE;
 		}
 		if (isfunction(tmp->ps, s)) {
@@ -1543,7 +1549,7 @@ dw_iter_by_addr(struct ps_prochandle *P, const char *object_name, int which,
 	Pe_object *pe;
 	proc_mod_t *mod = findmodulebyname(P, object_name);
 
-	fd = _open(mod->fullname, _O_RDONLY|_O_BINARY, 0);
+	fd = _open(mod->fullname, _O_RDONLY | _O_BINARY, 0);
 
 	if (fd == -1 )
 		return -1;
@@ -1565,7 +1571,7 @@ dw_iter_by_addr(struct ps_prochandle *P, const char *object_name, int which,
 			symp.st_other = 0;
 			symp.st_info = GELF_ST_INFO((STB_GLOBAL), (STT_FUNC));
 			symp.st_shndx = 1;
-			symp.st_value = Sym[i].Value+mod->imgbase +
+			symp.st_value = Sym[i].Value + mod->imgbase +
 			    pe_getsecva(pe, Sym[i].SectionNumber);
 			/* If size is zero libdtrace will reject the probe.
 			   Allow creation of entry probe */
@@ -1751,7 +1757,7 @@ GetFileNameFromHandle(HANDLE hFile, TCHAR *pszFilename)
 		TCHAR szTemp[BUFSIZE];
 		szTemp[0] = '\0';
 
-		if (GetLogicalDriveStrings(BUFSIZE-1, szTemp)) {
+		if (GetLogicalDriveStrings(BUFSIZE - 1, szTemp)) {
 			TCHAR szName[MAX_PATH];
 			TCHAR szDrive[3] = TEXT(" :");
 			BOOL bFound = FALSE;
@@ -1774,8 +1780,8 @@ GetFileNameFromHandle(HANDLE hFile, TCHAR *pszFilename)
 							// Replace device path with DOS path
 							TCHAR szTempFile[MAX_PATH];
 							StringCchPrintfA(szTempFile, MAX_PATH, TEXT("%s%s"),
-							    szDrive, pszFilename+uNameLen);
-							StringCchCopyNA(pszFilename, MAX_PATH+1,
+							    szDrive, pszFilename + uNameLen);
+							StringCchCopyNA(pszFilename, MAX_PATH + 1,
 							    szTempFile, strlen(szTempFile));
 						}
 					}
@@ -1809,7 +1815,7 @@ Is32bitProcess(HANDLE h)
 int
 is64bitmodule(PVOID base, char *s)
 {
-	int fd = _open(s, _O_RDONLY|_O_BINARY, 0);
+	int fd = _open(s, _O_RDONLY | _O_BINARY, 0);
 	Pe_object *pe;
 
 	if (fd != -1 && (pe = pe_init(fd)) != NULL) {
@@ -1828,12 +1834,12 @@ is64bitmodule(PVOID base, char *s)
 static int
 isnetmodule(const char *s, int *arch)
 {
-	int fd = _open(s, _O_RDONLY|_O_BINARY, 0);
+	int fd = _open(s, _O_RDONLY | _O_BINARY, 0);
 	Pe_object *pe;
 
 	if (fd != -1 && (pe = pe_init(fd)) != NULL) {
 		int type = pe_isnet(pe);
-		*arch = type > 0 ? type-1: 0;
+		*arch = type > 0 ? type - 1 : 0;
 		pe_end(pe);
 		close(fd);
 		return type;
@@ -1847,7 +1853,7 @@ isfunction(struct ps_prochandle *P, PSYMBOL_INFO s)
 	proc_mod_t *mod;
 	int status = 0;
 	SYMBOL_INFO *Symbol;
-	char buffer[sizeof(SYMBOL_INFO )+MAX_SYM_NAME];
+	char buffer[sizeof(SYMBOL_INFO ) + MAX_SYM_NAME];
 	DWORD64 disp;
 	FPO_DATA *fpo;
 #ifdef __amd64__
@@ -1868,7 +1874,7 @@ isfunction(struct ps_prochandle *P, PSYMBOL_INFO s)
 #ifdef __amd64__
 	else if ((P->model == PR_MODEL_ILP64) &&
 	    ((rtf = (_IMAGE_RUNTIME_FUNCTION_ENTRY *)
-	                SymFunctionTableAccess64(P->phandle, s->Address)) != NULL)) {
+	    SymFunctionTableAccess64(P->phandle, s->Address)) != NULL)) {
 		/* Check if FPO data is present for the Address */
 		s->Size = rtf->EndAddress - rtf->BeginAddress;
 		status = 1;
@@ -1876,20 +1882,20 @@ isfunction(struct ps_prochandle *P, PSYMBOL_INFO s)
 #endif
 	else if ((P->model == PR_MODEL_ILP32) &&
 	    ((fpo = (FPO_DATA *)
-	                SymFunctionTableAccess64(P->phandle, s->Address)) != NULL)) {
+	    SymFunctionTableAccess64(P->phandle, s->Address)) != NULL)) {
 		/* Check if FPO data is present for the Address */
 		/*
 		 * The size from FPO data will give the total size of the function in bytes.
 		 * But in some cases the function is spread in
 		 * in different locations.
 		 */
-		if (SymFromAddr(P->phandle, s->Address+fpo->cbProcSize-1, &disp, Symbol)) {
+		if (SymFromAddr(P->phandle, s->Address + fpo->cbProcSize - 1, &disp, Symbol)) {
 			if (Symbol->Address == s->Address) {
 				s->Size = fpo->cbProcSize;
 				status = 1;
 			} else if (Symbol->Address > s->Address) {
 				int sz = Symbol->Address - s->Address;
-				if (SymFromAddr(P->phandle, s->Address + sz-1, &disp, Symbol) &&
+				if (SymFromAddr(P->phandle, s->Address + sz - 1, &disp, Symbol) &&
 				    (s->Address == Symbol->Address)) {
 					s->Size = sz;
 					status = 1;
@@ -1991,10 +1997,10 @@ addmodule(struct ps_prochandle *P, HANDLE file, char *s,
 	char basename[256], *sp, *name = basename;
 	int len;
 
-	if ((map = CreateFileMapping(file,NULL,PAGE_READONLY,0,0,NULL)) == NULL)
+	if ((map = CreateFileMapping(file, NULL, PAGE_READONLY, 0, 0, NULL)) == NULL)
 		return;
 
-	if ((base = MapViewOfFile(map,FILE_MAP_READ,0,0,0)) == NULL)
+	if ((base = MapViewOfFile(map, FILE_MAP_READ, 0, 0, 0)) == NULL)
 		return;
 
 	DosHeader = (PIMAGE_DOS_HEADER) base;
@@ -2031,7 +2037,7 @@ addmodule(struct ps_prochandle *P, HANDLE file, char *s,
 	name = PathFindFileNameA(s);
 	//}
 	len = strlen(name);
-	sp = (char *) malloc(len+1);
+	sp = (char *) malloc(len + 1);
 	if (sp == NULL)
 		p->name = NULL;
 	else {
@@ -2185,12 +2191,7 @@ long
 sysconf(int name)
 {
 	int ncpu = dtrace_etw_nprocessors();
-	if (ncpu == 1) {
-		SYSTEM_INFO info;
 
-		GetSystemInfo(&info);
-		ncpu = info.dwNumberOfProcessors;
-	}
 	switch(name) {
 	case _SC_CPUID_MAX:
 		return (ncpu - 1);
@@ -2305,10 +2306,10 @@ insbusyloop(struct ps_prochandle *P, int wow)
 
 	if (mem == 0) {
 		mem = VirtualAllocEx(P->phandle, (PVOID) mem_base, mem_size,
-		        MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+		    MEM_COMMIT, PAGE_EXECUTE_READWRITE);
 		if (mem == 0 ||
 		    VirtualProtectEx(P->phandle, mem, mem_size,
-		        PAGE_EXECUTE_READWRITE, &oldprot) == 0) {
+		    PAGE_EXECUTE_READWRITE, &oldprot) == 0) {
 			return -1;
 		}
 

@@ -253,6 +253,11 @@ typedef enum dtrace_probespec {
 #define	DIF_VAR_EXECARGS	0x0121	/* process arguments */
 #define	DIF_VAR_THREADNAME	0x0122	/* thread name */
 
+#if defined(windows)
+#define	DIF_VAR_ETWWALLTIMESTAMP	0x0130	/* etw wall-clock timestamp */
+#define	DIF_VAR_ETWTIMESTAMP	0x0131	/* etw timestamp */
+#endif
+
 #if !defined(sun)
 #define	DIF_VAR_CPU		0x0200
 #endif

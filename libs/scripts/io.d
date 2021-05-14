@@ -130,6 +130,15 @@ translator fileinfo_t < struct buf *B > {
 	fi_fs = "?";
 	fi_mount = "?";
 	fi_oflags = 0;
+	fi_cflags = 0;
+	fi_aflags = 0;
+	fi_sflags = 0;
+	fi_bcount = 0;
+	fi_extinfo = 0;
+	fi_rstatus = 0;
+	fi_dbuflen = 0;
+	fi_irp = 0;
+	fi_dpattern = "";
 };
 
 #pragma D binding "1.0" translator

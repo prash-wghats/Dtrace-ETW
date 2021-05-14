@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <windows.h>
 
 char *s0 = "Hello World";
 wchar_t *ws0 = L"Hello World";
@@ -12,6 +13,7 @@ wchar_t *str(char *s, wchar_t *ws)
 int args(int a, int b, int c, int d, int e)
 {
 	int f;
+	Sleep(3000);
 	f = a + b + c + d + e;
 
 	return f;

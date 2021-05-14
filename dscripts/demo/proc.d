@@ -1,30 +1,41 @@
 
-
-proc:::start
-/execname == "grep.exe"/
-{
-	self->pstart = timestamp;
-}
-
+#pragma D option strsize=2048
 
 proc:::start
 {
-	printf("%s, %s, start, %s\n", args[0]->pr_fname,
+	printf("Start Process (%s), Parent (%s), args (%s) \n", args[0]->pr_fname,
 	    curpsinfo->pr_fname, args[0]->pr_psargs);
 }
 
 proc:::exit
 {
-	printf("%s, %s, exit, %s, %d\n", curpsinfo->pr_fname,
-	    "", curpsinfo->pr_psargs, arg0);
+	printf("Process (%s) exiting (%d), (%s)\n", curpsinfo->pr_fname, args[0], curpsinfo->pr_psargs);
 }
 
 proc:::lwp-start
 {
-	printf("%s %s %Y\n", args[1]->pr_fname, threadname, walltimestamp);
+	printf("thread Begin (%s) tid (%d) name (%s)\n", args[1]->pr_fname, args[0]->pr_lwpid, args[0]->pr_tname);
 }
 
 proc:::lwp-exit
 {
-	printf("%s %Y\n", curpsinfo->pr_fname, walltimestamp);
+	printf("Thread exit (%s) tid (%d) name (%s)\n", curpsinfo->pr_fname, curlwpsinfo->pr_lwpid, threadname);
+}
+
+
+proc:::module-load
+{
+	printf("pid (%d) Loading (%s) at (%x)\n", pid, wstringof(args[0]), args[1]);
+}
+
+proc:::module-unload
+{
+	printf("pid (%d) UnLoading (%s) from (%x)\n", pid, wstringof(args[0]), args[1]);
+}
+
+tick-1s
+/i++ == 5/
+{
+	printf("Existing after (%d) seconds \n", i);
+	exit(0);
 }

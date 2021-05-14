@@ -13,29 +13,21 @@ public class GFG {
 	{
 		int i;
 		i = 1000;
-		//Sleep(i);
-
-		//printf("call_10\n");
+		
 		return 0;
 	}
 
 	public static void
 	call_2()
 	{
-
-		//Sleep(1030);
 		int i = 9;
 		i = i + 6;
-		//printf("call_2\n");
 	}
 	public static void
 	call_3()
 	{
-		//Sleep(100);
-		//printf("call_3\n");
 		int i = 9;
 		i = i + 6;
-
 	}
 
 	// Main Method
@@ -54,7 +46,7 @@ public class GFG {
 			Thread.Sleep(1000);
 			call_3();
 			Thread.Sleep(1000);
-			Console.Write("{0}\r", i);
+
 			i++;
 		}
 	}

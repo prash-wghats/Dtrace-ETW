@@ -31,6 +31,9 @@ all:
 	cd ext\minihook
 	nmake -f Makefile.vc static ROOT=$(MAKEDIR) $(BUILD)
 	cd ..\..
+	cd libs\common
+	nmake -f Makefile.vc ROOT=$(MAKEDIR) $(BUILD)
+	cd ..\..
 	cd drivers\inject
 	nmake -f Makefile.vc dynamic ROOT=$(MAKEDIR) $(BUILD)
 	cd ..\..
@@ -51,9 +54,6 @@ all:
 	cd ..\..
 	cd libs\libctf
 	nmake -f Makefile.vc $(TYPE) ROOT=$(MAKEDIR) $(BUILD)
-	cd ..\..
-	cd libs\common
-	nmake -f Makefile.vc ROOT=$(MAKEDIR) $(BUILD)
 	cd ..\..
 	cd libs\libpe
 	nmake -f Makefile.vc static ROOT=$(MAKEDIR) $(BUILD)

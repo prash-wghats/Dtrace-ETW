@@ -39,7 +39,7 @@ struct delay {
 	uint64_t par;
 };
 
-Microsoft-Windows-Win32k:::win_ResponseTime
+microsoft-windows-win32k:::win_responsetime
 /arg0 == 38/
 {
 	s = (struct delay *) arg2;
@@ -72,14 +72,14 @@ sched:::wakeup
 		probeprov, probename, execname, pid, tid, args[0]->pr_lwpid, t0);
 	printf("the following stack doesnt contain any symbols, because this etw trace contains the module load rundown in the end\n");
 	stack();
-	@[probeprov, probename, pid, tid, execname, "wokeup", t0, "ms", ustack(), stack()] = count();
+	@[ustack(), stack(), probeprov, probename, pid, tid, execname, "wakeup", t0, "ms" ] = count();
 }
 
 sched:::on-cpu
 /self->ts && (timestamp - self->ts) > 5000000000/
 {
 	t = ((timestamp - self->ts) * 1000)/1000000000;
-	@[probeprov, probename, pid, tid, execname, "delay", t, "ms", ustack(), stack()] = count();
+	@[ustack(), stack(), probeprov, probename, pid, tid, execname, "delay", t, "ms"] = count();
 	self->ts = 0;
 	gtid = 0;
 	gts = 0;

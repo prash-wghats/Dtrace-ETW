@@ -72,8 +72,9 @@ typedef struct dtrace_aggdata dtrace_aggdata_t;
 #ifndef windows
 #define	DTRACE_O_MASK		0x0f	/* mask of valid flags to dtrace_open */
 #else
-#define	DTRACE_O_FETW		0x10	/* read data from etw file */
-#define	DTRACE_O_MASK		0x1f	/* mask of valid flags to dtrace_open */
+#define	DTRACE_O_FETW		0x10	/* etw file */
+#define	DTRACE_O_ALLFETW	0x20	/* enable all probes even when logging to file */
+#define	DTRACE_O_MASK		0x3f	/* mask of valid flags to dtrace_open */
 #endif
 
 extern dtrace_hdl_t *dtrace_open(int, int, int *);

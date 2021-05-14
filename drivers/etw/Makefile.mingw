@@ -4,6 +4,8 @@ CFLAGS = -g -I $(INCLUDES)
 
 INCS = ../../sys/dtrace_misc.h ../../sys/dtrace_win32.h ../../sys/dtrace.h
 
+# %.o :  h1.h h2.h
+
 ../../bin/amd64/libetw.dll: etw.cpp etw.h $(INCS)
 	g++ $(CFLAGS) -w -DSTRSAFE_NO_DEPRECATE -DUNICODE -DWINVER=0x602 -std=c++11 -shared -o $@ \
 		etw.cpp -Wl,--out-implib,../../lib/amd64/libetw_dll.a -ldbghelp -lpsapi -lrpcrt4 -L ../../lib/amd64 -ldtracesysdll

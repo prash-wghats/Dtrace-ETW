@@ -513,7 +513,7 @@ dt_status(dtrace_hdl_t *dtp, processorid_t cpu)
 	const dtrace_vector_t *v = dtp->dt_vector;
 	
 	if (v == NULL)
-		return (p_online(cpu, P_STATUS));
+		return (p_online(P_STATUS, cpu));
 		
 	return (v->dtv_status(dtp->dt_varg, cpu));
 }

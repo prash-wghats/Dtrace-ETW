@@ -569,7 +569,7 @@ class DebuggerCB : public ICorDebugManagedCallback {
 			P->status = PS_STOP;
 			P->msg.type = RD_DLACTIVITY;
 
-			if (P->fpid) {
+			if (P->fpid > 0) {
 				P->threads[0] = GetCurrentThreadId();
 				P->nthr = 0;
 
@@ -577,6 +577,7 @@ class DebuggerCB : public ICorDebugManagedCallback {
 					P->nthr = 0;
 					P->status = PS_RUN;
 					P->msg.type = RD_NONE;
+					pthread_mutex_unlock(&P->mutex);
 					BOILER_CON
 				}
 				P->busyloop = 1;

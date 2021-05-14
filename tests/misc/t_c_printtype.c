@@ -21,17 +21,14 @@
 //#include <unistd.h>
 #include <windows.h>
 
-typedef union final_fantasy_info {
+typedef struct final_fantasy_info {
 	int ff_gameid;
 	int ff_partysize;
 	int ff_hassummons;
-	double ff_dou;
-	float ff_fou;
-	char ff_str[10];
 } final_fantasy_info_t;
 
 static int
-ff_getgameid(final_fantasy_info_t *f, int a, char b, float d)
+ff_getgameid(final_fantasy_info_t *f)
 {
 	return (0);
 }
@@ -56,26 +53,17 @@ main(void)
 	ffi.ff_gameid = 1;
 	ffi.ff_partysize = 4;
 	ffi.ff_hassummons = 0;
-	ffi.ff_dou = 999.99;
-	ffi.ff_fou = 999.99;
-	strcpy(ffi.ff_str, "Hello");
-	
+
 	ffiii.ff_gameid = 6;
 	ffiii.ff_partysize = 4;
 	ffiii.ff_hassummons = 1;
-	ffiii.ff_dou = 999.99;
-	ffiii.ff_fou = 999.99;
-	strcpy(ffiii.ff_str, "Hello");
-		
+
 	ffx.ff_gameid = 10;
 	ffx.ff_partysize = 3;
 	ffx.ff_hassummons = 1;
-	ffx.ff_dou = 999.99;
-	ffx.ff_fou = 999.99;
-	strcpy(ffx.ff_str, "Hello");
 
 	for (;;) {
-		ff_getgameid(&ffi, 99, '1', 99.99);
+		ff_getgameid(&ffi);
 		ff_getpartysize(&ffx);
 		ff_getsummons(&ffiii);
 		Sleep(1000);

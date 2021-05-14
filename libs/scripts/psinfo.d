@@ -84,6 +84,7 @@ typedef struct lwpsinfo {
 	uint32_t pr_affinity;	/* The set of processors on which the thread is allowed to run */ 
 	char pr_iopri;			/* io priority */
 	char pr_pagepri;		/* page priority */
+	string  pr_tname;		/* thread name */
 } lwpsinfo_t;
 
 
@@ -101,6 +102,7 @@ translator lwpsinfo_t < struct thread *T > {
 	pr_affinity = T->affinity;
 	pr_iopri = T->iopri;
 	pr_pagepri = T->pagepri;
+	pr_tname = T->t_name;
 };
 
 

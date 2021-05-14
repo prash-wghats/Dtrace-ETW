@@ -30,6 +30,19 @@
 /*
 #pragma D depends_on library types.d
 */
+
+inline int SDT_MSGHDR_SIZE = 4;
+inline int SDT_MSGHDRLOC_CHAR_ARCH = 1;
+inline int SDT_MSGHDRLOC_CHAR_VERSION = 2;
+inline int SDT_MSGHDRLOC_SHORT_ID = 4;
+inline int PL_ARCH_HEADER = 1;
+inline int PL_VER_HEADER = 2;
+inline int PL_ID_HEADER = 3;
+
+typedef struct guid {
+	uint8_t guid[16];
+} guid_t;
+
 typedef struct proc {
 	pid_t pid;
 	pid_t ppid;				/* pid of parent */
@@ -66,6 +79,10 @@ typedef struct thread {
 	uint32_t affinity;	/* The set of processors on which the thread is allowed to run */ 
 	char iopri;			/* io priority */
 	char pagepri;		/* page priority */
+
+	uint64_t t_hrtime;	/* Last time on cpu. */
+	int t_errno;	/* Syscall return value. */
+	char t_name[64];	/* Thread Name */
 } thread_t;
 
 /* context switch, scheduler */
