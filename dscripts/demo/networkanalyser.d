@@ -1,7 +1,14 @@
-
+/*
+ * online => dtrace -qs networkanalyzer.d "online"
+ * online and save to file => dtrace -qs networkanalyzer.d -gE <etlfile> "online"
+ * from file => dtrace -qs networkanalyzer.d -E <etlfile>
+ * 
+ */
+ 
 #pragma D option switchrate=10hz
 #pragma D option bufsize=10m
-
+#pragma D option destructive
+#pragma D option defaultargs
 
 enum ndis_enum {
     _WIFI_ADP = 1,
@@ -213,7 +220,7 @@ translator arp_ether_t < char *p > {
     arp_sha = *(mac_addr_t *) (p+8);
     arp_spa = *(uint32_t *) (p+14); /* alignment ?? */
     arp_tha = *(mac_addr_t *) (p+18);
-    arp_tpa = *(uint32_t *) (p+22);
+    arp_tpa = *(uint32_t *) (p+24);
 };
 
 /*
@@ -401,13 +408,21 @@ BEGIN {
     HEX[14] = 'e';
     HEX[15] = 'f';
 }
+BEGIN
+/$$1 == "online"/
+{
+	system("netsh trace start capture=yes persistent=no capturetype=physical maxsize=1");
+}
+
+END 
+/$$1 == "online"/
+{
+	system("netsh trace stop");
+}
 
 microsoft-windows-ndis-packetcapture:::native802.11
 /arg0 == 1002/
 {
-    @[probename, arg0] = count();
-    @mk[execname, probeprov] = count();
-
     this->d1002 = (ndis_1002_t *) arg2;
     this->wi = xlate <metadata_1002_t> ((char *) arg2);
 
@@ -486,16 +501,6 @@ microsoft-windows-ndis-packetcapture:::native802.11,
 
     this->arp = xlate <arp_ether_t> ((char *) (this->hlp_pos));
 
-    /* printf("%s -> ARP\n", this->hdr); */
-
-    /*printf("\t\tSender - HW [%x:%x:%x:%x:%x:%x] ; IP [%s]\n\t\tTarget - HW [%x:%x:%x:%x:%x:%x] ; IP [%s]\n",
-    	this->arp.arp_sha.mac_addr[0], this->arp.arp_sha.mac_addr[0], this->arp.arp_sha.mac_addr[0],
-    	this->arp.arp_sha.mac_addr[0], this->arp.arp_sha.mac_addr[0], this->arp.arp_sha.mac_addr[0],
-    	inet_ntoa(( ipaddr_t *) &this->arp.arp_spa),
-    	this->arp.arp_tha.mac_addr[0], this->arp.arp_tha.mac_addr[0], this->arp.arp_tha.mac_addr[0],
-    	this->arp.arp_tha.mac_addr[0], this->arp.arp_tha.mac_addr[0], this->arp.arp_tha.mac_addr[0],
-    	inet_ntoa(( ipaddr_t *) &this->arp.arp_tpa));
-    this->hlp_type = _FINISH;*/
     arp++;
 
     this->sp[0] = HEX[this->arp.arp_sha.mac_addr[0] / 16]; this->sp[1] = HEX[this->arp.arp_sha.mac_addr[0] % 16]; this->sp[2] = '-';
@@ -512,8 +517,6 @@ microsoft-windows-ndis-packetcapture:::native802.11,
     this->dp[12] = HEX[this->arp.arp_tha.mac_addr[4] / 16]; this->dp[13] = HEX[this->arp.arp_tha.mac_addr[4] % 16]; this->dp[14] = '-';
     this->dp[15] = HEX[this->arp.arp_tha.mac_addr[5] / 16]; this->dp[16] = HEX[this->arp.arp_tha.mac_addr[5] % 16]; this->dp[17] = '\0';
 
-    /*printf("\t\tSender - HW [%s] ; IP [%s]\n\t\tTarget - HW [%s] ; IP [%s]\n", this->sp, inet_ntoa(( ipaddr_t *) &this->arp.arp_spa),
-    	this->dp,inet_ntoa(( ipaddr_t *) &this->arp.arp_tpa)); */
     as = strjoin(" ", inet_ntoa(( ipaddr_t *) &this->arp.arp_tpa));
     as = strjoin(this->dp, as);
     as = strjoin(" -> T ", as);
@@ -552,7 +555,6 @@ microsoft-windows-ndis-packetcapture:::ethernet802.3
     this->udp = xlate <udphdr_t> ((char *) (this->hlp_pos));
     this->hlp_type = (this->junk = this->udp.udp_sport < this->udp.udp_dport ? this->udp.udp_sport : this->udp.udp_dport,
         this->junk < MAX_REG_PORT ? this->junk : _UN_PORT);
-    /*printf("%s-> UDP Src [%x] ; Dest [%x] ", this->hdr, this->udp.udp_sport, this->udp.udp_dport);*/
 
     this->udps = strjoin(" > ", lltostr(this->udp.udp_dport));
     this->udps = strjoin(lltostr(this->udp.udp_sport), this->udps);
@@ -573,7 +575,6 @@ microsoft-windows-ndis-packetcapture:::native802.11,
     this->hlp_pos += 20;
     this->hlp_type = (this->junk = this->tcp.tcp_sport < this->tcp.tcp_dport ? this->tcp.tcp_sport : this->tcp.tcp_dport,
         this->junk < MAX_REG_PORT ? this->junk : _UN_PORT);
-    /*printf("%s-> TCP Src [%x] ; Dest [%x] ", this->hdr, this->tcp.tcp_sport, this->tcp.tcp_dport);*/
 
     this->tcps = strjoin(" > ", lltostr(this->tcp.tcp_dport));
     this->tcps = strjoin(lltostr(this->tcp.tcp_sport), this->tcps);
@@ -621,19 +622,9 @@ microsoft-windows-ndis-packetcapture:::ethernet802.3
         (line = strjoin(line, this->hdstr[5]), this->count-- == 0 ? line : line
         ))))));
     line = strjoin(line, this->proto);
-    printf("%s\n", line);
+    printf("[%s(%d)] %s\n", execname, pid, line);
     this->cc++;
     /*tracemem(this->hlp_pos, 256, this->hlp_fragend - this->hlp_pos);
-     		print(*(this->d1002));
-    print(this->wi);
-    print(this->mac);
-    print(this->llc);
-    print(this->snap);
-    print(this->ip);
-    	print(this->udp);
-    	print(this->tcp);
-    print(this->ip6);
-    print(this->arp);
     */
 }
 
