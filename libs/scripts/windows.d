@@ -27,9 +27,7 @@
  * Copyright 2004 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
-/*
-#pragma D depends_on library types.d
-*/
+
 
 inline int SDT_MSGHDR_SIZE = 4;
 inline int SDT_MSGHDRLOC_CHAR_ARCH = 1;

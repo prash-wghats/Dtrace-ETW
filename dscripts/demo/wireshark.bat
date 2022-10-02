@@ -1,4 +1,5 @@
 
+
 @echo off
 if exist "%~dp0"..\..\debug\amd64\bin\dtrace.exe (
 	set DTRACE=%~dp0\..\..\debug\amd64\bin\dtrace.exe

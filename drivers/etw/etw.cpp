@@ -334,10 +334,12 @@ etw_get_td(pid_t tid, pid_t pid, int create)
 /*
  *	set the current parameters
  */
+static sessioninfo_t locksess = {0};
 static HANDLE *
 etw_set_cur(pid_t pid, pid_t tid, hrtime_t tm, int cpuno)
 {
 	/* wmutex_enter(&etw_cur_lock); */
+	memcpy(&locksess, sessinfo, sizeof(sessioninfo_t));
 	sessinfo->timestamp = tm;
 	sessinfo->cpuno = cpuno;
 	sessinfo->pid = pid;
@@ -355,6 +357,7 @@ etw_set_cur(pid_t pid, pid_t tid, hrtime_t tm, int cpuno)
 static void
 etw_reset_cur(HANDLE *lock)
 {
+	memcpy(sessinfo, &locksess, sizeof(sessioninfo_t));
 	/* wmutex_exit(lock); */
 }
 
@@ -1350,7 +1353,7 @@ static void
 etw_initialize()
 {
 	HANDLE t;
-	char *s;
+	char *s = 0;
 
 	missing_thread.proc = &missing_proc;
 	missing_thread.tid = -1;
@@ -1360,7 +1363,7 @@ etw_initialize()
 	missing_proc.name = "notyet";
 	missing_proc.cmdline = L"\0";
 
-	s = set_syms_path(NULL);
+	//s = set_syms_path(NULL);
 	if (s) {
 		/* fprintf(stderr, "Symbols Search path: %s\n", s); */
 	}
@@ -4178,13 +4181,13 @@ dtrace_etw_init(etw_dtrace_probe_t probef, etw_dtrace_ioctl_t ioctlf,
 	 * Get rundown of all the open files
 	 * Slows down the startup
 	 */
-	LONG result = EnableTraceEx(&KernelRundownGuid_I, NULL, hsession, 1,
+	/*LONG result = EnableTraceEx(&KernelRundownGuid_I, NULL, hsession, 1,
 	    0, 0x10, 0, 0, NULL);
 
 	if (result != ERROR_SUCCESS) {
 		eprintf("dtrace_etw_init, failed to get rundown of open files (%x)\n",
 		    result);
-	}
+	}*/
 
 	if (etw_enable_kernel_prov(hsession, sname, etwflags, TRUE) != 0) {
 		etw_end_session(NULL, sname);
@@ -4225,14 +4228,7 @@ dtrace_etw_init(etw_dtrace_probe_t probef, etw_dtrace_ioctl_t ioctlf,
 	    (eflags & EVENT_TRACE_REAL_TIME_MODE) ? 0 : 1);
 	dtrace_etw_sessions[DT_ETW_USER_SESSION] = sinfo;
 
-	/*eflags = !(dtrace_etw_sessions[DT_ETW_KERNEL_SESSION]->flags & SESSINFO_LIVEFILE) ?
-		EVENT_TRACE_REAL_TIME_MODE :
-	    (EVENT_TRACE_FILE_MODE_CIRCULAR | EVENT_TRACE_REAL_TIME_MODE);
-
-	sinfo = etw_new_session(DTRACE_SESSION_NAME_CLR, &DtraceSessionGuidCLR,
-	    ETW_TS_QPC, eflags, probef, ioctlf, 0);
-	dtrace_etw_sessions[DT_ETW_CLR_SESSION] = sinfo;*/
-
+	/*
 	result = EnableTraceEx(&MSDotNETRuntimeRundownGuid, NULL,
 	    sinfo->hsession, 1, 0, 0x58, 0, 0, NULL);
 	if (result != ERROR_SUCCESS) {
@@ -4245,8 +4241,8 @@ dtrace_etw_init(etw_dtrace_probe_t probef, etw_dtrace_ioctl_t ioctlf,
 		eprintf("dtrace_etw_init, failed to get event fot jit methods (%x)\n",
 		    result);
 	}
+	*/
 
-	//relog(dtrace_etw_sessions, DT_ETW_MAX_SESSION, oetlfile);
 
 	return (dtrace_etw_sessions);
 }

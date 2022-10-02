@@ -6,6 +6,14 @@ Since the pid provider uses the debugger interface, it will slow down the applic
 
 When run for the first time, **dtrace.exe** will get a list of all registered **etw** providers and saves it in a file ```dt_provlist.dat```, in the folder dtrace executable is found.The translator scripts are also read from the dtrace executable folder.
 
+For symbol support set **_NT_SYMBOL_PATH** environment variable.
+ex.
+```
+set _NT_SYMBOL_PATH=srv*c:\symbols
+or
+set _NT_SYMBOL_PATH=srv*c:\symbols*http://msdl.microsoft.com/download/symbols
+```
+
 ## Usage
 [Dtrace](https://www.freebsd.org/cgi/man.cgi?query=dtrace)  
 Additional options :

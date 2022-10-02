@@ -1,4 +1,4 @@
-#!/c/work/dev/perl/bin/perl
+#!perl
 #
 # CDDL HEADER START
 #

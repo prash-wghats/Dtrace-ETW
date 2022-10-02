@@ -47,6 +47,8 @@ struct ntypeinfo {
 	ulong_t nt_nlen;
 	mdTypeDef nt_tok;
 	int nt_nsyms;
+	uintptr_t nt_addr;
+	size_t nt_size;
 	nfuncinfo_t **nt_funcs;
 	nmodinfo_t *nt_mod;
 };

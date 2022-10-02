@@ -10,11 +10,14 @@ debug\i386\bin\dtrace32.exe -s dscripts\demo\fpid_ustack.d -c debug\i386\obj\t_c
 debug\i386\bin\dtrace32.exe -s dscripts\demo\pid_ustack.d -c debug\i386\obj\t_cs_win.exe
 debug\i386\bin\dtrace32.exe -s dscripts\demo\fpid_args.d -c debug\i386\obj\t_c_args.exe
 debug\i386\bin\dtrace32.exe -s dscripts\demo\pid_args.d -c debug\i386\obj\t_c_args.exe
-
+mkdir data
 del data\testfile.etl
 debug\i386\bin\dtrace32.exe -s dscripts\demo\testdata.d -E data\testfile.etl 
 debug\i386\bin\dtrace32.exe -s dscripts\demo\profile_syms.d
-REM https://github.com/randomascii/bigfiles/blob/master/ETWTraces/2015-09-25_20-56-25%20VS%20F8%20short%20hang.zip
+cd data
+curl -LJO https://github.com/randomascii/bigfiles/raw/master/ETWTraces/2015-09-25_20-56-25%20VS%20F8%20short%20hang.zip
+tar -xf "2015-09-25_20-56-25%20VS%20F8%20short%20hang.zip"
+cd ..
 debug\i386\bin\dtrace32.exe -s dscripts\demo\randomascii.d -E "data\2015-09-25_20-56-25 VS F8 short hang.etl"
 debug\i386\bin\dtrace32.exe -s dscripts\demo\profile_syms.d -E data\testfile.etl
 debug\i386\bin\dtrace32.exe -s dscripts\demo\dns.d

@@ -69,6 +69,10 @@ Pxcreate(const char * exe, char *const *args,
 	struct ps_prochandle *ps;
 	struct proc_uc data;
 	int arch = 0;
+	char *nexe = NULL, *const *nargs = NULL;
+	char targs[256] = {0}, *ctmp;
+	char *const *argv = args;
+	int len;
 
 	if ((ps = (struct ps_prochandle *)
 	    malloc(sizeof(struct ps_prochandle))) == NULL) {
@@ -77,15 +81,33 @@ Pxcreate(const char * exe, char *const *args,
 
 	ZeroMemory(ps, sizeof(struct ps_prochandle));
 	ps->attached = 0;
+
+	ctmp = targs;
+	while (*argv != NULL) {	
+		sprintf(ctmp, ctmp == targs ? "%s" : " %s", *argv);
+		DWORD attrib = GetFileAttributes(targs);
+		if  (attrib != INVALID_FILE_ATTRIBUTES && !(attrib & FILE_ATTRIBUTE_DIRECTORY)) {
+			nexe = targs;
+			nargs = ++argv;
+			break;
+		}
+		len = strlen(*argv);
+		ctmp = ctmp + len + (ctmp == targs ? 0 : 1);
+		argv++;
+	}
+	if (nexe == NULL)
+		return NULL;
+		
 	data.ps = ps;
-	data.exe = exe;
-	data.args = args;
+	
+	data.exe = nexe;
+	data.args = nargs;
 
 	pthread_mutex_init(&ps->mutex, NULL);
 	pthread_cond_init(&ps->cond, NULL);
 
 	/*.net or native */
-	if (isnetmodule(exe, &arch) > 0) {
+	if (isnetmodule(nexe, &arch) > 0) {
 		if (dtnetarch(arch) == 0) {
 			fprintf(stderr, "dtrace: can't trace %s .net process with %s version\n",
 			    arch ? "x86" : "x64", arch ? "x64" : "x86");
@@ -489,8 +511,8 @@ Ploopcreate(LPVOID args)
 	ctmp = targs;
 	while (*argv != NULL) {
 		len = strlen(*argv);
-		sprintf(ctmp, "%s ", *argv);
-		ctmp = ctmp + len + 1;
+		sprintf(ctmp, ctmp == targs ? "%s" : " %s", *argv);
+		ctmp = ctmp + len + (ctmp == targs ? 0 : 1);
 		argv++;
 	}
 	*ctmp = '\0';
@@ -499,7 +521,7 @@ Ploopcreate(LPVOID args)
 	si.cb = sizeof(si);
 	ZeroMemory( &pi, sizeof(pi) );
 
-	if(!CreateProcess( NULL,   //  module name
+	if(!CreateProcess(tmp->exe,   //  module name
 	    targs,        // Command line
 	    NULL,           // Process handle not inheritable
 	    NULL,           // Thread handle not inheritable
@@ -1160,8 +1182,7 @@ Pobjname(struct ps_prochandle *P, uint64_t addr, char *buffer, size_t bufsize)
 	info.SizeOfStruct = sizeof(IMAGEHLP_MODULE64);
 
 	if (SymGetModuleInfo64(P->phandle, (DWORD64) addr, &info) == FALSE) {
-		buffer[0] = 0;
-		return NULL;
+		return dtrace_etw_objname(P->etwmods, P->pid, addr, buffer, bufsize);;
 	}
 
 	if ((r = strrchr(info.ImageName, '\\')) ||

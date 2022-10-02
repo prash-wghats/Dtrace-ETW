@@ -26,10 +26,7 @@
 /*
  * Copyright (c) 2012, Joyent, Inc. All rights reserved.
  */
-/*
-#pragma D depends_on library types.d
-#pragma D depends_on provider io
-*/
+
 
 /*inline int B_BUSY = @B_BUSY@;
 #pragma D binding "1.0" B_BUSY
