@@ -1,4 +1,4 @@
-#!/c/work/dev/perl/bin/perl
+#!perl
 #
 # CDDL HEADER START
 #
@@ -581,11 +581,11 @@ if ($opt_j || $opt_n || $opt_i) {
 	push(@dtrace_cmds, $jdtrace_path) if ($opt_j);
 	push(@dtrace_cmds, "/usr/sbin/$opt_i/dtrace") if ($opt_i);
 } else {
-	@dtrace_cmds = ($dtrace_path, $jdtrace_path);
+	@dtrace_cmds = ($dtrace_path);
 }
 
 if ($opt_d) {
-	die "$PNAME: -d arg must be absolute path\n" unless ($opt_d =~ /^\//);
+	#die "$PNAME: -d arg must be absolute path\n" unless ($opt_d =~ /^\//);
 	die "$PNAME: -d arg $opt_d is not a directory\n" unless (-d "$opt_d");
 	system("coreadm -p $opt_d/%p.core");
 } else {

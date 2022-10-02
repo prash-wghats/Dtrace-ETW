@@ -199,6 +199,22 @@ nloadsymassm(struct ps_prochandle *P, ICorDebugAssembly *assm)
 	return hr;
 }
 
+int
+cmptype(const void *a, const void *b)
+{
+	return ((ntypeinfo *) a)->nt_addr - ((ntypeinfo *) b)->nt_addr;
+}
+
+int
+bsertype(const void *a, const void *b)
+{
+	uintptr_t addr = (uintptr_t ) a;
+	ntypeinfo *type = *((ntypeinfo **) b);
+
+	return addr < type->nt_addr ? -1 :
+	    (addr >= (type->nt_addr + type->nt_size) ? 1 : 0);;
+}
+
 nmodinfo_t *
 nloadsymmod(struct ps_prochandle *P, ICorDebugModule *mod, int load_order)
 {
@@ -238,12 +254,20 @@ nloadsymmod(struct ps_prochandle *P, ICorDebugModule *mod, int load_order)
 	}
 
 	ntype = (ntypeinfo_t **) malloc(sizeof(ntypeinfo_t *) * ret);
-	nmod->nm_ntypes = ret;
-	nmod->nm_types = ntype;
-	for (int i = 0; i < ret; i++) {
-		ntype[i] = nloadsymtype(nmod, types[i], mdata);
-	}
 
+	nmod->nm_types = ntype;
+
+	int j = 0;
+	for (int i = 0; i < ret; i++) {
+		ntype[j] = nloadsymtype(nmod, types[i], mdata);
+		if (ntype[j] != 0)
+			j++;
+	}
+	nmod->nm_ntypes = j;
+	if (j > 2)
+		qsort(ntype, j, sizeof(ntypeinfo_t *), cmptype);
+	//nmod->nm_addr = ntype[0]->nm_addr;
+	nmod->nm_types = ntype;
 	nmod->nm_next = P->net_modules;
 	nmod->loaded_order = load_order;
 	if (GetBinaryTypeA(nmod->nm_fname, &exe)) {
@@ -251,6 +275,22 @@ nloadsymmod(struct ps_prochandle *P, ICorDebugModule *mod, int load_order)
 	}
 	P->net_modules = nmod;
 	return nmod;
+}
+
+int
+cmpsym(const void *a, const void *b)
+{
+	return ((nfuncinfo *) a)->nf_addr - ((nfuncinfo *) b)->nf_addr;
+}
+
+int
+bserfunc(const void *a, const void *b)
+{
+	uintptr_t addr = (uintptr_t ) a;
+	nfuncinfo *type = *((nfuncinfo **) b);
+
+	return addr < type->nf_addr ? -1 :
+	    (addr >= (type->nf_addr + type->nf_size) ? 1 : 0);
 }
 
 ntypeinfo_t *
@@ -269,26 +309,36 @@ nloadsymtype(nmodinfo_t *mod, mdTypeDef type, IMetaDataImport *mdata)
 	nfuncinfo_t **ppfunc;
 
 	hr = mdata->GetTypeDefProps(type, cname,
-	        MAX_NAME_LENGTH, &len, &flags, &tkbase);
+	    MAX_NAME_LENGTH, &len, &flags, &tkbase);
 
 	ptype->nt_nlen = wcstombs(ptype->nt_name, cname, MAX_NAME_LENGTH);
 	if (hr < 0)
 		return 0;
 
 	hr = mdata->EnumMethods(&fenum, type, ftok, 1024, &ret);
-	if (hr < 0) {
+	if (hr < 0 || ret == 0) {
 		free(ptype);
 		return 0;
 	}
 	ppfunc = (nfuncinfo_t **) malloc(sizeof(nfuncinfo_t *)*ret);
 	ptype->nt_mod = mod;
 	ptype->nt_tok = type;
-	ptype->nt_nsyms = ret;
-	ptype->nt_funcs = ppfunc;
 
+	ptype->nt_funcs = ppfunc;
+	int i = 0;
 	for (int j = 0; j < ret; j++) {
-		ppfunc[j] = nloadsymfunc(ptype, ftok[j], cname, mdata);
+		ppfunc[i] = nloadsymfunc(ptype, ftok[j], cname, mdata);
+		if (ppfunc[i] != NULL)
+			i++;
 	}
+	ptype->nt_nsyms = i;
+	if (i > 2) {
+		qsort(ppfunc, i, sizeof(nfuncinfo_t *), cmpsym);
+		ptype->nt_addr = ppfunc[0]->nf_addr;
+		i = i > 1 ? i - 1 : 0;
+		ptype->nt_size = (ppfunc[i]->nf_addr - ppfunc[0]->nf_addr) + ppfunc[i]->nf_size;
+	}
+	ptype->nt_funcs = ppfunc;
 
 	return ptype;
 }
@@ -317,8 +367,8 @@ nloadsymfunc(ntypeinfo_t *type, mdMethodDef ftok,
 	func->nf_size = size;
 	func->nf_type = type;
 	hr = mdata->GetMethodProps(ftok, &classToken, methodName,
-	        MAX_NAME_LENGTH, &methodNameLength, &methodAttr, &sigBlob,
-	        &sigBlobSize, NULL, NULL);
+	    MAX_NAME_LENGTH, &methodNameLength, &methodAttr, &sigBlob,
+	    &sigBlobSize, NULL, NULL);
 	if (methodAttr & (mdAbstract|mdPinvokeImpl)) {
 		free(func);
 		return NULL;
@@ -335,7 +385,7 @@ nloadsymfunc(ntypeinfo_t *type, mdMethodDef ftok,
 	func->nf_size = size;
 	//if (hr >= 0)
 	//FormatSig(sigBlob, mdata, methodName);
-	if (hr < 0) {
+	if (hr < 0 || addr == 0) {
 		free(func);
 		return NULL;
 	} else
@@ -359,7 +409,7 @@ nloadsymfunc(ntypeinfo_t *type, mdMethodDef ftok,
 				return (S_OK);
 
 class DebuggerCB : public ICorDebugManagedCallback {
-	public:
+public:
 	DebuggerCB(ICorDebug *d, struct ps_prochandle *ps) : refcount(0)
 	{
 		dbg = d;
@@ -416,7 +466,8 @@ class DebuggerCB : public ICorDebugManagedCallback {
 		P->exited = 1;
 		P->status = PS_UNDEAD;
 		P->msg.type = RD_NONE;
-		P->fthelper(P->pid, -1, PSYS_PROC_DEAD, NULL);
+		if (P->fthelper != NULL)
+			P->fthelper(P->pid, -1, PSYS_PROC_DEAD, NULL);
 		BOILER_PROCESS
 	}
 
@@ -586,10 +637,10 @@ class DebuggerCB : public ICorDebugManagedCallback {
 				P->status = PS_STOP;
 				HANDLE td = ::CreateThread(NULL, 0, busyloop_thread, P, 0, NULL);
 			} else {
-				
+
 				SetEvent(P->event);
 				pthread_cond_wait(&P->cond, &P->mutex);
-				
+
 			}
 		}
 		pthread_mutex_unlock(&P->mutex);
@@ -734,7 +785,7 @@ class DebuggerCB : public ICorDebugManagedCallback {
 			return controller;
 
 		hr = process->QueryInterface(IID_ICorDebugController,
-		        (void**)&controller);
+		    (void**)&controller);
 		//RELEASE(process);
 
 		//_ASSERTE(controller != NULL);
@@ -755,7 +806,7 @@ class DebuggerCB : public ICorDebugManagedCallback {
 			return process;
 	}
 
-	protected:
+protected:
 	long        refcount;
 	ICorDebug *dbg;
 	int setmain;
@@ -764,7 +815,7 @@ class DebuggerCB : public ICorDebugManagedCallback {
 
 
 class DebuggerUnmanagedcb : public ICorDebugUnmanagedCallback {
-	public:
+public:
 	DebuggerUnmanagedcb(ICorDebug *dbg, struct ps_prochandle *ps) : m_refCount(0)
 	{
 		debugger = dbg;
@@ -837,7 +888,8 @@ class DebuggerUnmanagedcb : public ICorDebugUnmanagedCallback {
 			P->exited = 1;
 			P->status = PS_UNDEAD;
 			P->msg.type = RD_NONE;
-			P->fthelper(P->pid, -1, PSYS_PROC_DEAD, NULL);
+			if (P->fthelper != NULL)
+				P->fthelper(P->pid, -1, PSYS_PROC_DEAD, NULL);
 			break;
 		case CREATE_THREAD_DEBUG_EVENT:
 			break;
@@ -853,11 +905,11 @@ class DebuggerUnmanagedcb : public ICorDebugUnmanagedCallback {
 					P->msg.type = RD_NONE;
 					excep++;
 				} else if (excep == 1) {
-					if (event->u.Exception.ExceptionRecord.ExceptionAddress != 
-						(PVOID) P->addr) {
-						dprintf("expecting execption at %p:but recived from %p\n", 
-							P->addr,
-							event->u.Exception.ExceptionRecord.ExceptionAddress);
+					if (event->u.Exception.ExceptionRecord.ExceptionAddress !=
+					    (PVOID) P->addr) {
+						dprintf("expecting execption at %p:but recived from %p\n",
+						    P->addr,
+						    event->u.Exception.ExceptionRecord.ExceptionAddress);
 						P->status = PS_RUN;
 						cont = DBG_EXCEPTION_NOT_HANDLED;
 						break;
@@ -951,7 +1003,7 @@ class DebuggerUnmanagedcb : public ICorDebugUnmanagedCallback {
 		return 0;
 	}
 
-	protected:
+protected:
 	ICorDebug *debugger;
 	int excep;
 	struct ps_prochandle *P;
@@ -1011,19 +1063,14 @@ Netobjname(struct ps_prochandle *P, uintptr_t addr, char *buffer, size_t bufsize
 
 	for(; mod != NULL; mod = mod->nm_next) {
 
-		for (int i=0; i < mod->nm_ntypes; i++) {
-			type = mod->nm_types[i];
 
-			for (int j=0; j < type->nt_nsyms; j++) {
-				func = type->nt_funcs[j];
-				if (func && addr >= func->nf_addr && addr < func->nf_addr+func->nf_size)
-					//break;
-					goto fnd;
-			}
-		}
+		if (bsearch((void *) addr, mod->nm_types, mod->nm_ntypes,
+		    sizeof(ntypeinfo_t *), bsertype) != NULL)
+			break;
+
 
 	}
-	fnd:
+
 	if (mod == NULL) {
 		buffer[0] = 0;
 		return NULL;
@@ -1041,7 +1088,8 @@ Netobjname(struct ps_prochandle *P, uintptr_t addr, char *buffer, size_t bufsize
  * symbol table entry.  On failure, -1 is returned.
  */
 int
-Netlookup_by_name(struct ps_prochandle *P, const char *oname, const char *sname, GElf_Sym *symp)
+Netlookup_by_name(struct ps_prochandle *P, const char *oname, const char *sname,
+    GElf_Sym *symp)
 {
 	nmodinfo_t *mod = P->net_modules;
 	ntypeinfo_t *type;
@@ -1083,36 +1131,37 @@ Netlookup_by_name(struct ps_prochandle *P, const char *oname, const char *sname,
  * Returns 0 on success, -1 on failure.
  */
 int
-Netlookup_by_addr(struct ps_prochandle *P, uintptr_t addr, char *buf, size_t size, GElf_Sym *symp)
+Netlookup_by_addr(struct ps_prochandle *P, uintptr_t addr, char *buf, size_t size,
+    GElf_Sym *symp)
 {
 	nmodinfo_t *mod = P->net_modules;
-	ntypeinfo_t *type;
-	nfuncinfo_t *func;
+	ntypeinfo_t *type, **rtype;
+	nfuncinfo_t *func, **rfunc;
 
 	for(; mod != NULL; mod = mod->nm_next) {
-		for (int i=0; i < mod->nm_ntypes; i++) {
-			type = mod->nm_types[i];
-			char *cn = type->nt_name;
-			for (int j=0; j < type->nt_nsyms; j++) {
-				func = type->nt_funcs[j];
-				if (func && addr >= func->nf_addr && addr <
-				    func->nf_addr+func->nf_size) {
-					if (symp != NULL) {
-						symp->st_name = 0;
-						symp->st_info = GELF_ST_INFO((STB_GLOBAL), (STT_FUNC));
-						symp->st_other = 0;
-						symp->st_shndx = 1;
-						symp->st_value = func->nf_addr;
-						symp->st_size = func->nf_size;
-					}
-					if (buf != NULL && size > 0)
-						snprintf(buf, size, "%s.%s", 
-						    type->nt_name, func->nf_name);
+		if ((rtype = ((ntypeinfo_t **) bsearch((void *) addr, mod->nm_types, mod->nm_ntypes,
+		    sizeof(ntypeinfo_t *), bsertype))) != NULL) {
 
-					return 0;
+			type = *rtype;
+			if ((rfunc = ((nfuncinfo_t **) bsearch((void *) addr, type->nt_funcs, type->nt_nsyms,
+			    sizeof(nfuncinfo_t *), bserfunc))) != NULL) {
+				func = *rfunc;
+				if (symp != NULL) {
+					symp->st_name = 0;
+					symp->st_info = GELF_ST_INFO((STB_GLOBAL), (STT_FUNC));
+					symp->st_other = 0;
+					symp->st_shndx = 1;
+					symp->st_value = func->nf_addr;
+					symp->st_size = func->nf_size;
 				}
+				if (buf != NULL && size > 0)
+					snprintf(buf, size, "%s.%s",
+					    type->nt_name, func->nf_name);
+
+				return 0;
 			}
 		}
+
 	}
 	return -1;
 }
@@ -1123,7 +1172,8 @@ Netlookup_by_addr(struct ps_prochandle *P, uintptr_t addr, char *buf, size_t siz
  * If which == PR_DYNSYM, search the dynamic symbol table.
  */
 int
-Netsymbol_iter_by_addr(struct ps_prochandle *P, const char *oname,  proc_sym_f *func, void *cd)
+Netsymbol_iter_by_addr(struct ps_prochandle *P, const char *oname,  proc_sym_f *func,
+    void *cd)
 {
 	nmodinfo_t *mod = P->net_modules;
 	ntypeinfo_t *type;
@@ -1290,9 +1340,9 @@ net_create(struct proc_uc *uc, int arch)
 
 	flag |= DEBUG_PROCESS|DEBUG_ONLY_THIS_PROCESS; //unmanaged debugging
 
-	wchar_t exe[1024];
-	wchar_t args[1024];
-	char *ctmp, targs[1024];
+	wchar_t exe[1024] = {0}, args[1024] = {0};
+	wchar_t ;
+	char *ctmp, targs[1024] = {0};
 	char *const *argv = uc->args;
 	int len;
 
@@ -1307,7 +1357,7 @@ net_create(struct proc_uc *uc, int arch)
 	mbstowcs(exe, uc->exe, 1024);
 	mbstowcs(args, targs, 1024);
 	hr = dbg->CreateProcess(exe, args, NULL, NULL, TRUE, flag, NULL,
-	        NULL, &starti, &processi, DEBUG_NO_SPECIAL_OPTIONS, &process);
+	    NULL, &starti, &processi, DEBUG_NO_SPECIAL_OPTIONS, &process);
 	if(FAILED(hr)) {
 		dprintf("libdtrace: Failed to create .net process  %x%08\n", hr);
 		return -1;
@@ -1348,7 +1398,8 @@ net_attach(struct proc_uc *uc)
 	//	the target process (opened prior with OpenProcess)
 	//pCLRMetaHost->EnumerateLoadedRuntimes(NULL, &pEnumUnknown);
 	//CLRMetaHost->EnumerateInstalledRuntimes(&EnumUnknown);
-	HANDLE hprocess = OpenProcess( PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, uc->ps->pid );
+	HANDLE hprocess = OpenProcess( PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE,
+	    uc->ps->pid );
 	hr = CLRMetaHost->EnumerateLoadedRuntimes(hprocess, &EnumUnknown);
 	// Use the first runtime found (Note, you can only debug one runtime at once)
 	EnumUnknown->Next(1, &Unknown, &Fetched);
@@ -1414,7 +1465,8 @@ net_detach(struct ps_prochandle *P, int detach)
 	HRESULT hr;
 	if (detach) {
 		ICorDebugController* pCorDebugController = NULL;
-		P->netprocess->QueryInterface(__uuidof(ICorDebugController), (void**)&pCorDebugController);
+		P->netprocess->QueryInterface(__uuidof(ICorDebugController),
+		    (void**)&pCorDebugController);
 		hr = pCorDebugController->Stop(INFINITE /* Note: Value is ignored – always INFINITE */);
 		hr = pCorDebugController->Detach();
 		hr = pCorDebugController->Release();
@@ -1454,15 +1506,15 @@ net_cmd(char *cmd)
 
 	// Start the child process.
 	if(!CreateProcessA( NULL,   // No module name (use command line)
-	        cmd,   // Command line
-	        NULL,           // Process handle not inheritable
-	        NULL,           // Thread handle not inheritable
-	        FALSE,          // Set handle inheritance to FALSE
-	        0,              // No creation flags
-	        NULL,           // Use parent's environment block
-	        NULL,           // Use parent's starting directory
-	        &si,            // Pointer to STARTUPINFO structure
-	        &pi )           // Pointer to PROCESS_INFORMATION structure
+	    cmd,   // Command line
+	    NULL,           // Process handle not inheritable
+	    NULL,           // Thread handle not inheritable
+	    FALSE,          // Set handle inheritance to FALSE
+	    0,              // No creation flags
+	    NULL,           // Use parent's environment block
+	    NULL,           // Use parent's starting directory
+	    &si,            // Pointer to STARTUPINFO structure
+	    &pi )           // Pointer to PROCESS_INFORMATION structure
 	) {
 		dprintf("net_cmd(), failed cmd (%s) (%x)\n", cmd, GetLastError());
 		return (-1);
@@ -1495,11 +1547,12 @@ net_ngened(const char *modname, int ver, int arch)
 	nc = n;
 	_splitpath(modname, NULL, NULL, fname, ext);
 
-	strncpy(path+nc, " install ", (MAX_PATH-n));
+	strncpy(path+nc, " install \"", (MAX_PATH-n));
 	n = strlen(path);
 	// full path or only name(w/o ext)
 	strncpy(path+n, modname, (MAX_PATH-n));
-
+	n = strlen(path);
+	strncpy(path+n, "\"", (MAX_PATH-n));
 	dprintf("creating ngened image (%s)\n", path);
 	exit_code = net_cmd(path);
 	if (exit_code == 0)

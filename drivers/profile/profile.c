@@ -232,7 +232,7 @@ profile_fire(void *arg)
 	hrtime_t late;
 	cpu_data_t *cpu = &CPU[curcpu];
 
-	late = dtrace_gethrtime() - (pcpu->profc_expected+pcpu->profc_interval);
+	late = dtrace_gethrtime() - pcpu->profc_expected;
 	pcpu->profc_expected += pcpu->profc_interval;
 
 	dtrace_etw_probe(prof->prof_id, cpu->cpu_profile_pc,
@@ -349,7 +349,7 @@ profile_provide(void *arg, dtrace_probedesc_t *desc)
 				continue;
 			(void) snprintf(n, PROF_NAMELEN, "%s%d",
 			    PROF_PREFIX_SAMPLE, rate);
-			profile_create(NANOSEC / rate, n, PROF_TICK);
+			profile_create(NANOSEC / rate, n, PROF_SAMPLE);
 		}
 
 		return;

@@ -161,7 +161,7 @@ CycFuncProc(PEVENT_RECORD event, void *data)
 		(void) (cyclic->cy_func)(s);
 
 		exp += cyclic->cy_interval;
-		if (now - exp > ((hrtime_t)2*NANOSEC)) {
+		if (now - exp > NANOSEC) {
 			hrtime_t interval = cyclic->cy_interval;
 			exp += ((now - exp) / interval + 1) * interval;
 		}
